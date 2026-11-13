@@ -254,7 +254,7 @@ endif() # NOT ANDROID
 # Q_IMPORT_QML_PLUGIN); the program sets the Material style and loads Main.qml (phone_app.cpp)
 if(EVRE_PHONE)
     # the screens at the module's root (qrc:/qt/qml/EVRe/Phone/Main.qml), where they find each other by name
-    foreach(screen Main ConnectDrawer LinkPill LogScreen PhoneIcon PlaceholderScreen P9Screen RegistersScreen RegisterCard WriteSheet
+    foreach(screen Main ConnectDrawer LinkPill LogScreen MonitorScreen PhoneIcon PlaceholderScreen P9Screen RegistersScreen RegisterCard WriteSheet
             ChartScreen)
         set_source_files_properties(src/phone/qml/${screen}.qml PROPERTIES QT_RESOURCE_ALIAS ${screen}.qml)
     endforeach()
@@ -278,6 +278,7 @@ if(EVRE_PHONE)
             src/phone/qml/RegisterCard.qml
             src/phone/qml/WriteSheet.qml
             src/phone/qml/ChartScreen.qml
+            src/phone/qml/MonitorScreen.qml
         SOURCES
             src/phone/phone_theme.h     src/phone/phone_theme.cpp
             src/phone/phone_language.h  src/phone/phone_language.cpp
@@ -288,7 +289,8 @@ if(EVRE_PHONE)
             src/phone/register_list.h   src/phone/register_list.cpp
             src/phone/p9_proof.h        src/phone/p9_proof.cpp
             src/phone/chart_item.h      src/phone/chart_item.cpp
-            src/phone/chart_demo.h      src/phone/chart_demo.cpp)
+            src/phone/chart_demo.h      src/phone/chart_demo.cpp
+            src/phone/frame_log.h       src/phone/frame_log.cpp)
     # src/phone too: the generated type registrations include the classes' headers by their bare names
     target_include_directories(evre_phone_qml PUBLIC src PRIVATE src/phone)
     target_link_libraries(evre_phone_qml PUBLIC evre_engine Qt6::Quick Qt6::QuickControls2)

@@ -88,6 +88,48 @@ void ChartLines::set(const QVector<Entry> &entries) {
 	}
 }
 
+/* ------------------------------------------------------------------ the cursors' readouts */
+
+int CursorReadouts::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : int(rows_.size()); }
+
+QVariant CursorReadouts::data(const QModelIndex &index, int role) const {
+	if (!index.isValid() || index.row() >= rows_.size()) return {};
+	const Row &row = rows_[index.row()];
+	switch (role) {
+	case IdRole: return row.id;
+	case NameRole: return row.name;
+	case ColourRole: return row.colour;
+	case AtARole: return row.atA;
+	case AtBRole: return row.atB;
+	case DeltaRole: return row.delta;
+	case MinRole: return row.min;
+	case MaxRole: return row.max;
+	case MeanRole: return row.mean;
+	default: return {};
+	}
+}
+
+QHash<int, QByteArray> CursorReadouts::roleNames() const {
+	return { { IdRole, "lineId" }, { NameRole, "name" }, { ColourRole, "colour" }, { AtARole, "atA" },
+		{ AtBRole, "atB" }, { DeltaRole, "delta" }, { MinRole, "min" }, { MaxRole, "max" }, { MeanRole, "mean" } };
+}
+
+void CursorReadouts::set(const QVector<Row> &rows) {
+	bool same = rows.size() == rows_.size();
+	for (qsizetype i = 0; same && i < rows.size(); ++i) same = rows[i].id == rows_[i].id;
+	if (!same) {
+		beginResetModel();
+		rows_ = rows;
+		endResetModel();
+		return;
+	}
+	for (qsizetype i = 0; i < rows.size(); ++i) {
+		if (rows[i] == rows_[i]) continue;
+		rows_[i] = rows[i];
+		emit dataChanged(index(int(i)), index(int(i)));
+	}
+}
+
 /* ------------------------------------------------------------------ helpers */
 
 namespace {
@@ -191,6 +233,86 @@ ChartItem::ChartItem(QQuickItem *parent) : QQuickItem(parent) {
 	timeTicks_ = new ChartTicks(this);
 	valueTicks_ = new ChartTicks(this);
 	legend_ = new ChartLines(this);
+	readouts_ = new CursorReadouts(this);
+}
+
+/* ------------------------------------------------------------------ the cursors */
+
+double ChartItem::cursorX(double t) const {
+	if (!std::isfinite(t) || !(axes_.span > 0) || plot_.isEmpty() || t < axes_.t0 || t > axes_.t1) return NAN;
+	return axes_.x(t);
+}
+
+QString ChartItem::cursorAText() const { return std::isfinite(cursorA_) ? timeLabel(cursorA_, 0.01) : QString(); }
+QString ChartItem::cursorBText() const { return std::isfinite(cursorB_) ? timeLabel(cursorB_, 0.01) : QString(); }
+
+QString ChartItem::cursorSpanText() const {
+	if (!cursorsOn()) return QString();
+	return ChartData::number(cursorB_ - cursorA_) + QStringLiteral(" s");
+}
+
+void ChartItem::placeCursors() {
+	if (!(axes_.span > 0)) return;
+	setLive(false); /* the readouts hold still */
+	setCursors(axes_.t0 + axes_.span / 3, axes_.t0 + axes_.span * 2 / 3);
+}
+
+void ChartItem::clearCursors() { setCursors(NAN, NAN); }
+
+void ChartItem::moveCursor(int which, double x) {
+	if (!cursorsOn() || plot_.width() <= 0) return;
+	const double clamped = std::clamp(x, plot_.left(), plot_.right());
+	const double t = axes_.t0 + (clamped - plot_.left()) / plot_.width() * axes_.span;
+	if (which == 0) setCursors(t, cursorB_);
+	else setCursors(cursorA_, t);
+}
+
+void ChartItem::setCursors(double a, double b) {
+	const bool same = (a == cursorA_ || (std::isnan(a) && std::isnan(cursorA_)))
+			&& (b == cursorB_ || (std::isnan(b) && std::isnan(cursorB_)));
+	if (same) return;
+	cursorA_ = a;
+	cursorB_ = b;
+	emit cursorsChanged();
+	updateReadouts();
+	polish();
+}
+
+ChartData::Stats ChartItem::cursorStats(int id) const {
+	const Line *line = find(id);
+	if (!line || !cursorsOn()) return ChartData::Stats();
+	const ChartData::Series &s = line->series;
+	const double t0 = std::min(cursorA_, cursorB_), t1 = std::max(cursorA_, cursorB_);
+	if (s.fast) return s.fast->hasTime() ? ChartData::statsOfFast(*s.fast, s.channel, t0, t1, cursorA_, cursorB_)
+										 : ChartData::Stats();
+	return s.times.isEmpty() ? ChartData::Stats() : ChartData::statsOf(s.times, s.values, t0, t1, cursorA_, cursorB_);
+}
+
+/* each shown line's values at A and B and over A..B (the desktop's measurements, ChartView::stats), as the legend
+ * writes a value; a value the line has not there (outside its samples, a fast line's summaries): a dash */
+void ChartItem::updateReadouts() {
+	QVector<CursorReadouts::Row> rows;
+	if (cursorsOn())
+		for (const auto &line : lines_) {
+			if (!line->shown) continue;
+			const ChartData::Stats st = cursorStats(line->id);
+			const QString unit = line->series.unit.isEmpty() ? QString() : QLatin1Char(' ') + line->series.unit;
+			const auto text = [&unit](double v, bool ok) {
+				return ok && std::isfinite(v) ? ChartData::number(v) + unit : QStringLiteral("\u2013");
+			};
+			CursorReadouts::Row row;
+			row.id = line->id;
+			row.name = line->series.name;
+			row.colour = colourOf(*line);
+			row.atA = text(st.atA, true);
+			row.atB = text(st.atB, true);
+			row.delta = text(st.atB - st.atA, true);
+			row.min = text(st.min, st.ok);
+			row.max = text(st.max, st.ok);
+			row.mean = text(st.mean, st.ok && !st.summaries);
+			rows << row;
+		}
+	readouts_->set(rows);
 }
 
 ChartItem::~ChartItem() = default;
@@ -341,6 +463,7 @@ void ChartItem::setLineShown(int id, bool shown) {
 	line->binned = ChartData::BinnedLine();
 	line->vertices.clear();
 	updateLegend(false);
+	updateReadouts();
 	polish();
 }
 
@@ -617,6 +740,14 @@ void ChartItem::updatePolish() {
 	if (!live_ || !legendClock_.isValid() || legendClock_.elapsed() >= LEGEND_MS) {
 		legendClock_.start();
 		updateLegend(true);
+		updateReadouts();
+	}
+	const double ax = cursorAX(), bx = cursorBX();
+	const auto moved = [](double was, double now) { return std::isnan(was) != std::isnan(now) || (!std::isnan(now) && was != now); };
+	if (moved(cursorAtX_, ax) || moved(cursorBtX_, bx)) {
+		cursorAtX_ = ax;
+		cursorBtX_ = bx;
+		emit cursorsMoved();
 	}
 	polishSeconds_ += took.nsecsElapsed() / 1e9;
 	emit framed();

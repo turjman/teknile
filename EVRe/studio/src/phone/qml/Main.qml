@@ -246,9 +246,9 @@ ApplicationWindow {
             demo: root.chartDemo
             onRegistersAsked: tabBar.currentIndex = 0
         }
-        PlaceholderScreen {
+        MonitorScreen {
             objectName: "screenMonitor"
-            note: qsTr("Coming soon: the frames on the link.")
+            onConnectAsked: drawer.open()
         }
         LogScreen {
             objectName: "screenLog"

@@ -7,7 +7,10 @@
 // time, a drag looks back (and holds), a double tap goes live again. Time runs left to right in Arabic too: the plot,
 // its labels and the legend are never mirrored. The lines come from PhoneSession (the registers plotted on the
 // Registers screen, the fast channels chosen here); with none, the plot says how to plot one, with a button to the
-// Registers screen. With demo (Main.qml's chartDemo) the chart's test feed draws 8 lines at 1,000 Hz (chart_demo.h).
+// Registers screen. Cursors (B.4): the Cursors button puts A and B on the view (a third and two thirds of it) and holds
+// it; each is dragged by its round handle (48 dp; A's at the plot's top, B's at its foot); the readouts beside the plot
+// (under it in portrait) give A's and B's times and B - A, and per line its values at A and B, B - A, and min, max and
+// mean over A..B (ChartItem's readouts: the desktop's statsOf). With demo (Main.qml's chartDemo) the chart's test feed draws 8 lines at 1,000 Hz (chart_demo.h).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -33,6 +36,29 @@ Item {
         noticeText.text = text
         notice.opacity = 1
         noticeTimer.restart()
+    }
+
+    // a readout: its label (translated, muted) and its value (a number and unit, left to right)
+    component Pair: Row {
+        property string label
+        property string value
+        property string valueName: "readoutValue"
+        property string labelName: "readoutLabel"
+        spacing: 4
+        Text {
+            objectName: parent.labelName
+            text: parent.label
+            color: PhoneTheme.muted
+            font.pixelSize: 12
+            anchors.baseline: valueText.baseline
+        }
+        Text {
+            id: valueText
+            objectName: parent.valueName
+            text: parent.value
+            color: PhoneTheme.text
+            font.pixelSize: 13
+        }
     }
 
     // the session feeds this chart (not the demo's: it has its own clock and lines)
@@ -145,6 +171,22 @@ Item {
                     flat: true
                     text: qsTr("Y %1 to %2").arg(screen.shortNumber(chart.yLow)).arg(screen.shortNumber(chart.yHigh))
                     onClicked: ySheet.openFor()
+                }
+            }
+            Row {
+                id: toolsGroup
+                spacing: 2
+                height: viewGroup.height
+                // A and B on the view, or off it
+                Button {
+                    objectName: "cursorsButton"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Cursors")
+                    flat: true
+                    checkable: true
+                    checked: chart.cursorsOn
+                    highlighted: chart.cursorsOn
+                    onClicked: chart.cursorsOn ? chart.clearCursors() : chart.placeCursors()
                 }
                 Button {
                     objectName: "chartClear"
@@ -291,6 +333,14 @@ Item {
             }
         }
 
+        GridLayout {
+            id: plotAndReadouts
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            columns: screen.width > screen.height ? 2 : 1
+            rowSpacing: 0
+            columnSpacing: 0
+
         Item {
             id: plotArea
             objectName: "chartArea"
@@ -372,6 +422,60 @@ Item {
                 onDoubleTapped: chart.live = true
             }
 
+            // the cursors: a line over the plot and a round handle to drag it (A's at the top, B's at the foot)
+            Repeater {
+                model: 2
+                Item {
+                    id: cursor
+                    required property int index
+                    readonly property real cx: index === 0 ? chart.cursorAX : chart.cursorBX
+                    objectName: index === 0 ? "cursorA" : "cursorB"
+                    visible: chart.cursorsOn && !isNaN(cx)
+                    x: (isNaN(cx) ? 0 : cx) - 24
+                    width: 48
+                    height: plotArea.height
+                    Rectangle {
+                        x: 24 - 0.75
+                        y: chart.plotRect.y
+                        width: 1.5
+                        height: chart.plotRect.height
+                        color: PhoneTheme.accent
+                    }
+                    Item {
+                        objectName: cursor.index === 0 ? "cursorHandleA" : "cursorHandleB"
+                        width: 48
+                        height: 48
+                        y: cursor.index === 0 ? chart.plotRect.y : chart.plotRect.y + chart.plotRect.height - 48
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 28
+                            height: 28
+                            radius: 14
+                            color: PhoneTheme.accent
+                            border.width: 2
+                            border.color: PhoneTheme.bg
+                            Text {
+                                objectName: "cursorName"
+                                anchors.centerIn: parent
+                                text: cursor.index === 0 ? "A" : "B"
+                                color: PhoneTheme.bg
+                                font.pixelSize: 14
+                                font.bold: true
+                            }
+                        }
+                        // a drag moves the cursor along the time, inside the plot (not the view: the chart's own drag)
+                        DragHandler {
+                            objectName: cursor.index === 0 ? "cursorDragA" : "cursorDragB"
+                            target: null
+                            yAxis.enabled: false
+                            property real fromX: 0
+                            onActiveChanged: if (active) fromX = cursor.cx
+                            onActiveTranslationChanged: if (active) chart.moveCursor(cursor.index, fromX + activeTranslation.x)
+                        }
+                    }
+                }
+            }
+
             // no line: how to plot one, and a button to the Registers screen
             Rectangle {
                 id: empty
@@ -422,6 +526,107 @@ Item {
                     }
                 }
             }
+        }
+
+        // the cursors' readouts: the times, then per line its values at A and B and over A..B
+        Rectangle {
+            id: readoutPanel
+            objectName: "readoutPanel"
+            visible: chart.cursorsOn
+            readonly property bool beside: plotAndReadouts.columns === 2
+            Layout.fillWidth: !beside
+            Layout.fillHeight: beside
+            Layout.preferredWidth: beside ? 290 : -1
+            Layout.preferredHeight: beside ? -1 : Math.min(readoutColumn.implicitHeight + 16, screen.height * 0.4)
+            color: PhoneTheme.surface
+            // the panel apart from the plot
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: readoutPanel.beside ? undefined : parent.right
+                anchors.top: parent.top
+                anchors.bottom: readoutPanel.beside ? parent.bottom : undefined
+                width: 1
+                height: 1
+                color: PhoneTheme.border
+            }
+            Flickable {
+                id: readoutFlick
+                objectName: "readoutFlick"
+                anchors.fill: parent
+                anchors.margins: 8
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                clip: true
+                contentHeight: readoutColumn.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollIndicator.vertical: ScrollIndicator {}
+                ColumnLayout {
+                    id: readoutColumn
+                    width: readoutFlick.width
+                    spacing: 6
+                    Flow {
+                        objectName: "readoutTimes"
+                        Layout.fillWidth: true
+                        spacing: 14
+                        Pair { label: "A"; labelName: "cursorName"; valueName: "readoutTimeA"; value: chart.cursorAText }
+                        Pair { label: "B"; labelName: "cursorName"; valueName: "readoutTimeB"; value: chart.cursorBText }
+                        Pair { label: "B \u2212 A"; labelName: "cursorName"; valueName: "readoutSpan"; value: chart.cursorSpanText }
+                    }
+                    Repeater {
+                        model: chart.readouts
+                        ColumnLayout {
+                            id: readout
+                            required property int lineId
+                            required property string name
+                            required property color colour
+                            required property string atA
+                            required property string atB
+                            required property string delta
+                            required property string min
+                            required property string max
+                            required property string mean
+                            objectName: "readoutRow"
+                            Layout.fillWidth: true
+                            spacing: 2
+                            // the lines apart
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 1
+                                color: PhoneTheme.border
+                                opacity: 0.6
+                            }
+                            Row {
+                                spacing: 6
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 10
+                                    height: 10
+                                    radius: 5
+                                    color: readout.colour
+                                }
+                                Text {
+                                    objectName: "readoutName"
+                                    text: readout.name
+                                    color: PhoneTheme.text
+                                    font.pixelSize: 13
+                                    font.bold: true
+                                }
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 14
+                                Pair { label: "A"; labelName: "cursorName"; valueName: "readoutA"; value: readout.atA }
+                                Pair { label: "B"; labelName: "cursorName"; valueName: "readoutB"; value: readout.atB }
+                                Pair { label: "B \u2212 A"; labelName: "cursorName"; valueName: "readoutDelta"; value: readout.delta }
+                                Pair { label: qsTr("min"); valueName: "readoutMin"; value: readout.min }
+                                Pair { label: qsTr("max"); valueName: "readoutMax"; value: readout.max }
+                                Pair { label: qsTr("mean"); valueName: "readoutMean"; value: readout.mean }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         }
     }
 

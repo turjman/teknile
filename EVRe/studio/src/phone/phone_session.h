@@ -22,6 +22,8 @@
  *                 unit; sync() hands it each poll's samples (engine takeSamples, as MainWindow::sync) on the engine's
  *                 clock; Unplot (unplotLine, the legend's chip) takes the register off as the card's menu does. A
  *                 disconnect keeps the lines and their samples, as on the desktop
+ *   the Monitor   the frames on the link (FrameLog, `frames`): the engine writes them (IoEngine::setMonitor) only while
+ *                 the Monitor screen shows (monitorShown) and they are not paused; sync() takes them once a frame
  *   fast lines    a map's streams (Fast EVRe): a channel plotted (setFastPlot) switches its stream on, the last one
  *                 taken off switches it off; the blocks (engine takeFastBlocks) go into the stream's store (fast::Store,
  *                 as ChartView::appendFast, its marks as markFast), kept for the chart's memory; the chart bins them
@@ -48,6 +50,7 @@
 #include "model/device_map.h"
 #include "model/fast_store.h"
 #include "phone/chart_item.h"
+#include "phone/frame_log.h"
 #include "phone/log_model.h"
 #include "phone/port_list.h"
 #include "phone/register_list.h"
@@ -100,6 +103,9 @@ class PhoneSession : public QObject {
 	Q_PROPERTY(RegisterList *registerList READ registerList CONSTANT)
 	Q_PROPERTY(bool connected READ connected NOTIFY linkChanged)
 	Q_PROPERTY(ChartItem *chart READ chart WRITE setChart NOTIFY chartChanged)
+	Q_PROPERTY(FrameLog *frames READ frames CONSTANT)
+	Q_PROPERTY(bool monitorShown READ monitorShown WRITE setMonitorShown NOTIFY monitorChanged)
+	Q_PROPERTY(bool monitoring READ monitoring NOTIFY monitorChanged)
 	Q_PROPERTY(QVariantList fastChannels READ fastChannels NOTIFY fastChanged)
 
 public:
@@ -162,6 +168,10 @@ public:
 	RegisterList *registerList() const { return list_; }
 	bool connected() const { return connected_; }
 	ChartItem *chart() const { return chart_; }
+	FrameLog *frames() const { return frames_; }
+	bool monitorShown() const { return monitorShown_; }
+	void setMonitorShown(bool shown);
+	bool monitoring() const { return monitoring_; } /* the engine writes the frames now */
 	void setChart(ChartItem *chart);
 	/* the map's streams' channels for the Chart screen's Fast lines menu: { stream, channel, name ("ADC.I_LOAD"), unit,
 	 * plotted } */
@@ -221,6 +231,7 @@ signals:
 	/* a short word for the screen (the plot's limit, Copy) */
 	void notice(const QString &text);
 	void chartChanged();
+	void monitorChanged();
 	void fastChanged();
 
 private:
@@ -247,6 +258,7 @@ private:
 	void onPlotChanged(int row, bool on);
 	void resetStreams();
 	void syncChart();
+	void pushMonitor();
 	void updateStaleAfter();
 	double sampleRateHz() const;
 	uint8_t slaveOf(const RegDef &def) const;
@@ -317,4 +329,7 @@ private:
 	QPointer<ChartItem> chart_;
 	int nextColour_ = 0;
 	QVector<std::shared_ptr<fast::Store>> stores_; /* by stream of the map */
+
+	FrameLog *frames_ = nullptr;
+	bool monitorShown_ = false, monitoring_ = false;
 };

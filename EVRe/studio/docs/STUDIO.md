@@ -5216,6 +5216,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat; also the Registers screen's and the chart demo's speed line, `EVRE_PERF`) |
 | `src/phone/chart_item.h`,&nbsp;`.cpp` | `ChartItem`: the phone's chart, drawn by the GPU from nodes of its own, binned by `ChartData`; `ChartTicks`: an axis's labels; `ChartLines`: the legend (25.6) |
 | `src/phone/chart_demo.h`,&nbsp;`.cpp` | `ChartDemo`: the chart's test feed (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`): 8 lines at 1,000 Hz |
+| `src/phone/frame_log.h`,&nbsp;`.cpp` | `FrameLog`: the Monitor's frames, the newest 5000, each split into its time, direction, bytes and note; Pause and Clear (25.6) |
 | `src/phone/qml/Main.qml` | the phone's window: header, drawer, tab bar, screens, mirroring, Material's colours |
 | `src/phone/qml/ConnectDrawer.qml` | the Connect drawer in sections (Link, Device, Polling, Recording, Display): USB or TCP, Connect, the link's state, Reconnect by itself, the map and the device's ID, Allow writes, polling, Record, the theme switch, the language; a field typed in kept above the keyboard |
 | `src/phone/qml/LinkPill.qml` | the link's state in the header, a dot in its colour on the state's soft tone; a tap opens the drawer |
@@ -5820,14 +5821,16 @@ the models, the theme's colours, the language) get no QML macros: QML reaches th
 |---|---|---|---|
 | `PhoneTheme` | singleton: the colours of `Theme::colorsFor(dark)` and `dark`, saved in `ui/dark`; Material follows it in `Main.qml` | `dark`, `bg`, `surface`, `surface2`, `border`, `text`, `muted`, `accent`, `accentFill`, `badFill`, `control`, `good`, `warn`, `bad`, `grid`, `series`, and the phone's soft tones `accentSoft`, `goodSoft`, `warnSoft`, `badSoft` (the state's colour over the surface at 14 % dark, 8 % light: behind chips, the pill, the chosen tab, the warning); signal `changed` | phone test (theme) |
 | `PhoneLanguage` | singleton: the drawer's language choice, saved in `ui/language`, applied at the next start | `codes`, `choice`, `pending`; signal `changed` | phone test (language) |
-| `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()`; DEVICE_ID read again after no answer; the values copied once a frame (`sync`), writes as `MainWindow::onWriteRequested`, Plot with the lines' limit; the chart's feed: a line per plotted register in the theme's next series colour, each poll's samples (`takeSamples`) once a frame on the engine's clock, a disconnect keeping the lines; fast lines: a channel plotted switches its stream on, the blocks (`takeFastBlocks`) into a `fast::Store` per stream, kept for the chart's memory | `state`, `pillText`, `linkText`, `linkDetail`, `connectText`, `connected`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`, `registerList`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`, `editText`, `choices`, `limitsText`, `writeQuestion`, `write`, `setPlot`, `chart`, `fastChannels`, `setFastPlot`, `unplotLine`, `fastLineId`; `attachWindow`, `sync`; signals `message(level, text)`, `writeAnswered(row, ok, text)`, `notice(text)`; `setUsbBridgeForTests` | phone test (connect to USB gone, DEVICE_ID again, the Registers checks, the chart's lines, fast lines) |
+| `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()`; DEVICE_ID read again after no answer; the values copied once a frame (`sync`), writes as `MainWindow::onWriteRequested`, Plot with the lines' limit; the chart's feed: a line per plotted register in the theme's next series colour, each poll's samples (`takeSamples`) once a frame on the engine's clock, a disconnect keeping the lines; fast lines: a channel plotted switches its stream on, the blocks (`takeFastBlocks`) into a `fast::Store` per stream, kept for the chart's memory; the Monitor's frames (`takeFrames`) while its screen shows and they are not paused (`IoEngine::setMonitor`) | `state`, `pillText`, `linkText`, `linkDetail`, `connectText`, `connected`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`, `registerList`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`, `editText`, `choices`, `limitsText`, `writeQuestion`, `write`, `setPlot`, `chart`, `fastChannels`, `setFastPlot`, `unplotLine`, `fastLineId`, `frames`, `monitorShown`, `monitoring`; `attachWindow`, `sync`; signals `message(level, text)`, `writeAnswered(row, ok, text)`, `notice(text)`; `setUsbBridgeForTests` | phone test (connect to USB gone, DEVICE_ID again, the Registers checks, the chart's lines, fast lines) |
 | `PortList` | list model: the USB devices plugged in, from `UsbBridge::devices()`; a device with the map's USB IDs named by the map; changed only when the devices are | roles `name`, `product`, `vid`, `pid`, `mapped`, `label`; `indexOf` | phone test (USB ports) |
 | `LogModel` | list model: the phone's Log, the newest 2000 lines | roles `level`, `time`, `text`; `count`, `clear`, `copy`, `text` | phone test (Log screen) |
 | `RegisterList` | list model over `RegisterModel`: a row per register, each group's together in the order of its first register; the search (`RegisterFilter`); `dataChanged` forwarded row by row with the roles that changed, the glow's own repaints only when a glow begins; stale looked at every 250 ms | roles `name`, `group`, `addr`, `value`, `unit`, `decoded`, `glow`, `direction`, `writable`, `plotted`, `error`, `stale`, `plottable`, `danger`, `source`; `search`, `count`, `total`, `glowMs`; `entry`, `copy` | phone test (Registers) |
 | `P9Registers` | the proof P-9's list model: the example map's registers, every value a step along a sine 20 times a second | roles `name`, `address`, `value`, `unit`; `ticks` | phone test (P-9) |
 | `P9Meter` | the proof P-9's frames: `QQuickWindow::frameSwapped` timed on the render thread, a line a second (`EVRE_P9`); with another tag and a "shown" test, the Registers screen's and the chart demo's speed line (`EVRE_PERF`) | `tag`; signal `logged(line)` | phone test (P-9, perf, chart demo) |
-| `ChartItem` | the Chart screen's plot, a `QQuickItem`: lines fed from C++, binned in `updatePolish` by `ChartData` as the desktop's view is, drawn as triangles, one `QSGGeometryNode` per line (clipped to the plot), one for the grid and one for the plot's edge (25.6); a line hidden or shown, Y Auto or a manual range, the legend's model | `windowSeconds`, `live`, `yAuto`, `yLow`, `yHigh`, `colours`, `gridColor`, `frameColor`, `plotRect`, `lineCount`, `timeTicks`, `valueTicks`, `legend`; `addLine`, `addThemedLine` (a fast line with its store), `removeLine`, `removeAll`, `appendSamples`, `clear`, `setLineShown`, `setYRange`, `setClock`, `zoomTime`, `panPixels`; signal `framed` | phone test (chart, legend, Y, fast lines) |
+| `ChartItem` | the Chart screen's plot, a `QQuickItem`: lines fed from C++, binned in `updatePolish` by `ChartData` as the desktop's view is, drawn as triangles, one `QSGGeometryNode` per line (clipped to the plot), one for the grid and one for the plot's edge (25.6); a line hidden or shown, Y Auto or a manual range, the legend's model | `windowSeconds`, `live`, `yAuto`, `yLow`, `yHigh`, `colours`, `gridColor`, `frameColor`, `plotRect`, `lineCount`, `timeTicks`, `valueTicks`, `legend`; `cursorsOn`, `cursorA`, `cursorB`, `cursorAX`, `cursorBX`, `cursorAText`, `cursorBText`, `cursorSpanText`, `readouts`; `addLine`, `addThemedLine` (a fast line with its store), `removeLine`, `removeAll`, `appendSamples`, `clear`, `setLineShown`, `setYRange`, `placeCursors`, `moveCursor`, `clearCursors`, `cursorStats`, `setClock`, `zoomTime`, `panPixels`; signals `framed`, `cursorsChanged`, `cursorsMoved` | phone test (chart, legend, Y, fast lines, cursors) |
 | `ChartTicks` | list model: an axis's labels, a changed one told by `dataChanged` | roles `at`, `label` | phone test (chart, Arabic) |
+| `FrameLog` | list model: the Monitor's frames as the engine writes them (`IoEngine::takeFrames`), the newest 5000; a pile the engine dropped said in a line of its own; nothing added while paused | roles `time`, `direction`, `bytes`, `note`; `count`, `paused`, `clear`; `added`, `line` (tests) | phone test (Monitor) |
+| `CursorReadouts` | list model: the cursors' readouts, a row per shown line: its values at A and B, B - A, and min, max and mean over A..B (`ChartData::statsOf`, `statsOfFast`), written by `ChartData::number` with the unit | roles `lineId`, `name`, `colour`, `atA`, `atB`, `delta`, `min`, `max`, `mean` | phone test (cursors) |
 | `ChartLines` | list model: the legend, a row per line, its latest value in view (`ChartData::latestInView`, written by `ChartData::number` with the unit) at most four times a second | roles `lineId`, `name`, `unit`, `colour`, `value`, `shown`, `fast` | phone test (legend) |
 | `ChartDemo` | the chart's test feed: 8 lines of a synthetic signal at 1,000 Hz, live in a 1 min window | `chart`, `running`, `colours`; `signal` | phone test (chart demo) |
 
@@ -7067,6 +7070,7 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   | **Clear** | every line's samples go; the lines stay |
   | **Fast&nbsp;lines** | with a map that has streams (Fast EVRe, 23.11): their channels (*ADC.I_LOAD (A)*), each on the chart or not. The first channel of a stream on the chart switches the stream on, the last one off switches it off; the blocks go into the stream's store, kept 5 min, and the line is binned by the desktop's `binFast` |
   | **No&nbsp;line** | the plot says *Plot a register from its ... menu on the Registers screen.* (and, with streams, *Or choose a stream's channel under Fast lines.*), with **Go to Registers** |
+  | **Cursors** | (part B.4) puts A at a third of the view and B at two thirds, and holds the view so the readouts stay; a second tap takes them off. Each cursor is a line over the plot with a round handle, 48 dp to the touch (A's at the plot's top, B's at its foot): a drag moves it along the time, inside the plot; the view does not move. The readouts sit beside the plot in landscape and under it in portrait (at most 40 % of the height, scrolled): A's and B's times and B - A, then per shown line its values at A and B, B - A, and **min**, **max** and **mean** over A..B, as the desktop's measurements (`statsOf`; `statsOfFast` for a fast line, whose mean needs its records: a dash over summaries), written as the legend writes a value. The labels are translated; the numbers, units and A, B stay as they are |
 
   ```
   +--------------------------------------------+
@@ -7080,8 +7084,25 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   |      0:10      0:12      0:14      0:16    |   the times under it
   +--------------------------------------------+
   ```
-- **What is still to come.** The Monitor screen says what will come (part B.4); the chart gets its cursors with
-  B.4.
+- **The Monitor** (part B.4) shows the frames on the link as the desktop's Monitor tab writes them, newest last: each
+  frame's time and direction (*TX*, *RX*: the protocol's words, *TX* in the accent's colour, *RX* in green) over its
+  bytes in a monospaced font, a note the engine adds (a function's name) beside them; left to right in Arabic too.
+  The engine writes the frames only while the screen shows and **Pause** is off (at fast polling they are a lot of
+  text); Pause holds what is there (*paused · frames: 120*, **Resume**), **Clear** empties it; the newest 5000 are
+  kept, and a pile the engine could not hand over in time is said in a line of its own (*… 300 frames not shown*).
+  The list follows the newest frame while it is at its end. Not connected, it says so with **Connect…** (the drawer).
+
+  ```
+  +--------------------------------------------+
+  | frames: 120                  Pause   Clear |
+  +--------------------------------------------+
+  | 14:03:12.345  TX                           |   time, direction (and a note)
+  | 01 01 03 D0 00 00 40 ...                   |   the bytes, monospaced, wrapped
+  | 14:03:12.351  RX                           |
+  | 01 01 83 D0 00 00 40 ...                   |
+  +--------------------------------------------+
+  ```
+- **What is still to come.** Help, the background service and the release (part B.5).
 
 **Building.** On a desktop: `-DEVRE_PHONE=ON`; `EVReStudioPhone` then opens as a 412 x 915 window, for checks and
 trying. For Android (Qt 6.8 for Android arm64-v8a, the desktop Qt of the same version as the host, the SDK, NDK r26b,
@@ -8176,7 +8197,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 66 (26.11), 1180. The
+the phone test's 72 (26.11), 1186. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8655,6 +8676,12 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | fast&nbsp;lines | `maps/example_fast.json` against `evre_fake_fast`: Fast lines lists ADC.I_LOAD (A) and ADC.V_BUS (V); one chosen switches the stream on, its bins equal `binFast`'s, drawn in its colour inside the plot |
 | empty&nbsp;chart | no line: the plot says how to plot one; Go to Registers shows the Registers screen |
 | chart&nbsp;themes | a line in the theme's first series colour, its chip on the surface with its name in the text colour, dark and light |
+| cursors | the Cursors button puts A at a third of the view and B at two thirds and holds it; A drawn there, the handles 48 dp, A's over B's; the readouts shown; a second tap takes them off |
+| cursor&nbsp;drag | a drag of A's handle by 120 px moves A by the view's seconds of 120 px; B and the view stay |
+| readouts | each line's values at A and B, B - A, min, max and mean equal `statsOf` over A..B, written as the legend writes a value; the times and B - A |
+| Monitor&nbsp;frames | the fake device's frames arrive while the screen shows (time, TX or RX, hex bytes); Pause holds them (none in 1.2 s, the engine writes none), Resume goes on, Clear empties, another screen stops them |
+| Monitor&nbsp;empty | not connected: it says so, and Connect… opens the drawer |
+| cursors&nbsp;and&nbsp;Monitor&nbsp;texts | at 412 px in English and Arabic, dark and light: every Text inside its parent and not cut, every text translated, the frames left to right in the text colour on the background |
 | Log&nbsp;screen | the session's lines (the map loaded, one that did not), an error in red, the count; Clear empties it |
 | connect | TCP chosen in the drawer, the host and port typed, Connect: connected, the drawer's text, the pill *Connected* with a green dot, the Log, the host saved |
 | DEVICE_ID | the drawer shows *Device ID 0x1001 · protocol rev ...*, no warning; the Log the same |
@@ -8695,7 +8722,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | contrast | every muted text in the picture at least 4.5:1 against what is drawn under it (the commonest colour of its box), dark and light; with a popup open, its own texts |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (66 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (72 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,
@@ -8703,8 +8730,9 @@ It ends with "N passed, 0 failed" (66 checks); the exit code is 0 when all pass,
 `enum`; at 915 x 412 `land_registers`, `land_sheet`, `land_drawer`, `land_log` and `landscape`; and the chart's test
 feed 12 s in, `chartdemo` (landscape) and `chartdemo_portrait`; and the Chart screen at both sizes,
 `chart_<case>_<portrait|landscape>`: `empty`, `two` (SUPPLY_V and TEMPERATURE plotted, live), `hidden` (TEMPERATURE
-hidden), `manual` (Y 0 to 30), `ysheet` and `chipmenu`. With `EVRE_PHONE_ONLY=shots` it saves them without running the
-checks; with another text only the checks whose function's name holds it (and only the chart's pictures).
+hidden), `manual` (Y 0 to 30), `ysheet` and `chipmenu`; then `cursors` (two registers, the cursors on), `monitor` and
+`paused` at both sizes. With `EVRE_PHONE_ONLY=shots` it saves them without running the checks; with another text only
+the checks whose function's name holds it (and only the pictures of the chart, or of the cursors and the Monitor).
 
 ## 27. Design decisions and pitfalls
 

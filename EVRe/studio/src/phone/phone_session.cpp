@@ -60,6 +60,8 @@ PhoneSession::PhoneSession(QObject *parent)
 	linkText_ = tr("Not connected");
 	deviceText_ = tr("Device ID not read yet");
 	list_ = new RegisterList(model_, this);
+	frames_ = new FrameLog(this);
+	connect(frames_, &FrameLog::pausedChanged, this, &PhoneSession::pushMonitor);
 	valuePacer_.setPerSecond(ValuePace::saved());
 	valueClock_.start();
 	sinceSync_.start();
@@ -646,6 +648,9 @@ void PhoneSession::sync() {
 	sinceSync_.restart();
 	if (!connected_) return;
 	syncChart();
+	int dropped = 0;
+	const QStringList frames = engine_->takeFrames(dropped);
+	frames_->add(frames, dropped);
 	if (!valuePacer_.due(valueClock_.elapsed())) return;
 	QVector<RegValue> values;
 	quint64 generation = 0;
@@ -753,6 +758,24 @@ void PhoneSession::onWriteDone(quint64 id, bool ok, const QString &err) {
 bool PhoneSession::setPlot(int row, bool on) {
 	if (row < 0 || row >= model_->rows().size()) return false;
 	return model_->setPlot(row, on);
+}
+
+/* ------------------------------------------------------------------ the Monitor */
+
+void PhoneSession::setMonitorShown(bool shown) {
+	if (shown == monitorShown_) return;
+	monitorShown_ = shown;
+	pushMonitor();
+	emit monitorChanged();
+}
+
+/* MonitorTab's Log frames: the engine writes the frames while the screen shows them and they are not paused */
+void PhoneSession::pushMonitor() {
+	const bool on = monitorShown_ && !frames_->paused();
+	if (on == monitoring_) return;
+	monitoring_ = on;
+	engine_->post([engine = engine_, on] { engine->setMonitor(on); });
+	emit monitorChanged();
 }
 
 /* ------------------------------------------------------------------ the chart */
