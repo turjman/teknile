@@ -43,6 +43,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QKeyEvent>
+#include <QMutex>
 #include <QPainter>
 #include <QPointer>
 #include <QProcess>
@@ -1017,15 +1018,26 @@ public:
 	std::atomic<int> opens{ 0 }, closes{ 0 };
 	std::atomic<Sink *> sink{ nullptr };
 	QVector<Device> devices() override { return list; }
-	void open(const QString &, qint32, Sink *to) override {
+	void open(const QString &name, qint32, Sink *to) override {
+		{
+			QMutexLocker lock(&mutex);
+			opened = name;
+		}
 		sink = to;
 		opens++;
+	}
+	/* the device the last open() asked for (on the engine's thread) */
+	QString lastOpened() {
+		QMutexLocker lock(&mutex);
+		return opened;
 	}
 	void send(const QByteArray &) override {}
 	void close() override {
 		closes++;
 		sink = nullptr;
 	}
+	QMutex mutex;
+	QString opened;
 	void fromJava(const std::function<void(Sink *)> &word) {
 		Sink *to = sink;
 		if (!to) return;
@@ -2452,6 +2464,105 @@ void checkBackOrder() {
 					.arg(toList).arg(helpClosed).arg(drawerClosed).arg(sheetClosed).arg(leftToAndroid));
 }
 
+/* ---- fixes from the review of the phone's line */
+
+/* a board reset or plugged in again comes back under another name: Reconnect by itself finds it by its USB IDs */
+void checkUsbBack() {
+	FakeUsbBridge bridge;
+	const QString renamed = QStringLiteral("/dev/bus/usb/001/003");
+	bridge.list = { { USB_DEVICE, 0x0483, 0x5740, QString() } };
+	PhoneSession::setUsbBridgeForTests(&bridge);
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = phone.session();
+		if (session) {
+			session->setAutoReconnect(true);
+			session->connectUsb(USB_DEVICE, 115200);
+		}
+		(void) QTest::qWaitFor([&] { return bridge.opens == 1 && bridge.sink; }, 3000);
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbOpened(); });
+		const bool up = waitForState(session, PhoneSession::Connected, 3000);
+		/* reset: gone, and back under the next number */
+		bridge.list = { { renamed, 0x0483, 0x5740, QString() } };
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbGone(); });
+		const bool again = QTest::qWaitFor([&] { return bridge.opens >= 2 && bridge.sink; }, 4000);
+		const QString opened = bridge.lastOpened();
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbOpened(); });
+		const bool back = waitForState(session, PhoneSession::Connected, 3000);
+		const bool saved = QSettings().value(QStringLiteral("phone/usbDevice")).toString() == renamed;
+		check(up && again && opened == renamed && back && saved && session->usbDevice() == renamed
+						&& session->log()->contains(QStringLiteral("%1 is back as %2").arg(USB_DEVICE, renamed)),
+				QStringLiteral("phone, USB back under another name: the board reset comes back as %1; the retry opens it by its USB "
+						"IDs (\"%2\"), connected again, the new name saved and said in the Log").arg(renamed, opened));
+		if (session) session->disconnectLink();
+	}
+	PhoneSession::setUsbBridgeForTests(nullptr);
+}
+
+/* A TCP device that takes the link and never answers: every request waits for its time */
+class SilentDevice : public QObject {
+public:
+	std::atomic<quint16> port{ 0 };
+	void start() {
+		auto *server = new QTcpServer(this);
+		QObject::connect(server, &QTcpServer::newConnection, this, [server] {
+			while (QTcpSocket *client = server->nextPendingConnection()) {
+				QObject::connect(client, &QTcpSocket::readyRead, client, [client] { client->readAll(); });
+				QObject::connect(client, &QTcpSocket::disconnected, client, &QObject::deleteLater);
+			}
+		});
+		if (server->listen(QHostAddress::LocalHost)) port = server->serverPort();
+	}
+};
+
+/* no DEVICE_ID answer, then Disconnect: the drawer's line no longer says it is reading, and the read the disconnect
+ * cancelled is not an error in the Log */
+void checkDeviceLineAfterDisconnect() {
+	OnThread<SilentDevice> device;
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	if (session) {
+		session->setAutoReconnect(false);
+		session->connectTcp(QStringLiteral("127.0.0.1"), device.stand->port, QString());
+	}
+	const bool up = waitForState(session, PhoneSession::Connected);
+	const bool reading = QTest::qWaitFor([&] { return session->deviceText() == QStringLiteral("reading the device ID…"); }, 3000);
+	if (session) session->disconnectLink();
+	QTest::qWait(1500);
+	const QString shown = phone.text("deviceText");
+	const bool noError = session && !session->log()->contains(QStringLiteral("DEVICE_ID not read"));
+	check(up && reading && shown == QLatin1String("Device ID not read yet") && noError,
+			QStringLiteral("phone, device line after Disconnect: a device that never answers DEVICE_ID (\"reading the device "
+					"ID…\"), then Disconnect: the drawer says \"%1\", the cancelled read is no error in the Log").arg(shown));
+}
+
+/* the write sheet takes a number as a phone's keypad types it: a decimal comma, Arabic digits; hex as typed */
+void checkTypedNumbers() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	if (session) session->setWritesEnabled(true);
+	QStringList seen;
+	bool ok = bool(session);
+	struct Case { const char *reg; QString typed; QString wanted; };
+	const Case cases[] = { { "SETPOINT", QStringLiteral("1,5"), QStringLiteral("1.5") },
+		{ "FAN_SPEED", QStringLiteral("١٢"), QStringLiteral("12") },
+		{ "FAN_SPEED", QStringLiteral("۴۵"), QStringLiteral("45") },
+		{ "FAN_SPEED", QStringLiteral("0x1A"), QStringLiteral("26") } };
+	for (const Case &c : cases) {
+		const QString reg = QLatin1String(c.reg);
+		openSheet(phone, reg);
+		phone.type("sheetField", c.typed);
+		phone.tap(phone.item("sheetApply"));
+		const bool read = QTest::qWaitFor([&] { return modelValue(session, reg) == c.wanted; }, 3000);
+		seen << QStringLiteral("%1 \"%2\" -> %3 (%4)").arg(reg, c.typed, modelValue(session, reg), phone.text("sheetAnswer"));
+		ok = ok && read;
+		closeSheet(phone);
+	}
+	check(ok, QStringLiteral("phone, typed numbers: a decimal comma and Arabic digits written as numbers, hex as typed: %1")
+			.arg(seen.join(QStringLiteral("; "))));
+	if (session) session->disconnectLink();
+}
+
 
 
 void checkMutedContrast() {
@@ -3145,6 +3256,9 @@ int main(int argc, char **argv) {
 	RUN(checkOrientation);
 	RUN(checkHelpTopics);
 	RUN(checkBackOrder);
+	RUN(checkUsbBack);
+	RUN(checkDeviceLineAfterDisconnect);
+	RUN(checkTypedNumbers);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));

@@ -39,6 +39,12 @@
   landscape, the Registers and the Log to portrait. Android's back closes the Help's page, the Help, the write sheet,
   then the drawer; with nothing open the app goes to the background. A release now also ships
   `EVReStudio-<version>-arm64.apk`.
+- **The phone's Reconnect by itself never found a USB board again** after the board reset or was plugged in again:
+  Android gives it another name, and every try looked for the old one. It is found by its USB IDs now.
+- **The phone's device line stayed at *reading the device ID…*** after a Disconnect, and the cancelled read was logged
+  as an error: the line says *Device ID not read yet*, and the Log stays quiet.
+- **The phone's write sheet refused *1,5* and Arabic digits** (a comma keypad, an Arabic keyboard): both are numbers
+  now; hex and binary stay as typed.
 - **The phone's drawer wrote the chosen USB / TCP in black** on the accent's blue in the light theme; it is white in
   both themes now.
 - **Two runs of the phone test at once no longer touch each other**: each keeps its settings and recordings in a folder

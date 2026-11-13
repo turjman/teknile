@@ -261,6 +261,8 @@ private:
 	void onDeviceInfo(int device, bool ok, quint16 id, quint16 status, const QString &err);
 	void onRecordStarted(bool ok, const QString &err);
 	void onRecordStopped(const QString &file, quint64 rows);
+	void findUsbAgain();
+	static QString typedNumber(const RegDef &def, const QString &text);
 	void updateSystem();
 	void refreshStats();
 	void markDeviceLost();
@@ -301,6 +303,7 @@ private:
 	QString loginStop_;          /* a refused token or a device that wants one: why the next close stops the tries */
 	QTimer reconnectTimer_;
 	QTimer statsTimer_;
+	quint16 usbVid_ = 0, usbPid_ = 0; /* the USB device's IDs at Connect: found again by them */
 	QTimer serviceTimer_;        /* the notification's recording time, once a second */
 	QElapsedTimer recordClock_;
 	bool keepScreenOn_ = true;

@@ -417,6 +417,14 @@ void PhoneSession::connectUsb(const QString &device, int baud) {
 	tcp_ = false;
 	usbDevice_ = device;
 	baud_ = baud > 0 ? baud : 115200;
+	/* its USB IDs: a retry finds the board by them when it comes back under another name (reset, plugged again) */
+	usbVid_ = usbPid_ = 0;
+	if (evre::UsbBridge *bridge = usbBridge())
+		for (const evre::UsbBridge::Device &each : bridge->devices())
+			if (each.name == device) {
+				usbVid_ = each.vid;
+				usbPid_ = each.pid;
+			}
 	QSettings settings;
 	settings.setValue(KEY_TCP, false);
 	settings.setValue(KEY_USB, usbDevice_);
@@ -472,9 +480,29 @@ void PhoneSession::connectLink() {
 
 void PhoneSession::retryConnect() {
 	if (!wantConnected_ || connected_) return;
+	if (!tcp_) findUsbAgain();
 	retrying_ = true;
 	connectLink();
 	retrying_ = false;
+}
+
+/* a USB board reset or plugged in again comes back under another name (/dev/bus/usb/001/002 becomes .../003): the
+ * device with the IDs it had at Connect, when its old name is gone; Android asks its permission again */
+void PhoneSession::findUsbAgain() {
+	evre::UsbBridge *bridge = usbBridge();
+	if (!bridge || (usbVid_ == 0 && usbPid_ == 0)) return;
+	const QVector<evre::UsbBridge::Device> devices = bridge->devices();
+	for (const evre::UsbBridge::Device &each : devices)
+		if (each.name == usbDevice_) return; /* still there */
+	for (const evre::UsbBridge::Device &each : devices) {
+		if (each.vid != usbVid_ || each.pid != usbPid_) continue;
+		addLog(LogModel::Info, tr("%1 is back as %2").arg(usbDevice_, each.name));
+		usbDevice_ = each.name;
+		QSettings().setValue(KEY_USB, usbDevice_);
+		refreshPorts();
+		emit settingsChanged();
+		return;
+	}
 }
 
 void PhoneSession::disconnectLink() {
@@ -541,6 +569,8 @@ void PhoneSession::onClosed(const QString &why, const QString &detail) {
 /* MainWindow::onDeviceInfo for one device: the drawer's line, and the Log */
 void PhoneSession::onDeviceInfo(int, bool ok, quint16 id, quint16 status, const QString &err) {
 	idRead_ = 0;
+	/* the link is gone: the read was cancelled with it (Master::clear), which is no error of the device's */
+	if (!ok && !connected_) return;
 	/* no answer (a board still booting when the link came back): asked again, a refusal is the token's (loginNeeded) */
 	if (!ok && connected_ && idTries_ < ID_RETRIES && !err.contains(evre::errorName(3))) {
 		setDevice(-1, tr("reading the device ID…"));
@@ -590,7 +620,11 @@ void PhoneSession::linkDown() {
 
 /* the link down: the ID read is kept, said to be old (MainWindow::markDeviceInfoLost) */
 void PhoneSession::markDeviceLost() {
-	if (deviceId_ < 0) return;
+	if (deviceId_ < 0) {
+		/* none was read: "reading the device ID…" would stay after the link */
+		setDevice(-1, tr("Device ID not read yet"));
+		return;
+	}
 	setDevice(-1, tr("last seen: Device ID %1 · protocol rev %2").arg(addrText(quint16(deviceId_))).arg(revision_));
 }
 
@@ -772,9 +806,27 @@ QString PhoneSession::limitsText(int row) const {
 
 /* MainWindow::onWriteRequested's questions, in words for the sheet: past the map's min or max (a special value is
  * always allowed), then a danger register */
-QString PhoneSession::writeQuestion(int row, const QString &text) const {
+/* a number as a phone's keypad may type it, as the engine reads it: Arabic-Indic and Eastern Arabic digits as 0-9, a
+ * decimal comma (a comma locale's keypad) as a point; hex and binary (0x, 0b) and a text register's bytes as typed */
+QString PhoneSession::typedNumber(const RegDef &def, const QString &text) {
+	if (!def.isNumeric()) return text;
+	QString out = text;
+	for (QChar &c : out) {
+		const ushort u = c.unicode();
+		if (u >= 0x0660 && u <= 0x0669) c = QChar(u'0' + (u - 0x0660));
+		else if (u >= 0x06F0 && u <= 0x06F9) c = QChar(u'0' + (u - 0x06F0));
+	}
+	const QString plain = out.trimmed().toLower();
+	if (!plain.startsWith(QLatin1String("0x")) && !plain.startsWith(QLatin1String("0b")) && out.count(QLatin1Char(',')) == 1
+			&& !out.contains(QLatin1Char('.')))
+		out.replace(QLatin1Char(','), QLatin1Char('.'));
+	return out;
+}
+
+QString PhoneSession::writeQuestion(int row, const QString &typed) const {
 	if (row < 0 || row >= model_->rows().size()) return QString();
 	const RegDef &def = model_->rows()[row].def;
+	const QString text = typedNumber(def, typed);
 	QByteArray bytes;
 	QString err;
 	if (!encodeValue(def, text, bytes, err)) return QString(); /* write() says why */
@@ -789,9 +841,10 @@ QString PhoneSession::writeQuestion(int row, const QString &text) const {
 }
 
 /* MainWindow::onWriteRequested: the text into the register's bytes, written; the engine reads it back */
-void PhoneSession::write(int row, const QString &text) {
+void PhoneSession::write(int row, const QString &typed) {
 	if (row < 0 || row >= model_->rows().size()) return;
 	const RegDef def = model_->rows()[row].def;
+	const QString text = typedNumber(def, typed);
 	if (!model_->writesEnabled()) {
 		emit writeAnswered(row, false, tr("Writes are off: turn on Allow writes in the Connect drawer"));
 		return;

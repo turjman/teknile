@@ -6993,7 +6993,7 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   | **USB**&nbsp;/&nbsp;**TCP** | the link's kind. USB: the devices plugged in (a board through a USB OTG adapter), a device with the map's USB IDs named by the map, the list kept up to date every 2 s while the drawer is open; the baud rate (a USB CDC board ignores it). TCP: the host, the port and the token (never saved) |
   | **Map** | the maps that come with the app (`example_device.json` first) or **Open…** (Android's picker); the number of registers under it. The last one opens at the next start |
   | **Connect** | Connect, then *Cancel* while it connects, *Stop reconnecting* while a try waits, *Disconnect* once connected. Under it what the link is or why it is down, and the device's ID (*Device ID 0x1001 · protocol rev 1*; *last seen: ...* once the link is down; a warning when the map is for another device). A device ID read that gets no answer (a board still booting when the link comes back) is tried again three times, a second apart, *reading the device ID…* meanwhile; a refusal (permission denied) is the token's and is not tried again |
-  | **Reconnect&nbsp;by&nbsp;itself** | after a lost link a try 0.5 s later, after a failed try every 2 s, as on the desktop. A refused token, a device that wants a token, and a USB permission refused stop the tries: the same try would be refused again (the permission asked again every 2 s) |
+  | **Reconnect&nbsp;by&nbsp;itself** | after a lost link a try 0.5 s later, after a failed try every 2 s, as on the desktop. A USB board that comes back under another name (reset, plugged in again: Android numbers it anew) is found by the USB IDs it had at Connect, and Android asks its permission again. A refused token, a device that wants a token, and a USB permission refused stop the tries: the same try would be refused again (the permission asked again every 2 s) |
   | **Polling** | on or off, and its interval in ms (0: as fast as the device answers); the polls a second measured under it while connected |
   | **Allow&nbsp;writes** | off at every start, as on the desktop |
   | **Record** | a CSV of the registers ticked Log, one row a poll, into the app's own folder (A-8): `recordings` in Android's folder for the app (`Android/data/com.teknile.evrestudio/files`, reached by a file manager and by a PC over USB), on a desktop in the app's data folder. The file's name is the time (`evre_20261113_140312.csv`); *Stop recording* closes it and says how many rows it holds |
@@ -7041,7 +7041,9 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
 
   **The write sheet** rises from the screen's foot, its top corners rounded, a drag handle on it: the register and its
   address, its value now, the map's limits (*from 0 to 100 %*); then the value in a field with its unit after it (an
-  enum: its values as a list, one chosen, each row 48 dp), **Apply** (the primary button) and **Close**. A value past
+  enum: its values as a list, one chosen, each row 48 dp), **Apply** (the primary button) and **Close**. A number
+  may be typed as a phone's keypad gives it: a decimal comma (*1,5*) and Arabic digits (*١٢*) are read as 1.5 and 12;
+  hex and binary (*0x1A*, *0b101*) as typed. A value past
   the map's limits, or a danger register's write, is asked first in a warning box (amber edge, a drawn "!", *Check
   before writing*, then *FAN_SPEED = 150 is above the maximum 100 % the map gives it. ... Write it anyway?*): **Write
   anyway** or **Cancel**. Then the answer, by a dot on its soft tone: *FAN_SPEED written* in green (the card then
@@ -8204,7 +8206,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 72 (26.11), 1186. The
+the phone test's 75 (26.11), 1189. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8732,9 +8734,12 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | orientation | each tab asks for its own: the Chart and the Monitor landscape, the Registers and the Log portrait |
 | Help | the drawer's Help: every topic of the desktop's Help, each page in English and in Arabic with the topic's title; back goes to the list; the list's texts inside their rows |
 | back | Android's back closes a Help page to its list, the Help, the drawer, the write sheet; with nothing open it is not taken (Android leaves the app) |
+| USB&nbsp;back | the board reset comes back under another name: the retry opens it by its USB IDs, connected again, the new name saved and in the Log |
+| device&nbsp;line | a device that never answers DEVICE_ID, then Disconnect: the drawer says *Device ID not read yet*, the cancelled read no error in the Log |
+| typed&nbsp;numbers | the write sheet: *1,5* writes 1.5, Arabic digits (*١٢*, *۴۵*) 12 and 45, *0x1A* as typed (26) |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (72 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (75 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `help` (its topics), `helppage` (a page), `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,

@@ -6939,6 +6939,10 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <source> · recording %1</source>
         <translation> · التسجيل ⁦%1⁩</translation>
     </message>
+    <message>
+        <source>%1 is back as %2</source>
+        <translation>عاد ⁦%1⁩ باسم ⁦%2⁩</translation>
+    </message>
 </context>
 <context>
     <name>QObject</name>
