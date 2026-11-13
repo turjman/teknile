@@ -17,6 +17,15 @@
  *   registers     RegisterList, the Registers screen's rows over the RegisterModel; the values copied from the engine's
  *                 table by sync(), once a frame of the window (afterAnimating), at the desktop's pace (ui/valueRate);
  *                 Plot (setPlot) with the desktop's limit of lines and its message (notice)
+ *   the chart     the Chart screen's ChartItem (setChart, by ChartScreen.qml): a line per plotted register, in the
+ *                 theme's next series colour as the desktop gives them (ChartTab::plotRegister), named and with its
+ *                 unit; sync() hands it each poll's samples (engine takeSamples, as MainWindow::sync) on the engine's
+ *                 clock; Unplot (unplotLine, the legend's chip) takes the register off as the card's menu does. A
+ *                 disconnect keeps the lines and their samples, as on the desktop
+ *   fast lines    a map's streams (Fast EVRe): a channel plotted (setFastPlot) switches its stream on, the last one
+ *                 taken off switches it off; the blocks (engine takeFastBlocks) go into the stream's store (fast::Store,
+ *                 as ChartView::appendFast, its marks as markFast), kept for the chart's memory; the chart bins them
+ *                 by ChartData::binFast
  *   the ID        DEVICE_ID read when the link opens (the engine's); a read that gets no answer is tried again
  *                 ID_RETRIES times, ID_RETRY_MS apart (a board still booting when the link comes back), "reading the
  *                 device ID…" meanwhile; a refusal (permission denied) is not tried again: it is the token's
@@ -30,12 +39,15 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
+#include <QPointer>
 #include <QStringList>
 #include <QTimer>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
 #include "model/device_map.h"
+#include "model/fast_store.h"
+#include "phone/chart_item.h"
 #include "phone/log_model.h"
 #include "phone/port_list.h"
 #include "phone/register_list.h"
@@ -87,6 +99,8 @@ class PhoneSession : public QObject {
 	Q_PROPERTY(LogModel *log READ log CONSTANT)
 	Q_PROPERTY(RegisterList *registerList READ registerList CONSTANT)
 	Q_PROPERTY(bool connected READ connected NOTIFY linkChanged)
+	Q_PROPERTY(ChartItem *chart READ chart WRITE setChart NOTIFY chartChanged)
+	Q_PROPERTY(QVariantList fastChannels READ fastChannels NOTIFY fastChanged)
 
 public:
 	/* Off: no link, none wanted. Waiting: Android's permission dialog for the USB device is up. Connecting: a try under
@@ -101,6 +115,9 @@ public:
 	static constexpr int SYNC_IDLE_MS = 50;  /* no frame drawn for this long: sync() by the timer (nothing moves) */
 	static constexpr int ID_RETRIES = 3;     /* a DEVICE_ID read without an answer: tried again this often */
 	static constexpr int ID_RETRY_MS = 1000;
+	/* a fast line's id on the chart: past every register's (regKey: 24 bits), 256 channels a stream */
+	static constexpr int FAST_LINE = 1 << 28;
+	static int fastLineId(int stream, int channel) { return FAST_LINE + stream * 256 + channel; }
 
 	explicit PhoneSession(QObject *parent = nullptr);
 	~PhoneSession() override;
@@ -144,6 +161,12 @@ public:
 	LogModel *log() const { return log_; }
 	RegisterList *registerList() const { return list_; }
 	bool connected() const { return connected_; }
+	ChartItem *chart() const { return chart_; }
+	void setChart(ChartItem *chart);
+	/* the map's streams' channels for the Chart screen's Fast lines menu: { stream, channel, name ("ADC.I_LOAD"), unit,
+	 * plotted } */
+	QVariantList fastChannels() const;
+	const fast::Store *fastStore(int stream) const { return stores_.value(stream).get(); }
 	RegisterModel *registers() const { return model_; }
 	const DeviceMap &map() const { return map_; }
 
@@ -167,6 +190,10 @@ public:
 	Q_INVOKABLE void write(int row, const QString &text);
 	/* Plot: false when refused (a bytes register; the lines' limit, said by notice) */
 	Q_INVOKABLE bool setPlot(int row, bool on);
+	/* a stream's channel on the chart or off; false when refused (the chart's limit of lines, said by notice) */
+	Q_INVOKABLE bool setFastPlot(int stream, int channel, bool on);
+	/* the legend's Unplot: the line's register (or fast channel) off the chart */
+	Q_INVOKABLE void unplotLine(int id);
 
 	/* the window whose frames run sync(): set by phone::loadMain */
 	void attachWindow(QQuickWindow *window);
@@ -193,6 +220,8 @@ signals:
 	void writeAnswered(int row, bool ok, const QString &text);
 	/* a short word for the screen (the plot's limit, Copy) */
 	void notice(const QString &text);
+	void chartChanged();
+	void fastChanged();
 
 private:
 	void startEngine();
@@ -214,6 +243,10 @@ private:
 	void onReadDone(quint64 id, bool ok, const QByteArray &data, const QString &err);
 	void onWriteDone(quint64 id, bool ok, const QString &err);
 	void updatePlotLimit();
+	void pushPlotted();
+	void onPlotChanged(int row, bool on);
+	void resetStreams();
+	void syncChart();
 	void updateStaleAfter();
 	double sampleRateHz() const;
 	uint8_t slaveOf(const RegDef &def) const;
@@ -279,4 +312,9 @@ private:
 
 	bool recording_ = false;
 	QString recordFile_, recordText_;
+
+	/* the chart: its lines take the theme's series colours in turn (ChartTab's nextColor_) */
+	QPointer<ChartItem> chart_;
+	int nextColour_ = 0;
+	QVector<std::shared_ptr<fast::Store>> stores_; /* by stream of the map */
 };

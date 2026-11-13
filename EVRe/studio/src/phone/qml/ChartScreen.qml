@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // The Chart screen (STUDIO.md 25.6): the plotted lines over time, drawn by the GPU from nodes of the chart's own
-// (ChartItem, chart_item.h), the time and value labels as Text over it; Live / Hold and the window (10 s, 1 min,
-// 5 min) above it, and a line saying what a finger does. A pinch zooms the time, a drag looks back (and holds), a
-// double tap goes live again. Time runs left to right in Arabic too: the plot and its labels are never mirrored.
-// With demo (Main.qml's chartDemo) the chart's test feed draws 8 lines at 1,000 Hz (chart_demo.h).
+// (ChartItem, chart_item.h), the time and value labels as Text over it. Above it: Live / Hold, the window (10 s,
+// 1 min, 5 min), Y auto (off: a manual range from a small sheet), Clear, and Fast lines when the map has streams;
+// a line saying what a finger does; the legend, a chip per line (its colour, name and latest value in view with its
+// unit: a tap hides or shows the line, its "..." button offers Hide / Show and Take off the chart). A pinch zooms the
+// time, a drag looks back (and holds), a double tap goes live again. Time runs left to right in Arabic too: the plot,
+// its labels and the legend are never mirrored. The lines come from PhoneSession (the registers plotted on the
+// Registers screen, the fast channels chosen here); with none, the plot says how to plot one, with a button to the
+// Registers screen. With demo (Main.qml's chartDemo) the chart's test feed draws 8 lines at 1,000 Hz (chart_demo.h).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -15,64 +19,150 @@ Item {
     property bool demo: false
     readonly property alias chart: chart
 
+    // the empty state's button: Main.qml shows the Registers screen
+    signal registersAsked()
+
     // the window choice's lengths, seconds, and their names (a unit stays as it is in every language)
     readonly property var windows: [10, 60, 300]
     readonly property var windowNames: ["10 s", "1 min", "5 min"]
+
+    // a number for the Y range's button and fields: four significant digits, Western digits in every language
+    function shortNumber(v) { return String(Number(v.toPrecision(4))) }
+
+    function showNotice(text) {
+        noticeText.text = text
+        notice.opacity = 1
+        noticeTimer.restart()
+    }
+
+    // the session feeds this chart (not the demo's: it has its own clock and lines)
+    Component.onCompleted: if (!demo) PhoneSession.chart = chart
 
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
-        RowLayout {
+        // the controls: one row in landscape; in portrait the view's (Live / Hold, the window) over the lines' (Y, Clear,
+        // Fast lines), each group whole
+        Flow {
             id: controls
             objectName: "chartControls"
             Layout.fillWidth: true
             Layout.leftMargin: 8
             Layout.rightMargin: 8
-            spacing: 2
+            spacing: 0
 
-            // Live / Hold: the view follows now, or stays where it is
-            Button {
-                objectName: "liveButton"
-                text: qsTr("Live")
-                flat: true
-                checkable: true
-                checked: chart.live
-                highlighted: chart.live
-                onClicked: chart.live = true
-            }
-            Button {
-                objectName: "holdButton"
-                text: qsTr("Hold")
-                flat: true
-                checkable: true
-                checked: !chart.live
-                highlighted: !chart.live
-                onClicked: chart.live = false
-            }
-            // the two groups apart
-            Rectangle {
-                Layout.preferredWidth: 1
-                Layout.preferredHeight: 24
-                Layout.leftMargin: 4
-                Layout.rightMargin: 4
-                color: PhoneTheme.border
-            }
-            Repeater {
-                model: screen.windows.length
+            Row {
+                id: viewGroup
+                spacing: 2
+                // Live / Hold: the view follows now, or stays where it is
                 Button {
-                    required property int index
-                    objectName: "window" + screen.windows[index]
-                    text: screen.windowNames[index]
+                    objectName: "liveButton"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Live")
                     flat: true
                     checkable: true
-                    checked: Math.abs(chart.windowSeconds - screen.windows[index]) < 1e-6
-                    highlighted: checked
-                    onClicked: chart.windowSeconds = screen.windows[index]
+                    checked: chart.live
+                    highlighted: chart.live
+                    onClicked: chart.live = true
+                }
+                Button {
+                    objectName: "holdButton"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Hold")
+                    flat: true
+                    checkable: true
+                    checked: !chart.live
+                    highlighted: !chart.live
+                    onClicked: chart.live = false
+                }
+                // the groups apart
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 9
+                    height: 24
+                    color: "transparent"
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 1
+                        height: 24
+                        color: PhoneTheme.border
+                    }
+                }
+                Repeater {
+                    model: screen.windows.length
+                    Button {
+                        required property int index
+                        objectName: "window" + screen.windows[index]
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: screen.windowNames[index]
+                        flat: true
+                        checkable: true
+                        checked: Math.abs(chart.windowSeconds - screen.windows[index]) < 1e-6
+                        highlighted: checked
+                        onClicked: chart.windowSeconds = screen.windows[index]
+                    }
                 }
             }
-            Item {
-                Layout.fillWidth: true
+            Row {
+                id: linesGroup
+                spacing: 2
+                height: viewGroup.height
+                // apart from the view's group when beside it (on a row of its own, nothing to set apart)
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 13
+                    height: 24
+                    color: "transparent"
+                    opacity: linesGroup.y === viewGroup.y ? 1 : 0
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 1
+                        height: 24
+                        color: PhoneTheme.border
+                    }
+                }
+                // Y: Auto spans the values in view; off asks for a manual range first
+                Switch {
+                    id: yAutoSwitch
+                    objectName: "yAutoSwitch"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Y auto")
+                    checked: chart.yAuto
+                    onToggled: {
+                        if (checked)
+                            chart.yAuto = true
+                        else
+                            ySheet.openFor()
+                        checked = Qt.binding(() => chart.yAuto)
+                    }
+                }
+                // the manual range, shown and changed here while Auto is off
+                Button {
+                    objectName: "yRangeButton"
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !chart.yAuto
+                    flat: true
+                    text: qsTr("Y %1 to %2").arg(screen.shortNumber(chart.yLow)).arg(screen.shortNumber(chart.yHigh))
+                    onClicked: ySheet.openFor()
+                }
+                Button {
+                    objectName: "chartClear"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Clear")
+                    flat: true
+                    visible: chart.lineCount > 0
+                    onClicked: chart.clear()
+                }
+                Button {
+                    id: fastButton
+                    objectName: "fastLinesButton"
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: PhoneSession.fastChannels.length > 0 && !screen.demo
+                    text: qsTr("Fast lines")
+                    flat: true
+                    onClicked: fastMenu.popup(fastButton, 0, fastButton.height)
+                }
             }
         }
         // what a finger does on the plot (no hover on a phone: said where it is seen)
@@ -85,6 +175,113 @@ Item {
             color: PhoneTheme.muted
             font.pixelSize: 12
             wrapMode: Text.WordWrap
+        }
+
+        // the legend: a chip per line, scrolled sideways when they do not fit; left to right in every language
+        ListView {
+            id: legend
+            objectName: "legendView"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 48
+            Layout.topMargin: 4
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            visible: chart.lineCount > 0
+            orientation: ListView.Horizontal
+            spacing: 6
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            LayoutMirroring.enabled: false
+            LayoutMirroring.childrenInherit: true
+            model: chart.legend
+
+            delegate: Rectangle {
+                id: chip
+                required property int lineId
+                required property string name
+                required property string value
+                required property color colour
+                required property bool shown
+                objectName: "legendChip"
+                y: 4
+                width: chipRow.implicitWidth + 16
+                height: 40
+                radius: 20
+                color: PhoneTheme.surface
+                border.width: 1
+                // a hidden line's chip: its border and text muted, its dot hollow
+                border.color: shown ? colour : PhoneTheme.border
+
+                // a tap on the chip (its "..." button apart, over it) hides or shows its line: a button, so every tap
+                // counts (two quick taps are two, not a double tap)
+                AbstractButton {
+                    objectName: "chipToggle"
+                    anchors.fill: parent
+                    Accessible.name: chip.shown ? qsTr("Hide %1").arg(chip.name) : qsTr("Show %1").arg(chip.name)
+                    onClicked: chart.setLineShown(chip.lineId, !chip.shown)
+                }
+
+                Row {
+                    id: chipRow
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 12
+                    spacing: 6
+                    // the line's colour: filled while drawn, a ring while hidden
+                    Rectangle {
+                        objectName: "chipDot"
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 12
+                        height: 12
+                        radius: 6
+                        color: chip.shown ? chip.colour : "transparent"
+                        border.width: 2
+                        border.color: chip.colour
+                    }
+                    Text {
+                        objectName: "chipName"
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: chip.name
+                        color: chip.shown ? PhoneTheme.text : PhoneTheme.muted
+                        font.pixelSize: 13
+                        font.strikeout: !chip.shown
+                    }
+                    Text {
+                        objectName: "chipValue"
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: chip.value
+                        visible: text.length > 0
+                        color: chip.shown ? PhoneTheme.text : PhoneTheme.muted
+                        font.pixelSize: 13
+                        font.bold: true
+                    }
+                    // three dots drawn, not a character: a phone's font may have no "⋯"
+                    ToolButton {
+                        id: chipMore
+                        objectName: "chipMore"
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 36
+                        height: 40
+                        Accessible.name: qsTr("More: Hide, Take off the chart")
+                        onClicked: chipMenu.openFor(chip.lineId, chip.name, chip.shown, chipMore)
+                        contentItem: Item {
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 3
+                                Repeater {
+                                    model: 3
+                                    Rectangle {
+                                        objectName: "chipMoreDot"
+                                        width: 4
+                                        height: 4
+                                        radius: 2
+                                        color: PhoneTheme.text
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Item {
@@ -102,6 +299,7 @@ Item {
                 anchors.fill: parent
                 gridColor: PhoneTheme.grid
                 frameColor: PhoneTheme.border
+                colours: PhoneTheme.series
             }
             // the value labels left of the plot, the time labels under it: Text over the item, kept inside the area
             Repeater {
@@ -131,18 +329,6 @@ Item {
                     color: PhoneTheme.muted
                     font.pixelSize: 11
                 }
-            }
-            Label {
-                objectName: "chartEmpty"
-                visible: chart.lineCount === 0
-                x: chart.plotRect.x + (chart.plotRect.width - width) / 2
-                y: chart.plotRect.y + (chart.plotRect.height - height) / 2
-                width: Math.min(chart.plotRect.width - 32, 320)
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-                text: qsTr("No lines yet: plot a register on the Registers screen to see it here.")
-                color: PhoneTheme.muted
-                font.pixelSize: 14
             }
 
             // two fingers: the time zoomed by their spread, around the view's end
@@ -178,7 +364,264 @@ Item {
                 objectName: "chartTap"
                 onDoubleTapped: chart.live = true
             }
+
+            // no line: how to plot one, and a button to the Registers screen
+            Rectangle {
+                id: empty
+                objectName: "chartEmpty"
+                visible: chart.lineCount === 0 && !screen.demo
+                // the text reads in the screen's language (the plot under it does not mirror)
+                LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+                LayoutMirroring.childrenInherit: true
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 32, 360)
+                height: emptyColumn.implicitHeight + 32
+                radius: 12
+                color: PhoneTheme.surface
+                border.color: PhoneTheme.border
+
+                ColumnLayout {
+                    id: emptyColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 8
+                    Label {
+                        objectName: "chartEmptyText"
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Plot a register from its ... menu on the Registers screen.")
+                        color: PhoneTheme.text
+                        font.pixelSize: 15
+                    }
+                    Label {
+                        objectName: "chartEmptyFast"
+                        Layout.fillWidth: true
+                        visible: PhoneSession.fastChannels.length > 0
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Or choose a stream's channel under Fast lines.")
+                        color: PhoneTheme.muted
+                        font.pixelSize: 13
+                    }
+                    Button {
+                        objectName: "chartToRegisters"
+                        Layout.alignment: Qt.AlignHCenter
+                        text: qsTr("Go to Registers")
+                        highlighted: true
+                        onClicked: screen.registersAsked()
+                    }
+                }
+            }
         }
+    }
+
+    // a chip's "..." menu (opened from the legend, which is never mirrored: its items read in the screen's language)
+    Menu {
+        id: chipMenu
+        objectName: "chipMenu"
+        readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
+        property int lineId: -1
+        property string name: ""
+        property bool shown: true
+        function openFor(id, name, shown, from) {
+            chipMenu.lineId = id
+            chipMenu.name = name
+            chipMenu.shown = shown
+            chipMenu.popup(from, 0, from.height)
+        }
+        MenuItem {
+            objectName: "chipMenuShow"
+            LayoutMirroring.enabled: chipMenu.rtl
+            text: chipMenu.shown ? qsTr("Hide") : qsTr("Show")
+            onTriggered: chart.setLineShown(chipMenu.lineId, !chipMenu.shown)
+        }
+        MenuItem {
+            objectName: "chipMenuUnplot"
+            LayoutMirroring.enabled: chipMenu.rtl
+            text: qsTr("Take off the chart")
+            onTriggered: {
+                PhoneSession.unplotLine(chipMenu.lineId)
+                screen.showNotice(qsTr("%1 off the chart").arg(chipMenu.name))
+            }
+        }
+    }
+
+    // the map's streams' channels, each on the chart or not (its stream switched on with its first channel)
+    Menu {
+        id: fastMenu
+        objectName: "fastMenu"
+        Instantiator {
+            model: PhoneSession.fastChannels
+            delegate: MenuItem {
+                required property var modelData
+                objectName: "fastChannel"
+                text: modelData.unit.length > 0 ? modelData.name + " (" + modelData.unit + ")" : modelData.name
+                checkable: true
+                checked: modelData.plotted
+                onTriggered: PhoneSession.setFastPlot(modelData.stream, modelData.channel, !modelData.plotted)
+            }
+            onObjectAdded: (index, object) => fastMenu.insertItem(index, object)
+            onObjectRemoved: (index, object) => fastMenu.removeItem(object)
+        }
+    }
+
+    // the manual Y range: two fields, near the top (the soft keyboard comes up from the foot)
+    Popup {
+        id: ySheet
+        objectName: "ySheet"
+        modal: true
+        // the screen behind darkened as behind the drawer (Material's grey wash lightened the dark theme)
+        Overlay.modal: Rectangle {
+            color: Qt.rgba(0, 0, 0, 0.5)
+        }
+        x: (screen.width - width) / 2
+        y: 8
+        width: Math.min(screen.width - 32, 360)
+        padding: 16
+        property string error: ""
+        function openFor() {
+            minField.text = screen.shortNumber(chart.yLow)
+            maxField.text = screen.shortNumber(chart.yHigh)
+            ySheet.error = ""
+            ySheet.open()
+        }
+        function apply() {
+            const loText = minField.text.trim().replace(",", "."), hiText = maxField.text.trim().replace(",", ".")
+            const lo = Number(loText), hi = Number(hiText)
+            if (loText.length === 0 || hiText.length === 0 || !isFinite(lo) || !isFinite(hi)) {
+                ySheet.error = qsTr("Type a number in both fields.")
+                return
+            }
+            if (!chart.setYRange(lo, hi)) {
+                ySheet.error = qsTr("Max must be above min.")
+                return
+            }
+            ySheet.close()
+        }
+        background: Rectangle {
+            color: PhoneTheme.surface
+            border.color: PhoneTheme.border
+            radius: 12
+        }
+
+        ColumnLayout {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: 8
+            Label {
+                objectName: "ySheetTitle"
+                text: qsTr("Y range")
+                color: PhoneTheme.text
+                font.pixelSize: 18
+                font.bold: true
+            }
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Auto off: the value axis stays between these.")
+                color: PhoneTheme.muted
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: 12
+                Label {
+                    text: qsTr("Min")
+                    color: PhoneTheme.text
+                    font.pixelSize: 15
+                }
+                TextField {
+                    id: minField
+                    objectName: "yMinField"
+                    Layout.fillWidth: true
+                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                    LayoutMirroring.enabled: false
+                    onAccepted: maxField.forceActiveFocus()
+                }
+                Label {
+                    text: qsTr("Max")
+                    color: PhoneTheme.text
+                    font.pixelSize: 15
+                }
+                TextField {
+                    id: maxField
+                    objectName: "yMaxField"
+                    Layout.fillWidth: true
+                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                    LayoutMirroring.enabled: false
+                    onAccepted: ySheet.apply()
+                }
+            }
+            Label {
+                objectName: "ySheetError"
+                Layout.fillWidth: true
+                visible: ySheet.error.length > 0
+                text: ySheet.error
+                color: PhoneTheme.bad
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: 8
+                Button {
+                    objectName: "ySheetCancel"
+                    text: qsTr("Cancel")
+                    flat: true
+                    onClicked: ySheet.close()
+                }
+                Button {
+                    objectName: "ySheetApply"
+                    text: qsTr("Apply")
+                    highlighted: true
+                    onClicked: ySheet.apply()
+                }
+            }
+        }
+    }
+
+    // what Take off the chart or a refused fast line did, a moment over the plot's foot
+    Rectangle {
+        id: notice
+        objectName: "chartNotice"
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 40
+        width: Math.min(parent.width - 32, noticeText.implicitWidth + 32)
+        height: noticeText.implicitHeight + 20
+        radius: 8
+        color: PhoneTheme.surface2
+        border.color: PhoneTheme.border
+        opacity: 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+        Label {
+            id: noticeText
+            objectName: "chartNoticeText"
+            anchors.fill: parent
+            anchors.margins: 10
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            color: PhoneTheme.text
+            font.pixelSize: 14
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        Timer {
+            id: noticeTimer
+            interval: 4000
+            onTriggered: notice.opacity = 0
+        }
+    }
+    Connections {
+        target: PhoneSession
+        enabled: screen.visible
+        function onNotice(text) { screen.showNotice(text) }
     }
 
     ChartDemo {

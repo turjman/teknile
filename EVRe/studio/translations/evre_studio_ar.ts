@@ -626,8 +626,92 @@ Double-click to edit</source>
         <translation>القرص: تكبير الزمن · السحب: الرجوع إلى الأقدم · النقر المزدوج: مباشر</translation>
     </message>
     <message>
-        <source>No lines yet: plot a register on the Registers screen to see it here.</source>
-        <translation>لا خطوط بعد: رسم مسجّل من شاشة المسجّلات يُظهره هنا.</translation>
+        <source>Y auto</source>
+        <translation>مدى Y تلقائي</translation>
+    </message>
+    <message>
+        <source>Y %1 to %2</source>
+        <translation>مدى Y من %1 إلى %2</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>مسح</translation>
+    </message>
+    <message>
+        <source>Fast lines</source>
+        <translation>الخطوط السريعة</translation>
+    </message>
+    <message>
+        <source>Hide %1</source>
+        <translation>إخفاء %1</translation>
+    </message>
+    <message>
+        <source>Show %1</source>
+        <translation>إظهار %1</translation>
+    </message>
+    <message>
+        <source>More: Hide, Take off the chart</source>
+        <translation>المزيد: إخفاء، إزالة من المخطط</translation>
+    </message>
+    <message>
+        <source>Plot a register from its ... menu on the Registers screen.</source>
+        <translation>يُرسم المسجّل من قائمة ... في بطاقته على شاشة المسجّلات.</translation>
+    </message>
+    <message>
+        <source>Or choose a stream&apos;s channel under Fast lines.</source>
+        <translation>أو تُختار قناة تدفق من الخطوط السريعة.</translation>
+    </message>
+    <message>
+        <source>Go to Registers</source>
+        <translation>الانتقال إلى المسجّلات</translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation>إخفاء</translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <translation>إظهار</translation>
+    </message>
+    <message>
+        <source>Take off the chart</source>
+        <translation>إزالة من المخطط</translation>
+    </message>
+    <message>
+        <source>%1 off the chart</source>
+        <translation>أُزيل ⁦%1⁩ من المخطط</translation>
+    </message>
+    <message>
+        <source>Type a number in both fields.</source>
+        <translation>يُكتب رقم في الحقلين كليهما.</translation>
+    </message>
+    <message>
+        <source>Max must be above min.</source>
+        <translation>يجب أن يكون الأعلى أكبر من الأدنى.</translation>
+    </message>
+    <message>
+        <source>Y range</source>
+        <translation>مدى Y</translation>
+    </message>
+    <message>
+        <source>Auto off: the value axis stays between these.</source>
+        <translation>التلقائي معطّل: يبقى محور القيم بين هذين الحدّين.</translation>
+    </message>
+    <message>
+        <source>Min</source>
+        <translation>الأدنى</translation>
+    </message>
+    <message>
+        <source>Max</source>
+        <translation>الأعلى</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>إلغاء</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>تطبيق</translation>
     </message>
 </context>
 <context>
@@ -6791,6 +6875,26 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>write refused: %1: %2</source>
         <translation>رُفضت الكتابة: %1: %2</translation>
+    </message>
+    <message>
+        <source>fast stream %1 not switched on: %2</source>
+        <translation>لم يُشغَّل التدفق السريع %1: %2</translation>
+    </message>
+    <message>
+        <source>fast stream %1 not switched off: %2</source>
+        <translation>لم يُوقف التدفق السريع %1: %2</translation>
+    </message>
+    <message>
+        <source>fast stream %1 on: %2 records a second</source>
+        <translation>التدفق السريع %1 يعمل: %2 سجلّ في الثانية</translation>
+    </message>
+    <message>
+        <source>fast stream %1 off</source>
+        <translation>التدفق السريع %1 معطّل</translation>
+    </message>
+    <message>
+        <source>At most %1 lines on the chart, registers and fast lines together: take one off first</source>
+        <translation>على الأكثر %1 خطًا على المخطط، المسجّلات والخطوط السريعة معًا: أزِل واحدًا أولًا</translation>
     </message>
 </context>
 <context>

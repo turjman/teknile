@@ -320,6 +320,6 @@ if(EVRE_PHONE)
         # the phone's window driven by QtTest (tests/phone_test.cpp, STUDIO.md 26.11)
         qt_add_executable(evre_phone_test tests/phone_test.cpp)
         target_link_libraries(evre_phone_test PRIVATE evre_phone_qml evre_phone_qmlplugin Qt6::Test)
-        add_dependencies(evre_phone_test evre_maps)
+        add_dependencies(evre_phone_test evre_maps evre_fake_fast) # the fast lines' check starts evre_fake_fast
     endif()
 endif()

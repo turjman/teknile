@@ -35,6 +35,13 @@
   to right in Arabic too. The registers come onto it with the next part; a test feed (`am start ... --ez chartdemo
   true`) draws 8 lines at 1,000 samples a second and measures the frames. The desktop's chart does not change: its
   data and binning moved into a file that both charts share.
+- **The phone's chart shows the registers.** A register plotted from its card's "⋯" menu is a line in the theme's
+  next colour, fed with every poll's samples; a disconnect keeps the lines and what they hold, as on the desktop. A
+  legend over the plot has a chip per line (its colour, name and latest value with its unit, sideways when they do
+  not fit): a tap hides or shows the line, its "⋯" button offers Hide and Take off the chart. **Y auto** (on) spans
+  the values in view; off, a small sheet takes Min and Max. **Clear** empties the lines. With a map that has fast
+  streams, **Fast lines** lists their channels: one chosen switches its stream on and draws it as the desktop draws
+  a fast line. With no line, the chart says how to plot one, with a button to the Registers screen.
 - **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every

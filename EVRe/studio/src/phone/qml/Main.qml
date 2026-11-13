@@ -168,6 +168,7 @@ ApplicationWindow {
         ChartScreen {
             objectName: "screenChart"
             demo: root.chartDemo
+            onRegistersAsked: tabBar.currentIndex = 0
         }
         PlaceholderScreen {
             objectName: "screenMonitor"
