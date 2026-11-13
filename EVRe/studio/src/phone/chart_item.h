@@ -16,6 +16,14 @@
  *               with its unit, as the desktop's legend writes it: ChartData::number), the values at most LEGEND_MS
  *               apart (a number that changes at every frame cannot be read).
  *
+ *   CursorReadouts  the cursors' readouts: a row per shown line, its values at A and B, B - A, and over A..B its min,
+ *               max and mean (ChartData::statsOf, statsOfFast for a fast line, as the desktop's measurements), written
+ *               as the legend writes a value, with the unit.
+ *
+ * Cursors A and B (B.4): placeCursors() puts A at a third of the view and B at two thirds and holds the view;
+ * moveCursor(which, x) drags one (its handle's x in the item, kept inside the plot); clearCursors() takes them off.
+ * cursorAX and cursorBX say where they are drawn (NaN: off the view).
+ *
  * Fed from C++: addLine(id, colour, name, unit) with a colour of its own, or addThemedLine(id, index, ...) with the
  * theme's series colour `index` (colours, recoloured with the theme), a fast line with its stream's store and channel
  * (binned by ChartData::binFast through binViewSeries); appendSamples(id, times, values), removeLine(id), clear() (the
@@ -35,6 +43,7 @@
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
 #include <atomic>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -98,6 +107,34 @@ private:
 	QVector<Entry> entries_;
 };
 
+class CursorReadouts : public QAbstractListModel {
+	Q_OBJECT
+	QML_ELEMENT
+	QML_UNCREATABLE("the chart's own")
+
+public:
+	enum Role { IdRole = Qt::UserRole + 1, NameRole, ColourRole, AtARole, AtBRole, DeltaRole, MinRole, MaxRole, MeanRole };
+	struct Row {
+		int id = 0;
+		QString name, atA, atB, delta, min, max, mean;
+		QColor colour;
+		bool operator==(const Row &o) const {
+			return id == o.id && name == o.name && atA == o.atA && atB == o.atB && delta == o.delta && min == o.min
+					&& max == o.max && mean == o.mean && colour == o.colour;
+		}
+	};
+
+	explicit CursorReadouts(QObject *parent = nullptr) : QAbstractListModel(parent) {}
+	int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+	QVariant data(const QModelIndex &index, int role) const override;
+	QHash<int, QByteArray> roleNames() const override;
+	const QVector<Row> &rows() const { return rows_; }
+	void set(const QVector<Row> &rows); /* the same lines: dataChanged by row; others: reset */
+
+private:
+	QVector<Row> rows_;
+};
+
 class ChartItem : public QQuickItem {
 	Q_OBJECT
 	QML_ELEMENT
@@ -114,6 +151,15 @@ class ChartItem : public QQuickItem {
 	Q_PROPERTY(ChartTicks *timeTicks READ timeTicks CONSTANT)
 	Q_PROPERTY(ChartTicks *valueTicks READ valueTicks CONSTANT)
 	Q_PROPERTY(ChartLines *legend READ legend CONSTANT)
+	Q_PROPERTY(bool cursorsOn READ cursorsOn NOTIFY cursorsChanged)
+	Q_PROPERTY(double cursorA READ cursorA NOTIFY cursorsChanged)
+	Q_PROPERTY(double cursorB READ cursorB NOTIFY cursorsChanged)
+	Q_PROPERTY(double cursorAX READ cursorAX NOTIFY cursorsMoved)
+	Q_PROPERTY(double cursorBX READ cursorBX NOTIFY cursorsMoved)
+	Q_PROPERTY(QString cursorAText READ cursorAText NOTIFY cursorsMoved)
+	Q_PROPERTY(QString cursorBText READ cursorBText NOTIFY cursorsMoved)
+	Q_PROPERTY(QString cursorSpanText READ cursorSpanText NOTIFY cursorsMoved)
+	Q_PROPERTY(CursorReadouts *readouts READ readouts CONSTANT)
 
 public:
 	static constexpr double MIN_WINDOW = 0.01;  /* seconds: the shortest view a pinch gives */
@@ -144,6 +190,25 @@ public:
 	ChartTicks *timeTicks() const { return timeTicks_; }
 	ChartTicks *valueTicks() const { return valueTicks_; }
 	ChartLines *legend() const { return legend_; }
+	CursorReadouts *readouts() const { return readouts_; }
+
+	/* the cursors: times of the chart's clock; off: NaN */
+	bool cursorsOn() const { return std::isfinite(cursorA_) && std::isfinite(cursorB_); }
+	double cursorA() const { return cursorA_; }
+	double cursorB() const { return cursorB_; }
+	double cursorAX() const { return cursorX(cursorA_); }
+	double cursorBX() const { return cursorX(cursorB_); }
+	QString cursorAText() const;  /* "0:12.34" */
+	QString cursorBText() const;
+	QString cursorSpanText() const; /* B - A: "3.33 s" */
+	/* A at a third of the view, B at two thirds; the view held, so the readouts stay */
+	Q_INVOKABLE void placeCursors();
+	Q_INVOKABLE void clearCursors();
+	/* a cursor's handle dragged: which 0 (A) or 1 (B), x in the item, kept inside the plot */
+	Q_INVOKABLE void moveCursor(int which, double x);
+	void setCursors(double a, double b);
+	/* tests: a line's measurements over A..B as the readouts took them */
+	ChartData::Stats cursorStats(int id) const;
 
 	/* the lines, for the session's feed (PhoneSession) and the demo: a line by its id, its samples in rising time (an
 	 * older one than the line's newest is left out); clear() empties every line, keeping them (a fast line's store
@@ -197,6 +262,8 @@ signals:
 	void plotRectChanged();
 	void linesChanged();
 	void framed(); /* a frame's lines were made (updatePolish): tests wait for it */
+	void cursorsChanged();
+	void cursorsMoved(); /* placed, dragged, or the view moved under them */
 
 protected:
 	void updatePolish() override;
@@ -224,6 +291,8 @@ private:
 	void addLine(std::unique_ptr<Line> line);
 	QColor colourOf(const Line &line) const;
 	void updateLegend(bool values);
+	void updateReadouts();
+	double cursorX(double t) const;
 
 	std::vector<std::unique_ptr<Line>> lines_;
 	std::function<double()> clock_;
@@ -244,5 +313,8 @@ private:
 	bool linesDirty_ = true, colorsDirty_ = true;
 	ChartTicks *timeTicks_ = nullptr, *valueTicks_ = nullptr;
 	ChartLines *legend_ = nullptr;
+	CursorReadouts *readouts_ = nullptr;
+	double cursorA_ = NAN, cursorB_ = NAN;
+	double cursorAtX_ = NAN, cursorBtX_ = NAN; /* where they were drawn last: cursorsMoved when it changes */
 	QMetaObject::Connection frameConnection_;
 };

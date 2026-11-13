@@ -31,6 +31,9 @@
  * chart's test feed; drawerkb and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them
  * without running the checks.
  * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
+ * The cursors and the Monitor (B.4): placed by the Cursors button, A dragged by its handle, the readouts against
+ * statsOf; the fake device's frames, Pause, Clear, the empty state; texts in both languages and themes. Their pictures:
+ * <prefix>_<en|ar>_<dark|light>_<cursors|monitor|paused>_<portrait|landscape>.png.
  * The Chart screen's pictures too: <prefix>_<en|ar>_<dark|light>_chart_<empty|two|hidden|manual|ysheet|chipmenu>_
  * <portrait|landscape>.png. EVRE_PHONE_ONLY=<text> (other than shots): only the checks whose function's name holds it,
  * and with a prefix only the chart's pictures.
@@ -67,9 +70,12 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <thread>
+#include <tuple>
 
 #include "evre/frame.h"
 #include "evre/usb_bridge.h"
@@ -296,7 +302,11 @@ QStringList latinTexts(QQuickWindow *window) {
 		QStringLiteral("regGroup"), QStringLiteral("regValue"), QStringLiteral("regUnit"), QStringLiteral("regDecoded"),
 		QStringLiteral("regAddr"), QStringLiteral("regError"), QStringLiteral("sheetName"), QStringLiteral("sheetAddr"),
 		QStringLiteral("sheetNow"), QStringLiteral("sheetUnit"), QStringLiteral("chipName"), QStringLiteral("chipValue"),
-		QStringLiteral("fastChannel") };
+		QStringLiteral("fastChannel"), QStringLiteral("frameTime"), QStringLiteral("frameDirection"),
+		QStringLiteral("frameBytes"), QStringLiteral("frameNote"), QStringLiteral("cursorName"), QStringLiteral("readoutName"),
+		QStringLiteral("readoutA"), QStringLiteral("readoutB"), QStringLiteral("readoutDelta"), QStringLiteral("readoutMin"),
+		QStringLiteral("readoutMax"), QStringLiteral("readoutMean"), QStringLiteral("readoutTimeA"),
+		QStringLiteral("readoutTimeB"), QStringLiteral("readoutSpan") };
 	QStringList found;
 	forEachItem(topItem(window), [&](QQuickItem *item) {
 		if (!item->inherits("QQuickText") || !item->isVisible() || data.contains(item->objectName())) return;
@@ -2930,7 +2940,13 @@ void checkChartFast() {
 	fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
 			{ QString::number(FAKE_FAST_PORT), fastMap });
 	const bool started = fake.waitForStarted(3000);
-	QTest::qWait(500);
+	/* listening: a busy run took longer than half a second to open the port */
+	(void) QTest::qWaitFor([&] {
+		QTcpSocket probe;
+		probe.connectToHost(QStringLiteral("127.0.0.1"), FAKE_FAST_PORT);
+		return probe.waitForConnected(200);
+	}, 5000);
+	QTest::qWait(300);
 	{
 		Phone phone(LANDSCAPE);
 		PhoneSession *session = phone.session();
@@ -2960,7 +2976,7 @@ void checkChartFast() {
 		(void) QTest::qWaitFor([&] {
 			const fast::Store *store = session ? session->fastStore(0) : nullptr;
 			return store && store->hasTime() && store->size() > 20000;
-		}, 6000);
+		}, 10000);
 		/* nothing more comes while the bins are compared */
 		if (session) session->disconnectLink();
 		(void) waitForState(session, PhoneSession::Off, 3000);
@@ -2987,7 +3003,8 @@ void checkChartFast() {
 						"stream on (%2 records from evre_fake_fast), its line binned as the desktop's binFast bins it (%3 "
 						"bins against %4) and drawn in its colour inside the plot (%5 pixels, %6 elsewhere in the chart's area)")
 						.arg(names.join(QStringLiteral(", "))).arg(records).arg(phoneBins.size()).arg(fresh.bins.size())
-						.arg(seen.pixels).arg(seen.outside));
+						.arg(seen.pixels).arg(seen.outside)
+						+ (records > 20000 || !session ? QString() : QStringLiteral(" [the Log: %1]").arg(session->log()->text().right(400))));
 		if (session) {
 			session->setFastPlot(0, 0, false);
 			session->loadMap(phone::mapsFolder() + QStringLiteral("/example_device.json"));
@@ -3100,6 +3117,372 @@ void saveChartPictures(const QString &prefix) {
 	}
 	QSettings().remove(QStringLiteral("ui/dark"));
 	language::apply(*qApp, QStringLiteral("en"));
+}
+
+/* ---- B.4: the cursors and their readouts, the Monitor */
+
+/* a fed sine (and a second line, its double) in a 10 s view, the cursors placed by their button */
+ChartItem *chartWithCursors(const Phone &phone, QVector<double> &times, QVector<double> &values) {
+	ChartItem *chart = showFedChart(phone);
+	sine(5, 20, times, values);
+	QVector<double> doubled = values;
+	for (double &v : doubled) v *= 2;
+	if (chart) {
+		chart->setWindowSeconds(10);
+		chart->addLine(1, SINE_COLOUR, QStringLiteral("SINE"), QStringLiteral("V"));
+		chart->addLine(2, Qt::cyan, QStringLiteral("DOUBLE"), QStringLiteral("A"));
+		chart->appendSamples(1, times, values);
+		chart->appendSamples(2, times, doubled);
+	}
+	chartFrame(phone, chart, 3);
+	phone.tap(phone.item("cursorsButton"));
+	chartFrame(phone, chart, 2);
+	return chart;
+}
+
+/* a finger on an item's middle, dragged by dx in steps */
+void dragItem(const Phone &phone, QQuickItem *on, double dx) {
+	static QPointingDevice *finger = QTest::createTouchDevice();
+	if (!on) return;
+	const QPointF c = on->mapToScene(QPointF(on->width() / 2, on->height() / 2));
+	QTest::touchEvent(phone.window, finger).press(0, c.toPoint(), phone.window.data());
+	QTest::qWait(20);
+	const int steps = 15;
+	for (int i = 1; i <= steps; ++i) {
+		QTest::touchEvent(phone.window, finger).move(0, (c + QPointF(dx * i / steps, 0)).toPoint(), phone.window.data());
+		QTest::qWait(16);
+	}
+	QTest::touchEvent(phone.window, finger).release(0, (c + QPointF(dx, 0)).toPoint(), phone.window.data());
+	QTest::qWait(80);
+}
+
+/* the readout row of a line, by its name */
+QQuickItem *readoutRow(const Phone &phone, const QString &name) {
+	QQuickItem *found = nullptr;
+	forEachItem(phone.item("readoutPanel"), [&](QQuickItem *item) {
+		if (found || item->objectName() != QLatin1String("readoutRow")) return;
+		const QQuickItem *label = within(item, QStringLiteral("readoutName"));
+		if (label && label->property("text").toString() == name) found = item;
+	});
+	return found;
+}
+
+QString readoutText(const Phone &phone, const QString &line, const char *part) {
+	const QQuickItem *item = within(readoutRow(phone, line), QLatin1String(part));
+	return item ? item->property("text").toString() : QString();
+}
+
+/* the Cursors button: A at a third of the view, B at two thirds, the view held; both drawn there with their handles,
+ * 48 dp; a second tap takes them off */
+void checkCursorButtons() {
+	Phone phone(LANDSCAPE);
+	QVector<double> times, values;
+	ChartItem *chart = chartWithCursors(phone, times, values);
+	const double t0 = chart ? chart->viewStart() : 0, span = chart ? chart->viewEnd() - chart->viewStart() : 0;
+	const bool placed = chart && chart->cursorsOn() && std::fabs(chart->cursorA() - (t0 + span / 3)) < 1e-9
+			&& std::fabs(chart->cursorB() - (t0 + span * 2 / 3)) < 1e-9 && !chart->live();
+	QQuickItem *lineA = phone.item("cursorA"), *handleA = phone.item("cursorHandleA"), *handleB = phone.item("cursorHandleB");
+	const double plotLeft = chart ? chart->mapToScene(chart->plotRect().topLeft()).x() : 0;
+	const double plotWidth = chart ? chart->plotRect().width() : 0;
+	const double drawnA = lineA ? lineA->mapToScene(QPointF(lineA->width() / 2, 0)).x() : -1;
+	const bool drawn = lineA && lineA->isVisible() && std::fabs(drawnA - (plotLeft + plotWidth / 3)) <= 1;
+	const bool handles = handleA && handleB && handleA->width() >= 47.5 && handleA->height() >= 47.5
+			&& handleB->width() >= 47.5 && handleB->isVisible()
+			&& handleA->mapToScene(QPointF(0, 0)).y() < handleB->mapToScene(QPointF(0, 0)).y();
+	const bool panel = phone.item("readoutPanel") && phone.item("readoutPanel")->isVisible();
+	const double a = chart ? chart->cursorA() : 0, b = chart ? chart->cursorB() : 0;
+	phone.tap(phone.item("cursorsButton"));
+	const bool off = chart && !chart->cursorsOn() && !phone.item("readoutPanel")->isVisible();
+	check(placed && drawn && handles && panel && off,
+			QStringLiteral("phone, cursors: the Cursors button puts A at a third of the view and B at two thirds (%1 s, %2 s "
+					"in %3 .. %4 s) and holds it; A drawn there (x %5, want %6), the handles 48 dp, A's over B's; the "
+					"readouts shown; a second tap takes them off")
+					.arg(a, 0, 'f', 3).arg(b, 0, 'f', 3)
+					.arg(t0, 0, 'f', 2).arg(t0 + span, 0, 'f', 2).arg(drawnA, 0, 'f', 1).arg(plotLeft + plotWidth / 3, 0, 'f', 1));
+}
+
+/* a drag on A's handle moves A by the finger's time (its pixels in the view's seconds), B stays, the view stays */
+void checkCursorDrag() {
+	Phone phone(LANDSCAPE);
+	QVector<double> times, values;
+	ChartItem *chart = chartWithCursors(phone, times, values);
+	const double aBefore = chart ? chart->cursorA() : 0, bBefore = chart ? chart->cursorB() : 0;
+	const double endBefore = chart ? chart->viewEnd() : 0;
+	const double perPixel = chart && chart->plotRect().width() > 0 ? chart->windowSeconds() / chart->plotRect().width() : 0;
+	dragItem(phone, phone.item("cursorHandleA"), 120);
+	chartFrame(phone, chart);
+	const double moved = chart ? chart->cursorA() - aBefore : 0, want = 120 * perPixel;
+	/* B's handle to the left past A: the cursors may cross (B - A negative) */
+	const bool bSame = chart && chart->cursorB() == bBefore;
+	const bool viewSame = chart && chart->viewEnd() == endBefore && !chart->live();
+	check(chart && std::fabs(moved - want) <= 2 * perPixel && bSame && viewSame,
+			QStringLiteral("phone, cursors: a drag of A's handle by 120 px moves A by %1 s (want %2 s: the view's seconds a "
+					"pixel), B and the view stay (A %3 -> %4, B %5 -> %6, end %7 -> %8)").arg(moved, 0, 'f', 4).arg(want, 0, 'f', 4)
+					.arg(aBefore).arg(chart ? chart->cursorA() : 0).arg(bBefore).arg(chart ? chart->cursorB() : 0)
+					.arg(endBefore).arg(chart ? chart->viewEnd() : 0));
+}
+
+/* the readouts: each line's values at A and B, B - A, min, max and mean over A..B equal the desktop's statsOf over the
+ * span, written as the legend writes a value; the times and the span over them */
+void checkCursorReadouts() {
+	Phone phone(PORTRAIT);
+	QVector<double> times, values;
+	ChartItem *chart = chartWithCursors(phone, times, values);
+	phone.settle(300);
+	bool ok = chart != nullptr;
+	QStringList seen;
+	for (const auto &[id, name, unit] : { std::tuple{ 1, QStringLiteral("SINE"), QStringLiteral(" V") },
+			 std::tuple{ 2, QStringLiteral("DOUBLE"), QStringLiteral(" A") } }) {
+		const ChartData::Series *s = chart ? chart->series(id) : nullptr;
+		if (!s) {
+			ok = false;
+			continue;
+		}
+		const double a = chart->cursorA(), b = chart->cursorB();
+		const ChartData::Stats want = ChartData::statsOf(s->times, s->values, std::min(a, b), std::max(a, b), a, b);
+		const ChartData::Stats got = chart->cursorStats(id);
+		const bool same = want.ok && got.ok && want.atA == got.atA && want.atB == got.atB && want.min == got.min
+				&& want.max == got.max && want.mean == got.mean;
+		const bool texts = readoutText(phone, name, "readoutA") == ChartData::number(want.atA) + unit
+				&& readoutText(phone, name, "readoutB") == ChartData::number(want.atB) + unit
+				&& readoutText(phone, name, "readoutDelta") == ChartData::number(want.atB - want.atA) + unit
+				&& readoutText(phone, name, "readoutMin") == ChartData::number(want.min) + unit
+				&& readoutText(phone, name, "readoutMax") == ChartData::number(want.max) + unit
+				&& readoutText(phone, name, "readoutMean") == ChartData::number(want.mean) + unit;
+		seen << QStringLiteral("%1: A %2, B %3, min %4, max %5, mean %6").arg(name, readoutText(phone, name, "readoutA"),
+				readoutText(phone, name, "readoutB"), readoutText(phone, name, "readoutMin"),
+				readoutText(phone, name, "readoutMax"), readoutText(phone, name, "readoutMean"));
+		ok = ok && same && texts;
+	}
+	const QString span = phone.text("readoutSpan");
+	const bool times_ = chart && phone.text("readoutTimeA") == chart->cursorAText() && !chart->cursorAText().isEmpty()
+			&& span == ChartData::number(chart->cursorB() - chart->cursorA()) + QStringLiteral(" s");
+	check(ok && times_, QStringLiteral("phone, cursors: the readouts equal the desktop's statsOf over A..B, as the legend "
+			"writes a value (%1; A at %2, B - A %3)").arg(seen.join(QStringLiteral("; ")), phone.text("readoutTimeA"), span));
+}
+
+/* the Monitor against the fake device: frames arrive (each its time, its direction, its bytes) while the screen shows;
+ * Pause holds them (none added, the engine writes none), Resume goes on, Clear empties; another screen stops them */
+void checkMonitorFrames() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	phone.tap(phone.item("tabMonitor"));
+	FrameLog *frames = session ? session->frames() : nullptr;
+	const bool arrived = frames && QTest::qWaitFor([&] { return frames->count() >= 10; }, 4000);
+	static const QRegularExpression shape(QStringLiteral("^\\d\\d:\\d\\d:\\d\\d\\.\\d{3}  (TX|RX)  ([0-9A-F]{2} )+[0-9A-F]{2}"));
+	const QString first = frames ? frames->line(0) : QString();
+	const bool parsed = shape.match(first).hasMatch();
+	const bool monitoring = session && session->monitoring();
+	phone.tap(phone.item("monitorPause"));
+	QTest::qWait(300); /* what was under way comes in */
+	const qint64 held = frames ? frames->added() : 0;
+	QTest::qWait(1200);
+	const bool holds = frames && frames->added() == held && frames->paused() && !session->monitoring()
+			&& phone.text("monitorPause") == QLatin1String("Resume");
+	/* Clear while paused: nothing comes in after it */
+	phone.tap(phone.item("monitorClear"));
+	const int afterClear = frames ? frames->count() : -1;
+	phone.tap(phone.item("monitorPause"));
+	const bool again = frames && QTest::qWaitFor([&] { return frames->added() > held + 5 && frames->count() > 5; }, 4000);
+	phone.tap(phone.item("tabLog"));
+	QTest::qWait(300);
+	const bool stopped = session && !session->monitoring();
+	check(arrived && parsed && monitoring && holds && again && afterClear == 0 && stopped,
+			QStringLiteral("phone, Monitor: the fake device's frames arrive while the screen shows (\"%1\"), Pause holds "
+					"them (none added in 1.2 s, the engine writes none), Clear empties (%2 left), Resume goes on, another "
+					"screen stops them").arg(first.left(60)).arg(afterClear));
+	if (session) session->disconnectLink();
+}
+
+/* not connected: the Monitor says so and offers the drawer */
+void checkMonitorEmpty() {
+	Phone phone(PORTRAIT);
+	phone.tap(phone.item("tabMonitor"));
+	const bool shown = phone.item("monitorEmptyState") && phone.item("monitorEmptyState")->isVisible();
+	const QString text = phone.text("monitorEmpty");
+	phone.tap(phone.item("monitorConnect"));
+	(void) QTest::qWaitFor([&] { return phone.drawerOpen(); }, 3000);
+	check(shown && text == QLatin1String("Not connected: the frames on the link show here once it is up.")
+					&& phone.drawerOpen(),
+			QStringLiteral("phone, Monitor: not connected it says \"%1\", and Connect… opens the drawer").arg(text));
+}
+
+/* both languages at 412 px, the cursors' readouts and the Monitor's frames: nothing cut; in Arabic the frames and the
+ * plot left to right, the readouts' labels translated; both themes: the frames in the text colour on the background */
+void checkToolsTexts() {
+	QStringList bad, latin, colours;
+	int seen = 0;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		for (bool dark : { true, false }) {
+			QSettings().setValue(QStringLiteral("ui/dark"), dark);
+			Phone phone(PORTRAIT);
+			PhoneSession *session = connectFake(phone);
+			phone.tap(phone.item("tabMonitor"));
+			(void) QTest::qWaitFor([&] { return session && session->frames()->count() >= 10; }, 4000);
+			phone.settle(300);
+			for (const QString &text : textsOutside(phone.window, seen)) bad << code + QStringLiteral(" Monitor: ") + text;
+			if (code == QLatin1String("ar")) latin << latinTexts(phone.window);
+			/* the newest frame's bytes: left to right, at the left; in the theme's text colour */
+			QQuickItem *bytes = nullptr;
+			forEachItem(phone.item("monitorList"), [&](QQuickItem *item) {
+				if (item->objectName() == QLatin1String("frameBytes") && item->isVisible()) bytes = item;
+			});
+			const bool ltr = bytes && bytes->mapToScene(QPointF(0, 0)).x() < phone.window->width() / 4.0
+					&& bytes->property("effectiveHorizontalAlignment").toInt() == Qt::AlignLeft;
+			const QColor colour = bytes ? bytes->property("color").value<QColor>() : QColor();
+			const ThemeColors theme = Theme::colorsFor(dark);
+			const QImage image = phone.grab();
+			/* in the list's left margin (the frames start 16 dp in; the scroll indicator is at the right edge) */
+			const QColor background = Phone::pixel(image, QPointF(6, phone.window->height() / 2.0));
+			if (!ltr || colour != theme.text || !near(background, theme.bg, 3))
+				colours << QStringLiteral("%1 %2: left to right %3, bytes %4, background %5").arg(code, dark ? "dark" : "light")
+						.arg(ltr).arg(colour.name(), background.name());
+			/* the chart with the cursors: two plotted registers, their readouts */
+			for (const char *reg : { "SUPPLY_V", "SUPPLY_I" }) {
+				const int row = modelRow(session, QLatin1String(reg));
+				if (session && row >= 0) session->setPlot(row, true);
+			}
+			ChartItem *chart = showChart(phone);
+			if (chart) chart->setWindowSeconds(10);
+			QTest::qWait(1500);
+			phone.tap(phone.item("cursorsButton"));
+			phone.settle(500);
+			for (const QString &text : textsOutside(phone.window, seen)) bad << code + QStringLiteral(" cursors: ") + text;
+			if (code == QLatin1String("ar")) latin << latinTexts(phone.window);
+			if (session) session->disconnectLink();
+		}
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	language::apply(*qApp, QStringLiteral("en"));
+	latin.removeDuplicates();
+	check(bad.isEmpty() && latin.isEmpty() && colours.isEmpty() && seen > 40,
+			QStringLiteral("phone, cursors and Monitor at 412 px, English and Arabic, dark and light: every Text inside its "
+					"parent and not cut (%1 seen), every text translated, the frames left to right in the theme's text "
+					"colour %2 %3 %4").arg(seen).arg(bad.join(QStringLiteral(" | ")), latin.join(QStringLiteral(" | ")),
+					colours.join(QStringLiteral(" | "))));
+}
+
+/* the pictures for the eye: the Chart screen with the cursors (two registers), the Monitor live and paused; both
+ * languages and themes, portrait and landscape: <prefix>_<en|ar>_<dark|light>_<cursors|monitor|paused>_<orientation>.png */
+void saveToolsPictures(const QString &prefix) {
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		for (bool dark : { true, false }) {
+			QSettings().setValue(QStringLiteral("ui/dark"), dark);
+			for (QSize size : { PORTRAIT, LANDSCAPE }) {
+				const QString name = QStringLiteral("%1_%2_%3_").arg(prefix, code, dark ? "dark" : "light");
+				const QString orient = size == PORTRAIT ? QStringLiteral("_portrait.png") : QStringLiteral("_landscape.png");
+				Phone phone(size);
+				PhoneSession *session = connectFake(phone);
+				ChartItem *chart = showChart(phone);
+				for (const char *reg : { "SUPPLY_V", "TEMPERATURE" }) {
+					const int row = modelRow(session, QLatin1String(reg));
+					if (session && row >= 0) session->setPlot(row, true);
+				}
+				if (chart) chart->setWindowSeconds(10);
+				QTest::qWait(6000);
+				phone.tap(phone.item("cursorsButton"));
+				phone.settle(800);
+				phone.grab().save(name + QStringLiteral("cursors") + orient);
+				phone.tap(phone.item("tabMonitor"));
+				QTest::qWait(1500);
+				phone.grab().save(name + QStringLiteral("monitor") + orient);
+				phone.tap(phone.item("monitorPause"));
+				phone.settle(500);
+				phone.grab().save(name + QStringLiteral("paused") + orient);
+				if (session) session->disconnectLink();
+			}
+		}
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	language::apply(*qApp, QStringLiteral("en"));
+}
+
+/* ---- fixes from the review */
+
+/* a fast line's float channel with +inf, -inf and NaN among its values (fast::Store passes them on): the frame is made
+ * (the ticks' loop ended), the Y range stays finite, the value axis has its labels */
+void checkChartInfinite() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showFedChart(phone);
+	StreamDef def;
+	def.name = QStringLiteral("F");
+	def.addr = 0xDC00;
+	def.size = 1024;
+	def.rate = 100;
+	def.channels = { StreamChannel{ QStringLiteral("X"), RegType::F32, QStringLiteral("V") } };
+	auto store = std::make_shared<fast::Store>(def);
+	const int count = 1000;
+	QByteArray records(count * 4, '\0');
+	for (int i = 0; i < count; ++i) {
+		float v = float(std::sin(i / 50.0));
+		if (i % 97 == 10) v = std::numeric_limits<float>::infinity();
+		if (i % 97 == 40) v = -std::numeric_limits<float>::infinity();
+		if (i % 97 == 70) v = std::numeric_limits<float>::quiet_NaN();
+		std::memcpy(records.data() + i * 4, &v, 4);
+	}
+	store->append(0, count, records.constData(), true, 0);
+	store->mark(count, 10.0, 0.01); /* records 0 .. 999 at 0.0 .. 9.99 s */
+	qint64 polishes = 0;
+	if (chart) {
+		chart->setClock([] { return 10.0; });
+		chart->setWindowSeconds(10);
+		chart->addThemedLine(7, 0, QStringLiteral("F.X"), QStringLiteral("V"), store, 0);
+		polishes = chart->polishes();
+	}
+	chartFrame(phone, chart, 3);
+	const bool framed = chart && chart->polishes() > polishes;
+	const bool finite = chart && std::isfinite(chart->yLow()) && std::isfinite(chart->yHigh()) && chart->yHigh() > chart->yLow();
+	const int ticks = chart ? int(chart->valueTicks()->ticks().size()) : 0;
+	check(framed && finite && ticks >= 2 && ticks <= 64,
+			QStringLiteral("phone, chart: a fast line with +inf, -inf and NaN among its values: the frame is made, Y stays "
+					"finite (%1 .. %2), %3 value labels (the window's thread hung in the ticks' loop before)")
+					.arg(chart ? chart->yLow() : 0).arg(chart ? chart->yHigh() : 0).arg(ticks));
+}
+
+/* the registers' limit leaves room for the fast lines, as the desktop's (MainWindow::updatePlotLimit) */
+void checkFastPlotLimit() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	showChart(phone);
+	const bool loaded = session && session->loadMap(phone::mapsFolder() + QStringLiteral("/example_fast.json"));
+	const int before = session ? session->registers()->plotLimit() : -1;
+	if (session) {
+		session->setFastPlot(0, 0, true);
+		session->setFastPlot(0, 1, true);
+	}
+	const int withTwo = session ? session->registers()->plotLimit() : -1;
+	if (session) session->setFastPlot(0, 1, false);
+	const int withOne = session ? session->registers()->plotLimit() : -1;
+	if (session) {
+		session->setFastPlot(0, 0, false);
+		session->loadMap(phone::mapsFolder() + QStringLiteral("/example_device.json"));
+	}
+	const int max = RegisterModel::MAX_PLOTTED;
+	check(loaded && before == max && withTwo == max - 2 && withOne == max - 1,
+			QStringLiteral("phone, fast lines: the registers' limit leaves room for them, as on the desktop (%1 with none, "
+					"%2 with two fast lines, %3 with one; at most %4 lines together)").arg(before).arg(withTwo).arg(withOne)
+					.arg(max));
+}
+
+/* the view's buttons are no toggles: a tap on Live while live, or on 1 min at 60 s, keeps it chosen */
+void checkChartButtonsStay() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showChart(phone);
+	QQuickItem *live = phone.item("liveButton"), *minute = phone.item("window60");
+	const bool before = live && live->property("checked").toBool() && minute && minute->property("checked").toBool();
+	phone.tap(live);
+	phone.tap(minute);
+	const bool after = live && live->property("checked").toBool() && minute && minute->property("checked").toBool()
+			&& chart && chart->live() && chart->windowSeconds() == 60;
+	phone.tap(phone.item("holdButton"));
+	const bool holdShown = phone.item("holdButton")->property("checked").toBool() && !live->property("checked").toBool();
+	phone.tap(phone.item("holdButton"));
+	const bool holdStays = phone.item("holdButton")->property("checked").toBool() && chart && !chart->live();
+	check(before && after && holdShown && holdStays,
+			QStringLiteral("phone, chart: a tap on the chosen Live, 1 min or Hold keeps it chosen (they were toggles: the "
+					"chosen one went unmarked)"));
 }
 
 /* EVRE_PHONE_SHOT: both languages and themes. Portrait: the start (not connected) and its drawer, connected (the
@@ -3247,6 +3630,7 @@ int main(int argc, char **argv) {
 	if (qEnvironmentVariable("EVRE_PHONE_ONLY") == QLatin1String("shots")) {
 		savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		saveChartPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		saveToolsPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		QSettings().clear();
 		return 0;
 	}
@@ -3278,6 +3662,15 @@ int main(int argc, char **argv) {
 	RUN(checkChartFast);
 	RUN(checkChartEmpty);
 	RUN(checkChartLegendThemes);
+	RUN(checkCursorButtons);
+	RUN(checkCursorDrag);
+	RUN(checkCursorReadouts);
+	RUN(checkMonitorFrames);
+	RUN(checkMonitorEmpty);
+	RUN(checkToolsTexts);
+	RUN(checkChartInfinite);
+	RUN(checkFastPlotLimit);
+	RUN(checkChartButtonsStay);
 	RUN(checkLogScreen);
 	RUN(checkTcpLink);
 	RUN(checkRefusedLink);
@@ -3322,7 +3715,9 @@ int main(int argc, char **argv) {
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
-		saveChartPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		if (only.isEmpty() || only.contains(QLatin1String("Chart"))) saveChartPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		if (only.isEmpty() || only.contains(QLatin1String("Cursor")) || only.contains(QLatin1String("Monitor")))
+			saveToolsPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 	}
 	QCoreApplication::processEvents();
 	checkThreadWarnings();
