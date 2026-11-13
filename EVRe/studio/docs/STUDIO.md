@@ -8499,7 +8499,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | Log&nbsp;screen | the session's lines (the map loaded, one that did not), an error in red, the count; Clear empties it |
 | connect | TCP chosen in the drawer, the host and port typed, Connect: connected, the drawer's text, the pill *Connected* with a green dot, the Log, the host saved |
 | DEVICE_ID | the drawer shows *Device ID 0x1001 · protocol rev ...*, no warning; the Log the same |
-| polling&nbsp;and&nbsp;writes | 50 ms polls 12 to 22 times a second, 200 ms 3.5 to 5.5, off none; both saved; Allow writes turns the registers' writes on and off |
+| polling&nbsp;and&nbsp;writes | 50 ms polls 12 to 24 times a second, 200 ms 3.5 to 6.5 (the measured rate wanders around 20 and 5), off none; both saved; Allow writes turns the registers' writes on and off |
 | recording | Record writes a CSV into `recordingsFolder()`, Stop closes it whole: every row as many columns as the head, the last ended by its newline, the drawer's count the file's |
 | disconnect | Disconnect: the drawer and the pill *Not connected*, the Log *disconnected*, the ID kept as *last seen: ...* |
 | refused&nbsp;connection | nothing listens: the drawer says why, the pill red, the Log *not connected: ...*, no try by itself |

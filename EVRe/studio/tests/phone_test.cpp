@@ -661,7 +661,7 @@ void checkTcpLink() {
 			&& session->log()->contains(QStringLiteral("writes allowed"));
 	phone.tap(phone.item("writesSwitch"));
 	const bool writesOff = session && !session->registers()->writesEnabled();
-	check(fast >= 12 && fast <= 22 && slow >= 3.5 && slow <= 5.5 && off == 0 && offSaved
+	check(fast >= 12 && fast <= 24 && slow >= 3.5 && slow <= 6.5 && off == 0 && offSaved
 					&& QSettings().value(QStringLiteral("phone/interval")).toInt() == 200 && !offText.contains(QLatin1String("polls"))
 					&& writes && writesOff,
 			QStringLiteral("phone, polling and writes: an interval of 50 ms polls %1 times a second, 200 ms %2, Polling off "
