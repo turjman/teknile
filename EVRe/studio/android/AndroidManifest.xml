@@ -1,7 +1,9 @@
 <?xml version="1.0"?>
 <!-- EVRe Studio on Android (EVReStudioPhone, the phone's interface in Qt Quick): Qt's template (Qt 6.8,
      src/android/templates) with the package's name and USB host. The activity turns with the phone; each screen's
-     own orientation comes later from the program (A-16). -->
+     own orientation comes later from the program (A-16). The window is made smaller over the soft keyboard
+     (adjustResize): left unset, Qt 6.8 picks adjustPan for a field one line high, and the pan left the write sheet's
+     field under the keyboard on a Samsung phone (Main.qml's keyboardLift covers what is left). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.teknile.evrestudio"
     android:installLocation="auto"
@@ -27,6 +29,7 @@
             android:name="org.qtproject.qt.android.bindings.QtActivity"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -19,10 +19,13 @@
  * feed its lines from the test (a sine at 1 kHz), compare its bins with the desktop chart's binning (chart_data.h),
  * find the line's colour in the picture, and pinch, drag and double tap it.
  *
- * EVRE_PHONE_SHOT=<prefix> also saves the window's pictures for the eye: <prefix>_<en|ar>_<dark|light>_<portrait|
- * drawer|connected|log|landscape|registers|sheet|question|chartdemo|chartdemo_portrait>.png (not checks; connected, log,
- * registers, sheet and question with the fake device, chartdemo with the chart's test feed). EVRE_FAKE_PORT: the fake
- * device on another port than 1210 (a second run on the same PC).
+ * EVRE_PHONE_SHOT=<prefix> also saves the window's pictures for the eye: <prefix>_<en|ar>_<dark|light>_<name>.png,
+ * the names portrait, drawer, connected, drawerkb, log, registers, search, sheet, question, keyboard, enum and, at
+ * 915 x 412, land_registers, land_sheet, land_drawer, land_log, landscape, then chartdemo and chartdemo_portrait (not
+ * checks; all but the first two and the chart's with the fake device, chartdemo with the chart's test feed; drawerkb
+ * and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them without
+ * running the checks.
+ * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
  *
  * Exit code: 0 all passed, 1 a check failed. */
 #include <QClipboard>
@@ -32,6 +35,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QPainter>
 #include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
@@ -1874,9 +1878,359 @@ void checkPerfLine() {
 					"Registers screen shows (\"%1\"), a bar running at its top; none on the Log screen").arg(line));
 }
 
-/* EVRE_PHONE_SHOT: both languages and themes, portrait, the drawer open, connected (the drawer, the Log, the Registers
- * screen, the write sheet after a write, and asking first), landscape */
+/* ---- B.2b: the keyboard, the drawn icons, the touch targets, Arabic's start edge, the muted texts' contrast */
+
+/* the bottom of an item, in the window's logical pixels */
+double bottomOf(const QQuickItem *item) { return item ? item->mapToScene(QPointF(0, item->height())).y() : 1e9; }
+double topOf(const QQuickItem *item) { return item ? item->mapToScene(QPointF(0, 0)).y() : -1e9; }
+
+/* a keyboard of `height` stood for (Main.qml's testKeyboardHeight), a frame or two for the sheet and the drawer */
+void fakeKeyboard(const Phone &phone, double height) {
+	if (phone.window) phone.window->setProperty("testKeyboardHeight", height);
+	phone.settle(500);
+}
+
+/* the field typed in: focused as a tap on it would */
+void focusField(const Phone &phone, const char *name) {
+	if (QObject *field = phone.object(name)) QMetaObject::invokeMethod(field, "forceActiveFocus");
+	phone.settle(300);
+}
+
+/* the owner's bug (B.2 on a Samsung phone): the keyboard over the write sheet's field. The sheet's field and Apply, and
+ * the drawer's token field, stay above a keyboard (one stood for: a desktop has none), in portrait and landscape; and
+ * the sheet stays inside a window made smaller for the keyboard (Android's adjustResize) */
+void checkKeyboard() {
+	QStringList seen;
+	bool ok = true;
+	for (QSize size : { PORTRAIT, LANDSCAPE }) {
+		const double keyboard = size == PORTRAIT ? 330 : 190;
+		Phone phone(size);
+		PhoneSession *session = connectFake(phone);
+		if (session) session->setWritesEnabled(true);
+		openSheet(phone, QStringLiteral("FAN_SPEED"));
+		focusField(phone, "sheetField");
+		fakeKeyboard(phone, keyboard);
+		const double top = phone.window ? phone.window->height() - keyboard : 0;
+		const double field = bottomOf(phone.item("sheetField")), apply = bottomOf(phone.item("sheetApply"));
+		const double fieldTop = topOf(phone.item("sheetField"));
+		const bool sheetOk = sheetOpen(phone) && field <= top + 0.5 && apply <= top + 0.5 && fieldTop >= 0;
+		fakeKeyboard(phone, 0);
+		closeSheet(phone);
+
+		/* the window made smaller for the keyboard, as adjustResize does: the sheet at its new foot */
+		const QSize full = phone.window ? phone.window->size() : size;
+		openSheet(phone, QStringLiteral("FAN_SPEED"));
+		focusField(phone, "sheetField");
+		if (phone.window) phone.window->resize(full.width(), int(full.height() - keyboard));
+		phone.settle(600);
+		const double shortHeight = phone.window ? phone.window->height() : 0;
+		const double fieldShort = bottomOf(phone.item("sheetField")), applyShort = bottomOf(phone.item("sheetApply"));
+		const bool resizedOk = fieldShort <= shortHeight + 0.5 && applyShort <= shortHeight + 0.5
+				&& topOf(phone.item("sheetField")) >= 0;
+		closeSheet(phone);
+		if (phone.window) phone.window->resize(full);
+		phone.settle();
+		if (session) session->disconnectLink();
+
+		/* the drawer's token field, the lowest of its fields */
+		if (session) session->setTcp(true);
+		phone.openDrawer();
+		focusField(phone, "tokenField");
+		fakeKeyboard(phone, keyboard);
+		const double token = bottomOf(phone.item("tokenField")), tokenTop = topOf(phone.item("tokenField"));
+		const bool drawerOk = phone.drawerOpen() && token <= top + 0.5 && tokenTop >= 0;
+		fakeKeyboard(phone, 0);
+		phone.closeDrawer();
+
+		seen << QStringLiteral("%1, keyboard from %2: field %3, Apply %4, token %5; window %6 high: field %7, Apply %8")
+						.arg(sizeText(size)).arg(top).arg(field).arg(apply).arg(token).arg(shortHeight).arg(fieldShort).arg(applyShort);
+		ok = ok && sheetOk && resizedOk && drawerOk;
+	}
+	check(ok, QStringLiteral("phone, keyboard: the write sheet's field and Apply and the drawer's token field above the soft "
+			"keyboard, and the sheet inside a window made smaller for it (%1)").arg(seen.join(QStringLiteral("; "))));
+}
+
+/* the search field's clear cross: drawn, 48 dp, shown only with a text; a tap empties the field and shows them all */
+void checkSearchClear() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	RegisterList *list = session ? session->registerList() : nullptr;
+	QQuickItem *clear = phone.item("searchClear");
+	const bool hiddenEmpty = clear && !clear->isVisible();
+	search(phone, QStringLiteral("fan"));
+	const bool shown = clear && clear->isVisible() && clear->width() >= 48 && clear->height() >= 48;
+	int strokes = 0;
+	forEachItem(phone.item("clearIcon"), [&](QQuickItem *item) { strokes += item->isVisible() && item->inherits("QQuickRectangle"); });
+	const bool magnifier = phone.item("searchIcon") && phone.item("searchIcon")->isVisible();
+	const QString label = clear ? clear->property("text").toString() : QStringLiteral("?");
+	phone.tap(clear);
+	const bool emptied = phone.text("registerSearch").isEmpty() && list && list->count() == list->total() && clear
+			&& !clear->isVisible();
+	check(hiddenEmpty && shown && strokes == 2 && magnifier && label.isEmpty() && emptied,
+			QStringLiteral("phone, search: the magnifier drawn at its start; the clear cross drawn (%1 strokes, no text), 48 dp, "
+					"shown only while the field holds a text; a tap empties the field and shows every register").arg(strokes));
+}
+
+/* no link: the card at the top of the Registers screen says how to connect, its button opens the drawer */
+void checkOfflineButton() {
+	Phone phone(PORTRAIT);
+	QQuickItem *card = phone.item("registersOffline");
+	const bool shown = card && card->isVisible() && !phone.text("offlineText").isEmpty();
+	QQuickItem *button = phone.item("registersConnect");
+	const bool target = button && button->height() >= 48;
+	phone.tap(button);
+	(void) QTest::qWaitFor([&] { return phone.drawerOpen(); }, 3000);
+	const bool opened = phone.drawerOpen();
+	check(shown && target && opened, QStringLiteral("phone, not connected: the Registers screen says how to connect (\"%1\") and "
+			"its Connect button (48 dp) opens the Connect drawer").arg(phone.text("offlineText")));
+}
+
+/* the tab bar: an icon drawn over each name (beside it in landscape), no symbol glyph; the chosen tab in the accent on
+ * its pill, the others muted */
+void checkTabIcons() {
+	QStringList bad;
+	for (QSize size : { PORTRAIT, LANDSCAPE }) {
+		Phone phone(size);
+		phone.tap(phone.item("tabLog"));
+		const QImage image = phone.grab();
+		const QColor surface = themeColor(&ThemeColors::surface);
+		for (const char *name : { "tabRegisters", "tabChart", "tabMonitor", "tabLog" }) {
+			QQuickItem *tab = phone.item(name);
+			QQuickItem *icon = within(tab, QStringLiteral("tabIcon"));
+			QQuickItem *label = within(tab, QStringLiteral("tabName"));
+			int strokes = 0;
+			forEachItem(icon, [&](QQuickItem *item) { strokes += item->isVisible() && item->inherits("QQuickRectangle"); });
+			bool glyph = false;
+			forEachItem(tab, [&](QQuickItem *item) {
+				if (item->inherits("QQuickText") && item->property("text").toString() != tab->property("text").toString()
+						&& !item->property("text").toString().isEmpty())
+					glyph = true;
+			});
+			/* the icon's pixels: some far from the bar's surface */
+			int inked = 0;
+			if (icon) {
+				const QPointF a = icon->mapToScene(QPointF(0, 0));
+				for (int y = 0; y < int(icon->height()); ++y)
+					for (int x = 0; x < int(icon->width()); ++x)
+						inked += distance(Phone::pixel(image, a + QPointF(x + 0.5, y + 0.5)), surface) > 60;
+			}
+			const bool chosen = QLatin1String(name) == QLatin1String("tabLog");
+			const QColor want = themeColor(chosen ? &ThemeColors::accent : &ThemeColors::muted);
+			const bool coloured = icon && label && near(icon->property("color").value<QColor>(), want, 2)
+					&& near(label->property("color").value<QColor>(), want, 2);
+			const bool placed = icon && label && (size == PORTRAIT ? bottomOf(icon) <= topOf(label) + 1
+					: icon->mapToScene(QPointF(icon->width(), 0)).x() <= label->mapToScene(QPointF(0, 0)).x() + 1);
+			if (!icon || !icon->isVisible() || icon->width() < 20 || strokes < 3 || glyph || inked < 15 || !coloured || !placed)
+				bad << QStringLiteral("%1 %2: %3 strokes, %4 inked px%5%6%7").arg(sizeText(size), QLatin1String(name)).arg(strokes)
+								.arg(inked).arg(glyph ? ", a glyph" : "").arg(coloured ? "" : ", colour").arg(placed ? "" : ", placed");
+		}
+	}
+	check(bad.isEmpty(), QStringLiteral("phone, tab icons: each tab's icon drawn (rectangles, no glyph) over its name, beside it "
+			"in landscape; the chosen tab's in the accent, the others muted %1").arg(bad.join(QStringLiteral(" | "))));
+}
+
+/* the buttons on the cards, in the write sheet and around them: at least 48 dp high and wide (Material's own) */
+void checkTouchTargets() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	if (session) session->setWritesEnabled(true);
+	QStringList small;
+	auto measure = [&](QQuickItem *item, const QString &what) {
+		if (!item || !item->isVisible()) {
+			small << what + QStringLiteral(" (not shown)");
+			return;
+		}
+		if (item->width() < 47.5 || item->height() < 47.5)
+			small << QStringLiteral("%1 %2x%3").arg(what).arg(item->width()).arg(item->height());
+	};
+	measure(phone.item("menuButton"), QStringLiteral("menu"));
+	measure(phone.item("linkPill"), QStringLiteral("pill"));
+	search(phone, QStringLiteral("SETPOINT"));
+	measure(within(card(phone, QStringLiteral("SETPOINT")), QStringLiteral("writeButton")), QStringLiteral("Write"));
+	measure(within(card(phone, QStringLiteral("SETPOINT")), QStringLiteral("moreButton")), QStringLiteral("more"));
+	measure(phone.item("searchClear"), QStringLiteral("clear"));
+	openSheet(phone, QStringLiteral("FAN_SPEED"));
+	measure(phone.item("sheetApply"), QStringLiteral("Apply"));
+	measure(phone.item("sheetClose"), QStringLiteral("Close"));
+	phone.type("sheetField", QStringLiteral("150"));
+	phone.tap(phone.item("sheetApply"));
+	measure(phone.item("sheetWriteAnyway"), QStringLiteral("Write anyway"));
+	measure(phone.item("sheetCancel"), QStringLiteral("Cancel"));
+	closeSheet(phone);
+	openSheet(phone, QStringLiteral("LED_MODE"));
+	measure(phone.item("sheetChoice_2"), QStringLiteral("a choice"));
+	closeSheet(phone);
+	for (const char *tab : { "tabRegisters", "tabChart", "tabMonitor", "tabLog" }) measure(phone.item(tab), QLatin1String(tab));
+	check(small.isEmpty(), QStringLiteral("phone, touch targets: the menu, the pill, a card's Write and \"⋯\", search's clear, "
+			"the sheet's Apply, Close, Write anyway, Cancel and an enum's choice, the tabs: each at least 48 x 48 dp %1")
+			.arg(small.join(QStringLiteral(" | "))));
+	if (session) session->disconnectLink();
+}
+
+/* an enum register's sheet: its values as a list, one chosen; a tap chooses another, Apply writes it */
+void checkEnumChoices() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	if (session) session->setWritesEnabled(true);
+	openSheet(phone, QStringLiteral("LED_MODE"));
+	const bool list = phone.item("sheetChoices") && phone.item("sheetChoices")->isVisible() && phone.item("sheetField")
+			&& !phone.item("sheetField")->isVisible();
+	int rows = 0;
+	forEachItem(phone.item("sheetChoices"), [&](QQuickItem *item) { rows += item->objectName().startsWith(QLatin1String("sheetChoice_")); });
+	const QString before = modelValue(session, QStringLiteral("LED_MODE"));
+	const QString wanted = before.startsWith(QLatin1String("blink")) ? QStringLiteral("1") : QStringLiteral("2");
+	phone.tap(phone.item(wanted == QLatin1String("2") ? "sheetChoice_2" : "sheetChoice_1"));
+	const bool picked = phone.object("writeSheet") && phone.object("writeSheet")->property("chosen").toString() == wanted;
+	phone.tap(phone.item("sheetApply"));
+	const bool written = QTest::qWaitFor([&] {
+		return session && session->log()->contains(QStringLiteral("written: LED_MODE = %1").arg(wanted));
+	}, 3000);
+	check(list && rows == 3 && picked && written, QStringLiteral("phone, enum: LED_MODE's sheet lists its 3 values to choose from "
+			"(no field); a tap chooses %1, Apply writes it (was \"%2\")").arg(wanted, before));
+	if (session) session->disconnectLink();
+}
+
+/* the visible Texts with room to spare that are not at the start edge (in Arabic: the right), but the values, units and
+ * other texts kept left to right on purpose */
+QStringList notAtStart(QQuickWindow *window, const QString &where) {
+	static const QStringList leftToRight{ QStringLiteral("regValue"), QStringLiteral("regUnit"), QStringLiteral("sheetUnit") };
+	QStringList found;
+	forEachItem(topItem(window), [&](QQuickItem *item) {
+		if (!item->inherits("QQuickText") || !item->isVisible() || leftToRight.contains(item->objectName())) return;
+		const QString text = item->property("text").toString();
+		if (text.isEmpty() || item->width() <= item->property("contentWidth").toDouble() + 2) return;
+		const int align = item->property("effectiveHorizontalAlignment").toInt();
+		if (align != Qt::AlignRight && align != Qt::AlignHCenter)
+			found << QStringLiteral("%1: \"%2\" (%3)").arg(where, text.left(24), item->objectName());
+	});
+	return found;
+}
+
+void checkArabicStart() {
+	language::apply(*qApp, QStringLiteral("ar"));
+	QStringList bad;
+	{
+		Phone phone(PORTRAIT);
+		bad << notAtStart(phone.window, QStringLiteral("not connected"));
+		PhoneSession *session = connectFake(phone);
+		if (session) session->setWritesEnabled(true);
+		phone.settle(600);
+		bad << notAtStart(phone.window, QStringLiteral("registers"));
+		openSheet(phone, QStringLiteral("FAN_SPEED"));
+		phone.type("sheetField", QStringLiteral("150"));
+		phone.tap(phone.item("sheetApply"));
+		bad << notAtStart(phone.window, QStringLiteral("sheet"));
+		closeSheet(phone);
+		search(phone, QString());
+		phone.openDrawer();
+		bad << notAtStart(phone.window, QStringLiteral("drawer"));
+		phone.closeDrawer();
+		phone.tap(phone.item("tabLog"));
+		bad << notAtStart(phone.window, QStringLiteral("log"));
+		if (session) session->disconnectLink();
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	bad.removeDuplicates();
+	check(bad.isEmpty(), QStringLiteral("phone, Arabic: every text with room to spare at the start edge (the right), the "
+			"map's Latin names too, on the Registers screen, in the sheet, the drawer and the Log; the values and units left "
+			"to right %1").arg(bad.join(QStringLiteral(" | "))));
+}
+
+/* WCAG's contrast of two colours */
+double contrast(const QColor &a, const QColor &b) {
+	auto lum = [](const QColor &c) {
+		auto ch = [](double v) { return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+		return 0.2126 * ch(c.redF()) + 0.7152 * ch(c.greenF()) + 0.0722 * ch(c.blueF());
+	};
+	const double x = lum(a), y = lum(b);
+	return (std::max(x, y) + 0.05) / (std::min(x, y) + 0.05);
+}
+
+/* the muted texts in view: each one's colour against what is drawn under it (the commonest colour of its box in the
+ * picture), and its letters there (pixels far from that); the lowest contrast found, and any under 4.5:1 */
+void mutedContrast(const Phone &phone, const QString &where, double &lowest, QStringList &bad, int &seen,
+		QQuickItem *layer = nullptr) {
+	const QImage image = phone.grab();
+	const QColor muted = themeColor(&ThemeColors::muted);
+	const QRectF view(0, 0, phone.window->width(), phone.window->height());
+	/* with a popup open, only its own texts: the rest lies under its scrim or under it */
+	forEachItem(layer ? layer : topItem(phone.window), [&](QQuickItem *item) {
+		if (!item->inherits("QQuickText") || !item->isVisible() || item->opacity() < 0.99) return;
+		if (item->property("text").toString().isEmpty() || !near(item->property("color").value<QColor>(), muted, 2)) return;
+		const QRectF box = item->mapRectToScene(QRectF(0, 0, std::min(item->width(), item->property("contentWidth").toDouble()),
+				std::min(item->height(), item->property("contentHeight").toDouble())));
+		if (!view.contains(box) || box.width() < 4) return;
+		QHash<QRgb, int> counts;
+		for (double y = box.top() + 0.5; y < box.bottom(); y += 1)
+			for (double x = box.left() + 0.5; x < box.right(); x += 1) counts[Phone::pixel(image, QPointF(x, y)).rgb()]++;
+		QRgb under = 0;
+		int most = 0;
+		for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
+			if (it.value() > most) {
+				most = it.value();
+				under = it.key();
+			}
+		int ink = 0;
+		for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
+			ink += distance(QColor(it.key()), QColor(under)) > 60 ? it.value() : 0;
+		if (ink == 0) return; /* covered: the letters are not in the picture */
+		++seen;
+		const double ratio = contrast(muted, QColor(under));
+		lowest = std::min(lowest, ratio);
+		if (ratio < 4.5)
+			bad << QStringLiteral("%1: \"%2\" %3 on %4").arg(where, item->property("text").toString().left(20)).arg(ratio, 0, 'f', 2)
+							.arg(QColor(under).name());
+	});
+}
+
+void checkMutedContrast() {
+	QStringList bad, lows;
+	int seen = 0;
+	for (bool dark : { true, false }) {
+		QSettings().setValue(QStringLiteral("ui/dark"), dark);
+		double lowest = 99;
+		{
+			Phone phone(PORTRAIT);
+			mutedContrast(phone, QStringLiteral("not connected"), lowest, bad, seen);
+			PhoneSession *session = connectFake(phone);
+			if (session) session->setWritesEnabled(true);
+			phone.settle(600);
+			mutedContrast(phone, QStringLiteral("registers"), lowest, bad, seen);
+			openSheet(phone, QStringLiteral("FAN_SPEED"));
+			QQuickItem *sheetFlick = phone.item("sheetFlick");
+			mutedContrast(phone, QStringLiteral("sheet"), lowest, bad, seen, sheetFlick ? sheetFlick->parentItem() : nullptr);
+			closeSheet(phone);
+			phone.openDrawer();
+			QQuickItem *drawerFlick = phone.item("drawerFlick");
+			mutedContrast(phone, QStringLiteral("drawer"), lowest, bad, seen, drawerFlick ? drawerFlick->parentItem() : nullptr);
+			phone.closeDrawer();
+			phone.tap(phone.item("tabLog"));
+			mutedContrast(phone, QStringLiteral("log"), lowest, bad, seen);
+			if (session) session->disconnectLink();
+		}
+		lows << QStringLiteral("%1 %2").arg(dark ? "dark" : "light").arg(lowest, 0, 'f', 2);
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	check(bad.isEmpty() && seen >= 20, QStringLiteral("phone, contrast: every muted text in the picture at least 4.5:1 against "
+			"what is drawn under it, dark and light (%1 texts, lowest %2) %3")
+			.arg(seen).arg(lows.join(QStringLiteral(", ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* EVRE_PHONE_SHOT: both languages and themes. Portrait: the start (not connected) and its drawer, connected (the
+ * drawer, the Log, the Registers screen, a search, the write sheet after a write, asking first, an enum's list, the
+ * sheet and the drawer over a keyboard stood for, drawn grey); landscape: the Registers screen, the drawer, the sheet,
+ * the Log and the Chart */
 void savePictures(const QString &prefix) {
+	/* the window as drawn, the keyboard stood for drawn over its part */
+	auto save = [](const Phone &phone, const QString &file, double keyboard = 0) {
+		QImage image = phone.grab();
+		if (keyboard > 0) {
+			/* the painter takes the picture's dpr itself: logical pixels */
+			QPainter painter(&image);
+			painter.fillRect(QRectF(0, phone.window->height() - keyboard, phone.window->width(), keyboard), QColor(0x80, 0x84, 0x8C));
+		}
+		image.save(file);
+	};
 	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 		language::apply(*qApp, code);
 		for (bool dark : { true, false }) {
@@ -1884,9 +2238,9 @@ void savePictures(const QString &prefix) {
 			const QString name = QStringLiteral("%1_%2_%3_").arg(prefix, code, dark ? "dark" : "light");
 			{
 				Phone phone(PORTRAIT);
-				phone.grab().save(name + QStringLiteral("portrait.png"));
+				save(phone, name + QStringLiteral("portrait.png"));
 				phone.openDrawer();
-				phone.grab().save(name + QStringLiteral("drawer.png"));
+				save(phone, name + QStringLiteral("drawer.png"));
 			}
 			{
 				/* connected to the fake device: the drawer, then the Log */
@@ -1897,33 +2251,64 @@ void savePictures(const QString &prefix) {
 					(void) QTest::qWaitFor([&] { return session->deviceId() >= 0; }, 3000);
 				}
 				phone.openDrawer();
-				phone.grab().save(name + QStringLiteral("connected.png"));
+				save(phone, name + QStringLiteral("connected.png"));
+				focusField(phone, "tokenField");
+				fakeKeyboard(phone, 330);
+				save(phone, name + QStringLiteral("drawerkb.png"), 330);
+				fakeKeyboard(phone, 0);
 				phone.closeDrawer();
 				phone.tap(phone.item("tabLog"));
-				phone.grab().save(name + QStringLiteral("log.png"));
+				save(phone, name + QStringLiteral("log.png"));
 			}
 			{
-				/* the Registers screen live, a write's sheet answered, then asking first */
+				/* the Registers screen live, a search, a write's sheet answered, then asking first, an enum, the keyboard */
 				Phone phone(PORTRAIT);
 				PhoneSession *session = connectFake(phone);
 				if (session) session->setWritesEnabled(true);
 				phone.settle(800);
-				phone.grab().save(name + QStringLiteral("registers.png"));
+				save(phone, name + QStringLiteral("registers.png"));
+				search(phone, QStringLiteral("0xd08"));
+				phone.settle(300);
+				save(phone, name + QStringLiteral("search.png"));
 				openSheet(phone, QStringLiteral("FAN_SPEED"));
 				phone.type("sheetField", QStringLiteral("60"));
 				phone.tap(phone.item("sheetApply"));
 				(void) QTest::qWaitFor([&] { return !phone.object("writeSheet")->property("waiting").toBool(); }, 3000);
 				phone.settle(600);
-				phone.grab().save(name + QStringLiteral("sheet.png"));
+				save(phone, name + QStringLiteral("sheet.png"));
 				phone.type("sheetField", QStringLiteral("150"));
 				phone.tap(phone.item("sheetApply"));
-				phone.grab().save(name + QStringLiteral("question.png"));
+				save(phone, name + QStringLiteral("question.png"));
+				closeSheet(phone);
+				openSheet(phone, QStringLiteral("FAN_SPEED"));
+				focusField(phone, "sheetField");
+				fakeKeyboard(phone, 330);
+				save(phone, name + QStringLiteral("keyboard.png"), 330);
+				fakeKeyboard(phone, 0);
+				closeSheet(phone);
+				openSheet(phone, QStringLiteral("LED_MODE"));
+				save(phone, name + QStringLiteral("enum.png"));
+				closeSheet(phone);
 				if (session) session->disconnectLink();
 			}
 			{
 				Phone phone(LANDSCAPE);
+				PhoneSession *session = connectFake(phone);
+				if (session) session->setWritesEnabled(true);
+				phone.settle(800);
+				save(phone, name + QStringLiteral("land_registers.png"));
+				openSheet(phone, QStringLiteral("FAN_SPEED"));
+				save(phone, name + QStringLiteral("land_sheet.png"));
+				closeSheet(phone);
+				search(phone, QString());
+				phone.openDrawer();
+				save(phone, name + QStringLiteral("land_drawer.png"));
+				phone.closeDrawer();
+				phone.tap(phone.item("tabLog"));
+				save(phone, name + QStringLiteral("land_log.png"));
 				phone.tap(phone.item("tabChart"));
-				phone.grab().save(name + QStringLiteral("landscape.png"));
+				save(phone, name + QStringLiteral("landscape.png"));
+				if (session) session->disconnectLink();
 			}
 			/* the chart's test feed, 12 s in, at both sizes */
 			for (QSize size : { LANDSCAPE, PORTRAIT }) {
@@ -1952,6 +2337,12 @@ int main(int argc, char **argv) {
 	QSettings().clear();
 	language::apply(app, QStringLiteral("en"));
 	phone::setStyle();
+	/* the pictures alone, without the checks (EVRE_PHONE_SHOT with EVRE_PHONE_ONLY=shots): for the eye, quickly */
+	if (qEnvironmentVariable("EVRE_PHONE_ONLY") == QLatin1String("shots")) {
+		savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		QSettings().clear();
+		return 0;
+	}
 
 	checkLoads();
 	checkTabs();
@@ -1992,6 +2383,14 @@ int main(int argc, char **argv) {
 	checkRegisterTexts();
 	checkRegisterThemes();
 	checkPerfLine();
+	checkKeyboard();
+	checkSearchClear();
+	checkOfflineButton();
+	checkTabIcons();
+	checkTouchTargets();
+	checkEnumChoices();
+	checkArabicStart();
+	checkMutedContrast();
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 	QCoreApplication::processEvents();
 	checkThreadWarnings();

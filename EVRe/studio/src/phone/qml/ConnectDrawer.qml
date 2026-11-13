@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-// The Connect drawer, opened by the header's menu button or its pill: the link (a USB device, or a TCP host, port and
-// token; the baud rate), the map, Connect / Disconnect with the link's state and the device's ID under it, Reconnect by
-// itself, polling and its interval, Allow writes, Record; at the bottom the theme and the language. It slides in from
-// the start edge (the left; the right in Arabic) and scrolls when it is taller than the screen (landscape).
+// The Connect drawer, opened by the header's menu button or its pill, in sections under headers. Link: USB or TCP (a
+// USB device and the baud rate, or a host, port and token), Connect / Disconnect (the primary button), the link's
+// state by a dot in its colour, Reconnect by itself. Device: the map, the device's ID, Allow writes. Polling: on or
+// off and its interval. Recording: Record. Display: the theme and the language, at the bottom. It slides in from the
+// start edge (the left; the right in Arabic) and scrolls when it is taller than the screen (landscape); a field typed
+// in is scrolled above the soft keyboard (keyboardLift, Main.qml).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -13,6 +15,7 @@ import EVRe.Phone
 Drawer {
     id: drawer
     property bool rtl: false
+    property real keyboardLift: 0
 
     edge: rtl ? Qt.RightEdge : Qt.LeftEdge
     background: Rectangle { color: PhoneTheme.surface }
@@ -36,10 +39,52 @@ Drawer {
         }
     }
     readonly property bool linkBusy: PhoneSession.wantConnected
+    readonly property bool linkUp: PhoneSession.wantConnected || PhoneSession.state === PhoneSession.Connected
 
+    // the field typed in, scrolled into the view above the keyboard
+    property Item typing: null
+    function reveal() {
+        const item = drawer.typing
+        if (!item || !item.activeFocus) return
+        const top = item.mapToItem(flick.contentItem, 0, 0).y - 32
+        const bottom = item.mapToItem(flick.contentItem, 0, item.height).y + 16
+        const most = Math.max(0, flick.contentHeight - flick.height)
+        let y = flick.contentY
+        if (bottom - y > flick.height) y = bottom - flick.height
+        if (top < y) y = top
+        flick.contentY = Math.max(0, Math.min(y, most))
+    }
+    onKeyboardLiftChanged: Qt.callLater(reveal)
+
+    // a section's header: its name in the accent, a line over it (none over the first)
+    component Section: ColumnLayout {
+        property alias text: sectionName.text
+        property bool first: false
+        Layout.fillWidth: true
+        Layout.topMargin: first ? 0 : 12
+        spacing: 12
+        Rectangle {
+            Layout.fillWidth: true
+            visible: !parent.first
+            implicitHeight: 1
+            color: PhoneTheme.border
+        }
+        Label {
+            id: sectionName
+            objectName: "drawerSection"
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignLeft
+            color: PhoneTheme.accent
+            font.pixelSize: 13
+            font.weight: Font.DemiBold
+            font.letterSpacing: 0.4
+            elide: Text.ElideRight
+        }
+    }
     // a title over a control: muted, small
     component Caption: Label {
         Layout.fillWidth: true
+        horizontalAlignment: Text.AlignLeft
         color: PhoneTheme.muted
         font.pixelSize: 13
         elide: Text.ElideRight
@@ -47,11 +92,13 @@ Drawer {
     // a line of text that wraps
     component Note: Label {
         Layout.fillWidth: true
+        horizontalAlignment: Text.AlignLeft
         font.pixelSize: 14
         wrapMode: Text.Wrap
     }
-    // a setting's name and its switch
+    // a setting's name and its switch at the end edge, the name a target too (48 high)
     component SwitchRow: RowLayout {
+        id: switchRow
         property alias text: name.text
         property alias checked: toggle.checked
         property alias switchName: toggle.objectName
@@ -61,21 +108,34 @@ Drawer {
         Label {
             id: name
             Layout.fillWidth: true
+            Layout.preferredHeight: 48
+            horizontalAlignment: Text.AlignLeft
+            verticalAlignment: Text.AlignVCenter
             color: PhoneTheme.text
             font.pixelSize: 16
             elide: Text.ElideRight
+            TapHandler {
+                onTapped: {
+                    toggle.toggle()
+                    switchRow.toggled(toggle.checked)
+                }
+            }
         }
         Switch {
             id: toggle
+            Layout.rightMargin: -6
             Accessible.name: name.text
-            onToggled: parent.toggled(checked)
+            onToggled: switchRow.toggled(checked)
         }
     }
-    // a line between groups
-    component Separator: Rectangle {
+    // a field's way into the view above the keyboard
+    component Field: TextField {
+        id: field
         Layout.fillWidth: true
-        implicitHeight: 1
-        color: PhoneTheme.border
+        onActiveFocusChanged: if (activeFocus) {
+            drawer.typing = field
+            Qt.callLater(drawer.reveal)
+        }
     }
 
     FileDialog {
@@ -89,8 +149,10 @@ Drawer {
         id: flick
         objectName: "drawerFlick"
         anchors.fill: parent
+        // the keyboard's part of the drawer stays empty
+        anchors.bottomMargin: drawer.keyboardLift
         contentWidth: width
-        contentHeight: column.height + 32
+        contentHeight: column.height + 40
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollIndicator.vertical: ScrollIndicator {}
@@ -100,47 +162,73 @@ Drawer {
 
         ColumnLayout {
             id: column
-            x: 16
-            y: 16
-            width: flick.width - 32
-            // at least the drawer's height: the theme and the language stay at its bottom
-            height: Math.max(implicitHeight, flick.height - 32)
-            spacing: 10
+            x: 20
+            y: 20
+            width: flick.width - 40
+            // at least the drawer's height: the display's settings stay at its bottom
+            height: Math.max(implicitHeight, flick.height - 40)
+            spacing: 8
 
             Label {
                 objectName: "drawerTitle"
                 Layout.fillWidth: true
+                Layout.bottomMargin: 8
+                horizontalAlignment: Text.AlignLeft
                 text: qsTr("Connect")
                 color: PhoneTheme.text
-                font.pixelSize: 20
+                font.pixelSize: 22
                 font.weight: Font.Medium
                 elide: Text.ElideRight
             }
 
-            // USB or TCP: two buttons, one of them chosen; while a link is wanted only the chosen one stays lit
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
+            Section { text: qsTr("Link"); first: true }
 
-                Button {
-                    objectName: "linkUsb"
-                    Layout.fillWidth: true
-                    // white on the accent's fill (5.2:1); on the lighter accent it read 3:1
-                    Material.accent: PhoneTheme.accentFill
-                    text: qsTr("USB")
-                    // lit, not checkable: Material's checked look is a lighter fill, too light under white
-                    highlighted: !PhoneSession.tcp
-                    enabled: highlighted || !drawer.linkBusy
-                    onClicked: PhoneSession.tcp = false
-                }
-                Button {
-                    objectName: "linkTcp"
-                    Layout.fillWidth: true
-                    Material.accent: PhoneTheme.accentFill
-                    text: qsTr("TCP")
-                    highlighted: PhoneSession.tcp
-                    enabled: highlighted || !drawer.linkBusy
-                    onClicked: PhoneSession.tcp = true
+            // USB or TCP: a segmented choice, the chosen half filled; while a link is wanted only that one stays lit
+            Rectangle {
+                objectName: "linkChoice"
+                Layout.fillWidth: true
+                implicitHeight: 48
+                radius: 24
+                color: "transparent"
+                border.color: PhoneTheme.control
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    spacing: 0
+                    Button {
+                        objectName: "linkUsb"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        topInset: 3
+                        bottomInset: 3
+                        leftInset: 3
+                        rightInset: 3
+                        // white on the accent's fill (5.2:1); on the lighter accent it read 3:1
+                        Material.accent: PhoneTheme.accentFill
+                        Material.foreground: PhoneTheme.text
+                        text: qsTr("USB")
+                        // lit, not checkable: Material's checked look is a lighter fill, too light under white
+                        highlighted: !PhoneSession.tcp
+                        flat: !highlighted
+                        enabled: highlighted || !drawer.linkBusy
+                        onClicked: PhoneSession.tcp = false
+                    }
+                    Button {
+                        objectName: "linkTcp"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        topInset: 3
+                        bottomInset: 3
+                        leftInset: 3
+                        rightInset: 3
+                        Material.accent: PhoneTheme.accentFill
+                        Material.foreground: PhoneTheme.text
+                        text: qsTr("TCP")
+                        highlighted: PhoneSession.tcp
+                        flat: !highlighted
+                        enabled: highlighted || !drawer.linkBusy
+                        onClicked: PhoneSession.tcp = true
+                    }
                 }
             }
 
@@ -148,6 +236,7 @@ Drawer {
             ColumnLayout {
                 objectName: "usbPanel"
                 Layout.fillWidth: true
+                Layout.topMargin: 4
                 visible: !PhoneSession.tcp
                 enabled: !drawer.linkBusy
                 spacing: 6
@@ -169,6 +258,7 @@ Drawer {
                         objectName: "portText"
                         leftPadding: 12
                         rightPadding: 12
+                        horizontalAlignment: Text.AlignLeft
                         text: portBox.displayText
                         color: PhoneTheme.text
                         font.pixelSize: 15
@@ -182,7 +272,10 @@ Drawer {
                     text: qsTr("No USB device found: plug the board in (through a USB OTG adapter).")
                     color: PhoneTheme.muted
                 }
-                Caption { text: qsTr("Baud rate") }
+                Caption {
+                    Layout.topMargin: 4
+                    text: qsTr("Baud rate")
+                }
                 ComboBox {
                     id: baudBox
                     objectName: "baudBox"
@@ -192,6 +285,7 @@ Drawer {
                     contentItem: Label {
                         leftPadding: 12
                         rightPadding: 12
+                        horizontalAlignment: Text.AlignLeft
                         text: baudBox.displayText
                         color: PhoneTheme.text
                         font.pixelSize: 15
@@ -209,21 +303,21 @@ Drawer {
             ColumnLayout {
                 objectName: "tcpPanel"
                 Layout.fillWidth: true
+                Layout.topMargin: 4
                 visible: PhoneSession.tcp
                 enabled: !drawer.linkBusy
                 spacing: 6
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: 12
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
                         Caption { text: qsTr("Host") }
-                        TextField {
+                        Field {
                             id: hostField
                             objectName: "hostField"
-                            Layout.fillWidth: true
                             text: PhoneSession.host
                             inputMethodHints: Qt.ImhUrlCharacters | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                         }
@@ -232,26 +326,86 @@ Drawer {
                         Layout.preferredWidth: 96
                         spacing: 6
                         Caption { text: qsTr("Port") }
-                        TextField {
+                        Field {
                             id: portField
                             objectName: "portField"
-                            Layout.fillWidth: true
                             text: PhoneSession.port
                             inputMethodHints: Qt.ImhDigitsOnly
                             validator: IntValidator { bottom: 1; top: 65535 }
                         }
                     }
                 }
-                Caption { text: qsTr("Token (not stored)") }
-                TextField {
+                Caption {
+                    Layout.topMargin: 4
+                    text: qsTr("Token (not stored)")
+                }
+                Field {
                     id: tokenField
                     objectName: "tokenField"
-                    Layout.fillWidth: true
                     echoMode: TextInput.Password
                     inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
                 }
             }
 
+            // the primary button: Connect, or Disconnect (Cancel, Stop reconnecting) in the danger's fill
+            Button {
+                id: connectButton
+                objectName: "connectButton"
+                Layout.fillWidth: true
+                Layout.topMargin: 8
+                implicitHeight: 52
+                highlighted: true
+                Material.accent: drawer.linkUp ? PhoneTheme.badFill : PhoneTheme.accentFill
+                text: PhoneSession.connectText
+                font.pixelSize: 15
+                enabled: drawer.linkBusy || PhoneSession.state === PhoneSession.Connected || PhoneSession.tcp
+                         || PhoneSession.ports.count > 0
+                onClicked: {
+                    if (PhoneSession.wantConnected || PhoneSession.state === PhoneSession.Connected)
+                        PhoneSession.disconnectLink()
+                    else if (PhoneSession.tcp)
+                        PhoneSession.connectTcp(hostField.text, parseInt(portField.text), tokenField.text)
+                    else
+                        PhoneSession.connectUsb(portBox.currentValue, PhoneSession.baudRates[baudBox.currentIndex])
+                }
+            }
+            // what the link is, or why it is not, by a dot in the state's colour
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+                spacing: 10
+                Rectangle {
+                    objectName: "linkDot"
+                    Layout.alignment: Qt.AlignTop
+                    Layout.topMargin: 6
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: PhoneSession.state === PhoneSession.Off ? PhoneTheme.muted : drawer.stateColor
+                }
+                Note {
+                    objectName: "linkText"
+                    text: PhoneSession.linkText
+                    color: drawer.stateColor
+                    font.weight: Font.Medium
+                }
+            }
+            Note {
+                objectName: "linkDetail"
+                Layout.leftMargin: 20
+                visible: text.length > 0
+                text: PhoneSession.linkDetail
+                color: PhoneTheme.muted
+                font.pixelSize: 13
+            }
+            SwitchRow {
+                text: qsTr("Reconnect by itself")
+                switchName: "reconnectSwitch"
+                checked: PhoneSession.autoReconnect
+                onToggled: on => PhoneSession.autoReconnect = on
+            }
+
+            Section { text: qsTr("Device") }
             // the map: one of the app's, or a file
             Caption { text: qsTr("Map") }
             RowLayout {
@@ -269,6 +423,7 @@ Drawer {
                         objectName: "mapText"
                         leftPadding: 12
                         rightPadding: 12
+                        horizontalAlignment: Text.AlignLeft
                         text: mapBox.displayText
                         color: PhoneTheme.text
                         font.pixelSize: 15
@@ -280,6 +435,7 @@ Drawer {
                     objectName: "openMap"
                     text: qsTr("Open…")
                     flat: true
+                    Material.foreground: PhoneTheme.accent
                     onClicked: mapDialog.open()
                 }
             }
@@ -296,42 +452,11 @@ Drawer {
                 color: PhoneTheme.bad
                 font.pixelSize: 13
             }
-
-            Button {
-                id: connectButton
-                objectName: "connectButton"
-                Layout.fillWidth: true
-                highlighted: true
-                Material.accent: PhoneTheme.accentFill
-                text: PhoneSession.connectText
-                enabled: drawer.linkBusy || PhoneSession.state === PhoneSession.Connected || PhoneSession.tcp
-                         || PhoneSession.ports.count > 0
-                onClicked: {
-                    if (PhoneSession.wantConnected || PhoneSession.state === PhoneSession.Connected)
-                        PhoneSession.disconnectLink()
-                    else if (PhoneSession.tcp)
-                        PhoneSession.connectTcp(hostField.text, parseInt(portField.text), tokenField.text)
-                    else
-                        PhoneSession.connectUsb(portBox.currentValue, PhoneSession.baudRates[baudBox.currentIndex])
-                }
-            }
-            // what the link is, or why it is not; then the device's ID
-            Note {
-                objectName: "linkText"
-                text: PhoneSession.linkText
-                color: drawer.stateColor
-            }
-            Note {
-                objectName: "linkDetail"
-                visible: text.length > 0
-                text: PhoneSession.linkDetail
-                color: PhoneTheme.muted
-                font.pixelSize: 13
-            }
             Note {
                 objectName: "deviceText"
+                Layout.topMargin: 4
                 text: PhoneSession.deviceText
-                color: PhoneTheme.muted
+                color: PhoneTheme.text
             }
             Note {
                 objectName: "deviceWarning"
@@ -341,15 +466,16 @@ Drawer {
                 font.pixelSize: 13
             }
             SwitchRow {
-                text: qsTr("Reconnect by itself")
-                switchName: "reconnectSwitch"
-                checked: PhoneSession.autoReconnect
-                onToggled: on => PhoneSession.autoReconnect = on
+                text: qsTr("Allow writes")
+                switchName: "writesSwitch"
+                checked: PhoneSession.writesEnabled
+                onToggled: on => PhoneSession.writesEnabled = on
             }
 
-            Separator {}
+            Section { text: qsTr("Polling") }
             SwitchRow {
-                text: qsTr("Polling")
+                Layout.topMargin: -8
+                text: qsTr("Poll the registers")
                 switchName: "pollSwitch"
                 checked: PhoneSession.polling
                 onToggled: on => PhoneSession.polling = on
@@ -359,6 +485,7 @@ Drawer {
                 spacing: 8
                 Label {
                     Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignLeft
                     text: qsTr("Interval (ms)")
                     color: PhoneTheme.text
                     font.pixelSize: 16
@@ -384,18 +511,23 @@ Drawer {
                 color: PhoneTheme.muted
                 font.pixelSize: 13
             }
-            SwitchRow {
-                text: qsTr("Allow writes")
-                switchName: "writesSwitch"
-                checked: PhoneSession.writesEnabled
-                onToggled: on => PhoneSession.writesEnabled = on
-            }
 
-            Separator {}
+            Section { text: qsTr("Recording") }
             Button {
                 objectName: "recordButton"
                 Layout.fillWidth: true
                 text: PhoneSession.recording ? qsTr("Stop recording") : qsTr("Record")
+                flat: true
+                Material.foreground: PhoneSession.recording ? PhoneTheme.bad : PhoneTheme.accent
+                // an outlined button: the second kind of action, under the primary Connect
+                background: Rectangle {
+                    implicitHeight: 40
+                    y: (parent.height - height) / 2
+                    height: 40
+                    radius: 20
+                    color: parent.down ? PhoneTheme.surface2 : "transparent"
+                    border.color: PhoneTheme.control
+                }
                 onClicked: PhoneSession.recording ? PhoneSession.stopRecord() : PhoneSession.startRecord()
             }
             Note {
@@ -408,9 +540,9 @@ Drawer {
 
             Item { Layout.fillHeight: true }
 
-            // the settings apart from the link above
-            Separator {}
+            Section { text: qsTr("Display") }
             SwitchRow {
+                Layout.topMargin: -8
                 text: qsTr("Dark theme")
                 switchName: "themeSwitch"
                 checked: PhoneTheme.dark
@@ -418,9 +550,10 @@ Drawer {
             }
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: 12
 
                 Label {
+                    horizontalAlignment: Text.AlignLeft
                     text: qsTr("Language")
                     color: PhoneTheme.text
                     font.pixelSize: 16
@@ -439,6 +572,7 @@ Drawer {
                         objectName: "languageText"
                         leftPadding: 12
                         rightPadding: 12
+                        horizontalAlignment: Text.AlignLeft
                         text: languageBox.displayText
                         color: PhoneTheme.text
                         font.pixelSize: 16
