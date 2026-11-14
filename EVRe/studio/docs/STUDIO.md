@@ -7087,7 +7087,7 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
 
   **A register's sheet** rises from the screen's foot when its row is tapped (`RegisterSheet.qml`; across in two
   columns side by side, the register, its value and trend at the start, Plot, Copy and the write at the end, so all of it
-  fits 384 dp: in one column Write and its field were cut at the foot; it scrolls, with a bar, when it holds more), its top corners
+  fits 384 dp: in one column Write and its field were cut at the foot; the close cross at the sheet's top end corner then; it scrolls, with a bar that stays, when it holds more), its top corners
   rounded, a drag handle on it and a close cross: the register's name, its address and group; its value large (34 px,
   tabular digits) with its unit, left to right in every language; *not refreshed* and *on the chart* when so; the
   decoded text, or the error in red; a small line of its last values (`RegisterList::trend`: the last 120 values read,

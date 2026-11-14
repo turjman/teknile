@@ -267,8 +267,10 @@ Drawer {
         anchors.bottomMargin: sheet.keyboardLift
         contentWidth: width
         contentHeight: column.implicitHeight + 40
-        // more than the window holds (a long enum, the keyboard up): a bar says it scrolls
-        ScrollIndicator.vertical: ScrollIndicator {}
+        // more than the window holds: a scroll bar that stays, so a row cut at the foot reads as more to scroll
+        ScrollBar.vertical: ScrollBar {
+            policy: flick.contentHeight > flick.height + 0.5 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+        }
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         // a popup is not a child of the window's items: it mirrors by its own
@@ -325,7 +327,9 @@ Drawer {
                         }
                     }
                     ToolButton {
-                        objectName: "sheetClose"
+                        // upright beside the name; across the sheet's corner has it (cornerClose)
+                        objectName: visible ? "sheetClose" : "sheetCloseUpright"
+                        visible: !column.twoColumns
                         Layout.preferredWidth: 48
                         Layout.preferredHeight: 48
                         Layout.alignment: Qt.AlignTop
@@ -508,6 +512,8 @@ Drawer {
                 Layout.preferredWidth: column.partWidth
                 Layout.maximumWidth: column.partWidth
                 Layout.alignment: Qt.AlignTop
+                // under the corner's close cross
+                Layout.topMargin: column.twoColumns ? 36 : 0
                 spacing: 10
 
                 // Plot and Copy, side by side
@@ -863,6 +869,30 @@ Drawer {
                         }
                     }
                 }
+            }
+        }
+    }
+    // across, the close cross at the sheet's top end corner, over the actions' column (upright it is beside the name)
+    ToolButton {
+        id: cornerClose
+        objectName: visible ? "sheetClose" : "sheetCloseCorner"
+        visible: column.twoColumns
+        LayoutMirroring.enabled: sheet.rtl
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 8
+        anchors.rightMargin: 8
+        width: 48
+        height: 48
+        focusPolicy: Qt.NoFocus
+        Accessible.name: qsTr("Close")
+        onClicked: sheet.close()
+        contentItem: Item {
+            PhoneIcon {
+                anchors.centerIn: parent
+                kind: "clear"
+                size: 20
+                color: PhoneTheme.muted
             }
         }
     }

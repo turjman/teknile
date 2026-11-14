@@ -78,7 +78,10 @@ Drawer {
         contentHeight: column.implicitHeight
         boundsBehavior: Flickable.StopAtBounds
         clip: true
-        ScrollIndicator.vertical: ScrollIndicator {}
+        // more than the window holds: a scroll bar that stays, so a row cut at the foot reads as more to scroll
+        ScrollBar.vertical: ScrollBar {
+            policy: flick.contentHeight > flick.height + 0.5 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+        }
 
         ColumnLayout {
             id: column

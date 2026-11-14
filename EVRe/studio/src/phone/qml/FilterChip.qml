@@ -19,7 +19,7 @@ AbstractButton {
 
     checkable: true
     implicitHeight: 48
-    implicitWidth: row.implicitWidth + 24
+    implicitWidth: row.implicitWidth + 20
     Accessible.role: Accessible.CheckBox
     Accessible.name: count >= 0 ? qsTr("%1: %2").arg(label).arg(count) : label
     Accessible.checked: checked

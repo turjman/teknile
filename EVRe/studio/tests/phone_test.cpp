@@ -5247,7 +5247,9 @@ void checkSheetAcross() {
 		if (!flick || contentHeight > flick->height() + 0.5)
 			bad << QStringLiteral("%1: %2 of content in %3").arg(code).arg(contentHeight).arg(flick ? flick->height() : 0);
 		const QRectF about = sceneRect(phone.item("sheetAbout")), actions = sceneRect(phone.item("sheetActions"));
-		if (about.intersected(actions).width() > 0.5 || std::fabs(about.top() - actions.top()) > 0.5)
+		/* side by side: apart across, level with each other (the actions under the corner's close cross) */
+		if (about.isEmpty() || actions.isEmpty() || about.intersected(actions).width() > 0.5 || actions.top() >= about.bottom()
+				|| about.top() >= actions.bottom())
 			bad << code + QStringLiteral(": not two columns side by side");
 		for (const char *name : { "sheetName", "sheetValue", "sheetTrend", "sheetPlot", "sheetCopy", "sheetLimits",
 					 "sheetField", "sheetApply", "sheetClose" }) {

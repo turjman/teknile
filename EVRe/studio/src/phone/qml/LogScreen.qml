@@ -53,7 +53,7 @@ Item {
                 id: chips
                 objectName: "logLevelChips"
                 Layout.fillWidth: true
-                spacing: 6
+                spacing: 4
                 Repeater {
                     model: 3
                     FilterChip {
@@ -72,6 +72,10 @@ Item {
             Button {
                 objectName: "logCopy"
                 Layout.alignment: Qt.AlignTop
+                // as narrow as its word (Material's are 64 dp at least): the chips and both buttons on one row upright
+                leftPadding: 8
+                rightPadding: 8
+                implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
                 text: qsTr("Copy")
                 flat: true
                 Material.foreground: PhoneTheme.accent
@@ -81,6 +85,10 @@ Item {
             Button {
                 objectName: "logClear"
                 Layout.alignment: Qt.AlignTop
+                // as narrow as its word (Material's are 64 dp at least): the chips and both buttons on one row upright
+                leftPadding: 8
+                rightPadding: 8
+                implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
                 text: qsTr("Clear")
                 flat: true
                 Material.foreground: PhoneTheme.accent
