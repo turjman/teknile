@@ -4733,7 +4733,8 @@ the link is up.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;Back&lt;/h3&gt;
 &lt;p&gt;Android&apos;s back gesture closes what is open, a step at a time: a Help page to the list, the Help, the write sheet,
-the drawer. With nothing open it leaves the app, whose link goes on in the background.&lt;/p&gt;
+the drawer. With nothing open, while a link or a recording runs, the app goes to the background as with Home and
+both go on; with no link it closes the app.&lt;/p&gt;
 &lt;p&gt;Only on the desktop: the Map editor, the Dump, Listen, the API, math lines, lanes, the trigger and notes.&lt;/p&gt;
 </source>
         <translation>
@@ -4796,7 +4797,8 @@ the drawer. With nothing open it leaves the app, whose link goes on in the backg
 &lt;/ul&gt;
 &lt;h3&gt;الرجوع&lt;/h3&gt;
 &lt;p&gt;إيماءة الرجوع في أندرويد تغلق ما هو مفتوح، خطوةً خطوة: صفحة المساعدة إلى القائمة، ثم المساعدة، ثم ورقة الكتابة، ثم
-لوحة الاتصال. وإن لم يكن شيء مفتوحًا غادرت التطبيق، وتستمر وصلته في الخلفية.&lt;/p&gt;
+لوحة الاتصال. وإن لم يكن شيء مفتوحًا والوصلة أو التسجيل قائمان، ينتقل التطبيق إلى الخلفية كما بزر الرئيسية ويستمر
+كلاهما؛ وبلا وصلة تُغلق التطبيق.&lt;/p&gt;
 &lt;p&gt;على سطح المكتب فقط: محرر الخريطة، وعرض الذاكرة، والاستماع، وواجهة API، والخطوط الرياضية، والمسارات، والقدح،
 والملاحظات.&lt;/p&gt;
 </translation>

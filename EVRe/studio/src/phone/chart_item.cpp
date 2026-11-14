@@ -251,10 +251,51 @@ QString ChartItem::cursorSpanText() const {
 	return ChartData::number(cursorB_ - cursorA_) + QStringLiteral(" s");
 }
 
+/* where a line has samples in [t0, t1]: its first and last there (a fast line's whole records only: before them its
+ * summaries have no values at a time); false when it has none */
+static bool samplesInView(const ChartData::Series &s, double t0, double t1, double &first, double &last) {
+	if (s.fast) {
+		if (!s.fast->hasTime()) return false;
+		const qsizetype k0 = std::max(s.fast->lowerBound(t0), s.fast->recordsFrom()), k1 = s.fast->upperBound(t1) - 1;
+		if (k0 > k1) return false;
+		first = s.fast->timeAt(k0);
+		last = s.fast->timeAt(k1);
+		return true;
+	}
+	const qsizetype k0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
+	const qsizetype k1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
+	if (k0 > k1) return false;
+	first = s.times[k0];
+	last = s.times[k1];
+	return true;
+}
+
+/* A and B where the lines have values: at a quarter and three quarters of the span every shown line has samples in, in
+ * view (a view whose data starts late put A before the first sample, and every readout read a dash); when the lines
+ * share no span, of the span any of them has; with no samples in view, of the view */
 void ChartItem::placeCursors() {
 	if (!(axes_.span > 0)) return;
 	setLive(false); /* the readouts hold still */
-	setCursors(axes_.t0 + axes_.span / 3, axes_.t0 + axes_.span * 2 / 3);
+	double lo = axes_.t0, hi = axes_.t1;
+	double shareFrom = -INFINITY, shareTo = INFINITY, anyFrom = INFINITY, anyTo = -INFINITY;
+	bool any = false;
+	for (const auto &line : lines_) {
+		double first = 0, last = 0;
+		if (!line->shown || !samplesInView(line->series, axes_.t0, axes_.t1, first, last)) continue;
+		any = true;
+		shareFrom = std::max(shareFrom, first);
+		shareTo = std::min(shareTo, last);
+		anyFrom = std::min(anyFrom, first);
+		anyTo = std::max(anyTo, last);
+	}
+	if (any && shareTo > shareFrom) {
+		lo = shareFrom;
+		hi = shareTo;
+	} else if (any && anyTo > anyFrom) {
+		lo = anyFrom;
+		hi = anyTo;
+	}
+	setCursors(lo + (hi - lo) / 4, lo + (hi - lo) * 3 / 4);
 }
 
 void ChartItem::clearCursors() { setCursors(NAN, NAN); }
@@ -289,7 +330,8 @@ ChartData::Stats ChartItem::cursorStats(int id) const {
 }
 
 /* each shown line's values at A and B and over A..B (the desktop's measurements, ChartView::stats), as the legend
- * writes a value; a value the line has not there (outside its samples, a fast line's summaries): a dash */
+ * writes a value; a value the line has not there (outside its samples, a fast line's summaries): an em dash (an en dash
+ * beside "B - A" read as one more minus, in Arabic most of all) */
 void ChartItem::updateReadouts() {
 	QVector<CursorReadouts::Row> rows;
 	if (cursorsOn())
@@ -298,7 +340,7 @@ void ChartItem::updateReadouts() {
 			const ChartData::Stats st = cursorStats(line->id);
 			const QString unit = line->series.unit.isEmpty() ? QString() : QLatin1Char(' ') + line->series.unit;
 			const auto text = [&unit](double v, bool ok) {
-				return ok && std::isfinite(v) ? ChartData::number(v) + unit : QStringLiteral("\u2013");
+				return ok && std::isfinite(v) ? ChartData::number(v) + unit : QStringLiteral("\u2014");
 			};
 			CursorReadouts::Row row;
 			row.id = line->id;

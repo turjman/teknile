@@ -231,6 +231,9 @@ public:
 	/* the service's notification text while a link is wanted; empty: the service is not up */
 	QString serviceText() const { return serviceText_; }
 	bool screenKeptOn() const { return screenKeptOn_; }
+	/* Android's back with nothing open (Main.qml's back()): while a link is wanted or a recording runs, the app to the
+	 * background as Home does (true: the back is taken); else false, and Android closes the app */
+	Q_INVOKABLE bool backToBackground();
 	/* "portrait", "landscape" or "" (either), as Main.qml asks for its screen (A-16) */
 	QString orientation() const { return orientation_; }
 	void setOrientation(const QString &orientation);

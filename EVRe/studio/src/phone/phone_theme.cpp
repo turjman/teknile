@@ -2,11 +2,25 @@
 /* The phone's theme: see phone_theme.h. */
 #include "phone/phone_theme.h"
 
+#include <QFontDatabase>
 #include <QSettings>
 #include <cmath>
 
 namespace {
 const QString DARK_KEY = QStringLiteral("ui/dark"); /* the desktop's key (main.cpp): dark unless set */
+}
+
+QString PhoneTheme::monoFamily() {
+	static const QString family = [] {
+		const QStringList have = QFontDatabase::families();
+		for (const char *name : { "Droid Sans Mono", "Cutive Mono", "Noto Sans Mono", "Consolas", "DejaVu Sans Mono",
+					 "Liberation Mono" }) {
+			const QString wanted = QString::fromLatin1(name);
+			if (have.contains(wanted, Qt::CaseInsensitive) && QFontDatabase::isFixedPitch(wanted)) return wanted;
+		}
+		return QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+	}();
+	return family;
 }
 
 PhoneTheme::PhoneTheme(QObject *parent)

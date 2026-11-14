@@ -7,6 +7,9 @@
  *   the screen        kept on while connected (A-5, the setting android/keepScreenOn, on by default)
  *   the orientation   the one a screen asks for (A-16): landscape for the Chart and the Monitor, portrait for the
  *                     Registers and the Log
+ *   to the background Android's back with nothing open while a link is wanted or a recording runs: the task moved
+ *                     to the background as Home does (Activity.moveTaskToBack), not finished, so the link, the service
+ *                     and the recording go on
  *
  * On Android Java does it (system()); elsewhere nothing does, and the test sets a stand-in that notes what it was
  * asked (PhoneSession::setSystemBridgeForTests). Called on the window's thread. */
@@ -25,6 +28,7 @@ public:
 	virtual void releaseService() = 0;
 	virtual void keepScreenOn(bool on) = 0;
 	virtual void requestOrientation(Orientation orientation) = 0;
+	virtual void moveToBack() = 0;
 
 	/* Android's (EvreService.java); nullptr elsewhere */
 	static SystemBridge *system();

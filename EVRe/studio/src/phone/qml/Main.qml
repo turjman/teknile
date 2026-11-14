@@ -257,22 +257,39 @@ ApplicationWindow {
 
     Component.onCompleted: if (chartDemo) tabBar.currentIndex = 1
 
-    // Android's back (phone_app.cpp hands it here first): what is open closes, the topmost first; false: nothing was,
-    // and Android has the back (the app goes to the background)
+    // Android's back (phone_app.cpp hands it here first): the keyboard goes, else what is open closes, the topmost
+    // first; with nothing open the app goes to the background while a link or a recording runs; false: Android has the
+    // back (it closes the app)
     function back() {
-        if (helpScreen.opened) {
+        // the soft keyboard first, as Android does: a back while it is up only hides it and takes the focus off the
+        // field (Qt hands that back to the app: from the search field one back quit the app, link and all)
+        if (Qt.inputMethod.visible || testKeyboardHeight > 0) {
+            Qt.inputMethod.hide()
+            // the field's own focus off (the window's content taking it would hand it back down to the field)
+            if (root.activeFocusItem) root.activeFocusItem.focus = false
+            return true
+        }
+        if (showing(helpScreen)) {
             helpScreen.back()
             return true
         }
-        if (writeSheet.opened) {
+        if (showing(writeSheet)) {
             writeSheet.close()
             return true
         }
-        if (drawer.opened) {
+        if (showing(drawer)) {
             drawer.close()
             return true
         }
-        return false
+        // nothing open: while a link is wanted or a recording runs the app goes to the background as with Home
+        // (finishing the activity ended the process, and the link and the recording with it); else Android closes it
+        return root.p9 ? false : PhoneSession.backToBackground()
+    }
+    // a popup on the screen and not on its way out: also while it is still coming in (`opened` is true only once its
+    // transition has ended, so a back in the drawer's slide, or a finger's drag of it, went to Android and the app
+    // went to the background with the drawer half open)
+    function showing(popup) {
+        return popup.visible && !(popup.exit && popup.exit.running)
     }
 
     // each screen's orientation (A-16): the Chart and the Monitor across, the Registers and the Log upright; the proof

@@ -32,6 +32,9 @@ public:
 		QJniObject::callStaticMethod<void>(SERVICE, "orientation", "(Landroid/content/Context;I)V", context().object(),
 				jint(value));
 	}
+	void moveToBack() override {
+		QJniObject::callStaticMethod<void>(SERVICE, "toBack", "(Landroid/content/Context;)V", context().object());
+	}
 
 private:
 	static QJniObject context() { return QNativeInterface::QAndroidApplication::context(); }

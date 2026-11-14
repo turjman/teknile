@@ -20,7 +20,8 @@
  *               max and mean (ChartData::statsOf, statsOfFast for a fast line, as the desktop's measurements), written
  *               as the legend writes a value, with the unit.
  *
- * Cursors A and B (B.4): placeCursors() puts A at a third of the view and B at two thirds and holds the view;
+ * Cursors A and B (B.4): placeCursors() puts A and B at a quarter and three quarters of the span the shown lines have
+ * samples in, in view (of the view when there are none), and holds the view;
  * moveCursor(which, x) drags one (its handle's x in the item, kept inside the plot); clearCursors() takes them off.
  * cursorAX and cursorBX say where they are drawn (NaN: off the view).
  *
@@ -201,7 +202,7 @@ public:
 	QString cursorAText() const;  /* "0:12.34" */
 	QString cursorBText() const;
 	QString cursorSpanText() const; /* B - A: "3.33 s" */
-	/* A at a third of the view, B at two thirds; the view held, so the readouts stay */
+	/* A and B at a quarter and three quarters of where the lines have samples in view; the view held */
 	Q_INVOKABLE void placeCursors();
 	Q_INVOKABLE void clearCursors();
 	/* a cursor's handle dragged: which 0 (A) or 1 (B), x in the item, kept inside the plot */

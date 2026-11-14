@@ -17,8 +17,9 @@ Item {
     readonly property bool paused: PhoneSession.frames.paused
 
     signal connectAsked()
-    // a monospaced font: Android's "monospace"; Windows has no font by that name
-    readonly property string mono: Qt.platform.os === "windows" ? "Consolas" : "monospace"
+    // a fixed-pitch family the phone has (PhoneTheme.monoFamily: "monospace" was drawn in Roboto on a Samsung phone,
+    // the bytes out of line)
+    readonly property string mono: PhoneTheme.monoFamily
 
     // the engine writes the frames while they are seen
     Binding {

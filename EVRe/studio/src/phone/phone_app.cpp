@@ -45,8 +45,9 @@ namespace {
 
 /* Android's back (the gesture, the button: Qt::Key_Back) to Main.qml's back() before anything else sees it: it closes
  * what is open in order (a Help page, the Help, the write sheet, the drawer) and says whether it did. A popup takes a
- * back only while it has the keys, which the drawer and the sheet do not; what back() leaves goes on as usual, and
- * with nothing open Android has it: the app goes to the background. */
+ * back only while it has the keys, which the drawer and the sheet do not; what back() leaves goes on as usual. With
+ * nothing open, while a link is wanted or a recording runs, back() moves the app to the background (as Home does) and
+ * takes the back; otherwise Android has it and closes the app. */
 class BackKey : public QObject {
 public:
 	using QObject::QObject;
