@@ -2493,9 +2493,12 @@ void checkHelpPhoneList() {
 					.arg(notOnDesktop).arg(arabicTitle).arg(translated).arg(sameTags));
 }
 
-/* Android's back (Qt::Key_Back), as the gesture sends it: accepted when it closed something */
+/* Android's back (Qt::Key_Back), as the gesture sends it: accepted when it closed something. Not accepted to begin
+ * with, as QGuiApplication delivers a key (a new event is accepted, and with no item in focus nothing ignores it: on
+ * Linux the back at the root read as taken) */
 bool pressBack(const Phone &phone) {
 	QKeyEvent press(QEvent::KeyPress, Qt::Key_Back, Qt::NoModifier);
+	press.setAccepted(false);
 	QCoreApplication::sendEvent(phone.window, &press);
 	QKeyEvent release(QEvent::KeyRelease, Qt::Key_Back, Qt::NoModifier);
 	QCoreApplication::sendEvent(phone.window, &release);
@@ -2547,6 +2550,7 @@ void checkBackToBackground() {
 	PhoneSession::setSystemBridgeForTests(&system);
 	bool connected = false, takenLinked = false, takenRecording = false, leftOff = false, windowStays = false;
 	int linked = 0, recorded = 0, off = 0;
+	QString where;
 	{
 		Phone phone(PORTRAIT);
 		PhoneSession *session = connectFake(phone);
@@ -2567,13 +2571,16 @@ void checkBackToBackground() {
 		leftOff = !pressBack(phone);
 		off = system.toBack;
 		windowStays = phone.window && phone.window->isVisible();
+		const QQuickItem *focus = phone.window ? phone.window->activeFocusItem() : nullptr;
+		where = QStringLiteral("in focus %1 %2, keyboard %3").arg(focus ? QLatin1String(focus->metaObject()->className()) : QLatin1String("none"),
+				focus ? focus->objectName() : QString()).arg(QGuiApplication::inputMethod()->isVisible());
 	}
 	PhoneSession::setSystemBridgeForTests(nullptr);
 	check(connected && takenLinked && linked == 1 && takenRecording && recorded == 2 && leftOff && off == 2 && windowStays,
 			QStringLiteral("phone, back: with nothing open a back moves the app to the background while connected (taken %1, "
 					"moved %2) and while recording (taken %3, moved %4), the window kept; with no link it is left to "
-					"Android, which closes the app (left %5, moved %6)")
-					.arg(takenLinked).arg(linked).arg(takenRecording).arg(recorded).arg(leftOff).arg(off));
+					"Android, which closes the app (left %5, moved %6; %7)")
+					.arg(takenLinked).arg(linked).arg(takenRecording).arg(recorded).arg(leftOff).arg(off).arg(where));
 }
 
 /* the owner's phone: typed in the search field, its keyboard up, one back quit the app while connected. A back with the
