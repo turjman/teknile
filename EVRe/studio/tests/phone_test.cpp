@@ -13,8 +13,8 @@
  * own application (EVReStudioPhoneTest), cleared at the start. On Linux under xvfb it draws with Mesa through OpenGL
  * (QSG_RHI_BACKEND=opengl); the software adaptation would not draw the chart's nodes to come.
  *
- * The Registers screen's checks (B.2) run against the fake device too: its values, a write read back, the limits asked
- * first, a refused write (a map with a register the device does not have), the glow in the picture; a stand-in that
+ * The Registers screen's checks (B.2) run against the fake device too: its rows' values, a write read back, the limits
+ * asked first, a refused write (a map with a register the device does not have), the glow in the picture; a stand-in that
  * leaves the first DEVICE_ID request unanswered checks that the ID is read again by itself. The chart's checks (B.3a)
  * feed its lines from the test (a sine at 1 kHz), compare its bins with the desktop chart's binning (chart_data.h),
  * find the line's colour in the picture, and pinch, drag and double tap it. The chart wired (B.3b): registers plotted
@@ -31,12 +31,15 @@
  * chart's test feed; drawerkb and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them
  * without running the checks.
  * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
+ * The design pass (part A): the Registers screen's rows counted in view against the cards before, a register's sheet
+ * (its trend, Plot, Copy, the quick write by Enter, the number pad), the trend's bounded ring, the pill's poll rate and
+ * chevron, the slimmer header, the empty Log and the empty search with their one button.
  * The cursors and the Monitor (B.4): placed by the Cursors button, A dragged by its handle, the readouts against
  * statsOf; the fake device's frames, Pause, Clear, the empty state; texts in both languages and themes. Their pictures:
  * <prefix>_<en|ar>_<dark|light>_<cursors|cursors6|cursors6end|monitor|paused>_<portrait|landscape>.png.
  * The Chart screen's pictures too: <prefix>_<en|ar>_<dark|light>_chart_<empty|two|hidden|manual|ysheet|chipmenu|six|
- * sixend|cardmenu>_<portrait|landscape>.png (six: six lines, the legend scrolling; sixend: scrolled to its end;
- * cardmenu: a card's "..." menu on the Registers screen). EVRE_PHONE_ONLY=<text> (other than shots): only the checks
+ * sixend|regsheet>_<portrait|landscape>.png (six: six lines, the legend scrolling; sixend: scrolled to its end;
+ * regsheet: a plotted register's sheet on the Registers screen). EVRE_PHONE_ONLY=<text> (other than shots): only the checks
  * whose function's name holds it, and with a prefix only the chart's pictures.
  *
  * Exit code: 0 all passed, 1 a check failed. */
@@ -259,6 +262,9 @@ QObject *Phone::object(const char *name) const {
 	return found;
 }
 
+QRectF sceneRect(const QQuickItem *item);
+QQuickItem *within(QQuickItem *root, const QString &name);
+
 bool near(const QColor &a, const QColor &b, int tolerance = 6) {
 	return a.isValid() && std::abs(a.red() - b.red()) <= tolerance && std::abs(a.green() - b.green()) <= tolerance
 			&& std::abs(a.blue() - b.blue()) <= tolerance;
@@ -309,7 +315,8 @@ QStringList latinTexts(QQuickWindow *window) {
 	static const QStringList data{ QStringLiteral("mapText"), QStringLiteral("portText"), QStringLiteral("regName"),
 		QStringLiteral("regGroup"), QStringLiteral("regValue"), QStringLiteral("regUnit"), QStringLiteral("regDecoded"),
 		QStringLiteral("regAddr"), QStringLiteral("regError"), QStringLiteral("sheetName"), QStringLiteral("sheetAddr"),
-		QStringLiteral("sheetNow"), QStringLiteral("sheetUnit"), QStringLiteral("chipName"), QStringLiteral("chipValue"),
+		QStringLiteral("sheetValue"), QStringLiteral("sheetValueUnit"), QStringLiteral("sheetUnit"), QStringLiteral("sheetDecoded"),
+		QStringLiteral("sheetError"), QStringLiteral("sheetTrendMin"), QStringLiteral("sheetTrendMax"), QStringLiteral("linkPillText"), QStringLiteral("chipName"), QStringLiteral("chipValue"),
 		QStringLiteral("fastChannel"), QStringLiteral("frameTime"), QStringLiteral("frameDirection"),
 		QStringLiteral("frameBytes"), QStringLiteral("frameNote"), QStringLiteral("cursorName"), QStringLiteral("readoutName"),
 		QStringLiteral("readoutA"), QStringLiteral("readoutB"), QStringLiteral("readoutDelta"), QStringLiteral("readoutMin"),
@@ -416,9 +423,10 @@ void checkScrim() {
 void checkTheme() {
 	Phone phone(PORTRAIT);
 	const ThemeColors dark = Theme::colorsFor(true), light = Theme::colorsFor(false);
-	/* a point of the screen beside the cards, at the list's foot: the window's background; one in the header: its panel */
-	const QQuickItem *list = phone.item("registerList");
-	const QPointF inScreen = list ? list->mapToScene(QPointF(4, list->height() - 4)) : QPointF(4, 600);
+	/* a point of the screen between the rows' panels, behind a section's header: the window's background; one in the
+	 * header: its panel */
+	const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("regGroup"));
+	const QPointF inScreen = group ? group->parentItem()->mapToScene(QPointF(4, 4)) : QPointF(4, 600);
 	const QPointF inHeader(phone.window ? phone.window->width() / 2.0 : 200, 6);
 	const QImage before = phone.grab();
 	const QColor bgBefore = Phone::pixel(before, inScreen), headerBefore = Phone::pixel(before, inHeader);
@@ -1086,7 +1094,8 @@ void checkTcpLink() {
 	const QObject *dot = phone.object("linkPillDot");
 	const bool green = dot && near(dot->property("color").value<QColor>(), themeColor(&ThemeColors::good), 2);
 	const QString wanted = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
-	check(session && up && session->tcp() && link == QStringLiteral("Connected: ") + wanted && pill == QLatin1String("Connected")
+	check(session && up && session->tcp() && link == QStringLiteral("Connected: ") + wanted
+					&& (pill == QLatin1String("Connected") || pill.startsWith(QStringLiteral("Connected · ")))
 					&& green && phone.text("connectButton") == QLatin1String("Disconnect")
 					&& session->log()->contains(QStringLiteral("connected: ") + wanted)
 					&& QSettings().value(QStringLiteral("phone/host")).toString() == QLatin1String("127.0.0.1"),
@@ -1371,15 +1380,15 @@ void checkLogScreen() {
 	const bool mapLine = session && session->log()->contains(QStringLiteral("map loaded: "));
 	phone.tap(phone.item("logClear"));
 	const bool cleared = session && session->log()->count() == 0 && list && list->property("count").toInt() == 0
-			&& phone.item("logEmpty") && phone.item("logEmpty")->isVisible();
+			&& phone.item("logEmptyText") && phone.item("logEmptyText")->isVisible();
 	check(lines >= 2 && mapLine && red && count == QStringLiteral("lines: %1").arg(lines) && cleared,
 			QStringLiteral("phone, Log screen: the session's lines (%1: the map loaded, a map that did not), an error in "
 					"red, \"%2\"; Clear empties it and says nothing is there yet").arg(lines).arg(count));
 }
 
-/* ---- the Registers screen (B.2): the cards over TCP against the fake device */
+/* ---- the Registers screen (B.2): the rows over TCP against the fake device */
 
-/* an item under `root` by its objectName (a card's own: every card has a "regValue") */
+/* an item under `root` by its objectName (a row's own: every row has a "regValue") */
 QQuickItem *within(QQuickItem *root, const QString &name) {
 	QQuickItem *found = nullptr;
 	forEachItem(root, [&](QQuickItem *item) {
@@ -1388,14 +1397,25 @@ QQuickItem *within(QQuickItem *root, const QString &name) {
 	return found;
 }
 
-/* a register's card, by its name: created only while it is in the list's view (search for it first) */
-QQuickItem *card(const Phone &phone, const QString &reg) {
+/* a register's row, by its name: created only while it is in the list's view (search for it first). The list's own
+ * item for its index (ListView.itemAtIndex): a row the list keeps aside for reuse keeps the name it last had and its
+ * place, and a tap there met nothing */
+QQuickItem *regRow(const Phone &phone, const QString &reg) {
 	QQuickItem *list = phone.item("registerList");
-	return list ? within(list, QStringLiteral("card_") + reg) : nullptr;
+	PhoneSession *session = phone.session();
+	if (!list || !session) return nullptr;
+	const QVector<RegisterModel::Row> &rows = session->registers()->rows();
+	int source = -1;
+	for (int i = 0; i < rows.size() && source < 0; ++i)
+		if (rows[i].def.name == reg) source = i;
+	const int index = session->registerList()->rowOf(source);
+	QQuickItem *item = nullptr;
+	if (index >= 0) QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, item), Q_ARG(int, index));
+	return item && item->objectName() == QStringLiteral("row_") + reg ? item : nullptr;
 }
 
-QString cardText(const Phone &phone, const QString &reg, const char *part) {
-	QQuickItem *found = within(card(phone, reg), QLatin1String(part));
+QString rowText(const Phone &phone, const QString &reg, const char *part) {
+	QQuickItem *found = within(regRow(phone, reg), QLatin1String(part));
 	return found ? found->property("text").toString() : QString();
 }
 
@@ -1437,21 +1457,41 @@ void search(const Phone &phone, const QString &text) {
 }
 
 bool sheetOpen(const Phone &phone) {
-	const QObject *sheet = phone.object("writeSheet");
+	const QObject *sheet = phone.object("registerSheet");
 	return sheet && sheet->property("opened").toBool();
 }
 
-/* the write sheet of a register, by its card's Write button */
+/* an item's place in the window once it holds still: a list laid out again after a search, or a sheet that grew,
+ * moves its items at the next frame's polish, and a tap at the old place met nothing (a hidden desktop draws a frame
+ * in 200 ms) */
+void waitStill(const Phone &phone, const std::function<QQuickItem *()> &find) {
+	QPointF last(-1e9, -1e9);
+	QElapsedTimer since;
+	since.start();
+	(void) QTest::qWaitFor([&] {
+		const QQuickItem *item = find();
+		const QPointF now = item ? item->mapToScene(QPointF(0, 0)) : QPointF(-1e9, -1e9);
+		if (!item || now != last) since.restart();
+		last = now;
+		return item && since.elapsed() >= 300;
+	}, 4000);
+	(void) phone;
+}
+
+/* a register's sheet, by a tap on its row (once the list shows it after the search, held still), and its content
+ * held still in turn */
 void openSheet(const Phone &phone, const QString &reg) {
 	search(phone, reg);
-	phone.tap(within(card(phone, reg), QStringLiteral("writeButton")));
+	waitStill(phone, [&] { return regRow(phone, reg); });
+	phone.tap(regRow(phone, reg));
 	(void) QTest::qWaitFor([&] { return sheetOpen(phone); }, 3000);
+	waitStill(phone, [&] { return phone.item("sheetCopy"); });
 	phone.settle();
 }
 
 void closeSheet(const Phone &phone) {
-	if (QObject *sheet = phone.object("writeSheet")) QMetaObject::invokeMethod(sheet, "close");
-	(void) QTest::qWaitFor([&] { return !phone.object("writeSheet")->property("visible").toBool(); }, 3000);
+	if (QObject *sheet = phone.object("registerSheet")) QMetaObject::invokeMethod(sheet, "close");
+	(void) QTest::qWaitFor([&] { return !phone.object("registerSheet")->property("visible").toBool(); }, 3000);
 	phone.settle();
 }
 
@@ -1484,16 +1524,16 @@ void checkRegisterRows() {
 	QStringList sortedNames = names, sortedMap = mapNames;
 	sortedNames.sort();
 	sortedMap.sort();
-	/* the first section's header and card drawn: the map's first group and register */
+	/* the first section's header and row drawn: the map's first group and register */
 	QQuickItem *view = phone.item("registerList");
 	const QString header = view ? within(view, QStringLiteral("regGroup")) ? within(view, QStringLiteral("regGroup"))->property("text").toString() : QString() : QString();
-	const QString firstAddr = cardText(phone, map.regs.value(0).name, "regAddr");
+	const QString firstAddr = rowText(phone, map.regs.value(0).name, "regAddr");
 	const bool offline = phone.item("registersOffline") && phone.item("registersOffline")->isVisible();
 	check(list && list->total() == map.regs.size() && list->count() == map.regs.size() && sortedNames == sortedMap && together
 					&& groups.size() == 5 && header == map.regs.value(0).group && firstAddr == QLatin1String("0xA000")
 					&& offline && phone.text("registerCount") == QStringLiteral("registers: %1").arg(map.regs.size()),
-			QStringLiteral("phone, Registers: a card per register of the map (%1 of %2), each group's together in sections "
-					"(%3), the first header \"%4\" and card's address %5; not connected, a line says so with Connect")
+			QStringLiteral("phone, Registers: a row per register of the map (%1 of %2), each group's together in sections "
+					"(%3), the first header \"%4\" and row's address %5; not connected, a strip says so with Connect")
 					.arg(names.size()).arg(map.regs.size()).arg(groups.join(QStringLiteral(", ")), header, firstAddr));
 }
 
@@ -1501,28 +1541,28 @@ void checkRegisterValues() {
 	Phone phone(PORTRAIT);
 	PhoneSession *session = connectFake(phone);
 	search(phone, QStringLiteral("SUPPLY_V"));
-	(void) QTest::qWaitFor([&] { return !cardText(phone, QStringLiteral("SUPPLY_V"), "regValue").startsWith(QStringLiteral("—")); }, 3000);
-	const QString value = cardText(phone, QStringLiteral("SUPPLY_V"), "regValue");
-	const QString unit = cardText(phone, QStringLiteral("SUPPLY_V"), "regUnit");
+	(void) QTest::qWaitFor([&] { return !rowText(phone, QStringLiteral("SUPPLY_V"), "regValue").startsWith(QStringLiteral("—")); }, 3000);
+	const QString value = rowText(phone, QStringLiteral("SUPPLY_V"), "regValue");
+	const QString unit = rowText(phone, QStringLiteral("SUPPLY_V"), "regUnit");
 	bool number = false;
 	value.toDouble(&number);
 	/* the fake device's sine moves it: a second later another value, from the table */
 	QTest::qWait(1000);
-	const QString later = cardText(phone, QStringLiteral("SUPPLY_V"), "regValue");
+	const QString later = rowText(phone, QStringLiteral("SUPPLY_V"), "regValue");
 	const QString inModel = modelValue(session, QStringLiteral("SUPPLY_V"));
 	const bool offline = phone.item("registersOffline") && phone.item("registersOffline")->isVisible();
 	check(session && session->connected() && number && unit == QLatin1String("V") && later != value
 					&& (later == inModel || QTest::qWaitFor([&] {
-						   return cardText(phone, QStringLiteral("SUPPLY_V"), "regValue") == modelValue(session, QStringLiteral("SUPPLY_V"));
+						   return rowText(phone, QStringLiteral("SUPPLY_V"), "regValue") == modelValue(session, QStringLiteral("SUPPLY_V"));
 					   }, 1000))
 					&& !offline,
-			QStringLiteral("phone, Registers: connected to the fake device, SUPPLY_V's card shows its value with its unit "
+			QStringLiteral("phone, Registers: connected to the fake device, SUPPLY_V's row shows its value with its unit "
 					"(\"%1\" \"%2\", then \"%3\"), the table's (RegisterModel's text); the not-connected line gone")
 					.arg(value, unit, later));
 	if (session) session->disconnectLink();
 }
 
-/* a write through the sheet: Apply, the answer, the card shows what the device holds (read back) */
+/* a write through the sheet: Write, the answer, the row shows what the device holds (read back) */
 void checkRegisterWrite() {
 	Phone phone(PORTRAIT);
 	PhoneSession *session = connectFake(phone);
@@ -1539,15 +1579,18 @@ void checkRegisterWrite() {
 	const QQuickItem *answer = phone.item("sheetAnswer");
 	const bool green = answer && near(answer->property("color").value<QColor>(), themeColor(&ThemeColors::good), 2);
 	const bool readBack = QTest::qWaitFor([&] {
-		return modelValue(session, QStringLiteral("FAN_SPEED")) == wanted && cardText(phone, QStringLiteral("FAN_SPEED"), "regValue") == wanted
-				&& phone.text("sheetNow") == wanted + QStringLiteral(" %");
+		return modelValue(session, QStringLiteral("FAN_SPEED")) == wanted && rowText(phone, QStringLiteral("FAN_SPEED"), "regValue") == wanted
+				&& phone.text("sheetValue") == wanted && phone.text("sheetValueUnit") == QLatin1String("%")
+				&& phone.item("sheetReadBack") && phone.item("sheetReadBack")->isVisible()
+				&& phone.text("sheetReadBack") == QStringLiteral("Read back: %1 %").arg(wanted);
 	}, 3000);
 	check(opened && startsWithNow && limits == QStringLiteral("The map's limits: from 0 to 100 %")
 					&& answered && green && readBack
 					&& session->log()->contains(QStringLiteral("written: FAN_SPEED = %1").arg(wanted)),
-			QStringLiteral("phone, write: FAN_SPEED's Write opens the sheet (the value now \"%1\", \"%2\"); %3 typed, Apply: "
-					"\"%4\" in green, the card and the sheet show %3 read back from the device, the Log \"written: ...\"")
-					.arg(before, limits, wanted, phone.text("sheetAnswer")));
+			QStringLiteral("phone, write: a tap on FAN_SPEED's row opens its sheet (the field starts with the value now \"%1\", "
+					"\"%2\"); %3 typed, Write: \"%4\" in green, then \"%5\"; the row and the sheet's value show %3 read back "
+					"from the device, the Log \"written: ...\"")
+					.arg(before, limits, wanted, phone.text("sheetAnswer"), phone.text("sheetReadBack")));
 	if (session) session->disconnectLink();
 }
 
@@ -1579,7 +1622,7 @@ void checkRegisterLimit() {
 	if (session) session->disconnectLink();
 }
 
-/* a register the device does not have: its card in red, a write to it refused with the device's text */
+/* a register the device does not have: its row in red, a write to it refused with the device's text */
 void checkRegisterRefused() {
 	QTemporaryDir dir;
 	QFile in(phone::mapsFolder() + QStringLiteral("/example_device.json"));
@@ -1600,12 +1643,14 @@ void checkRegisterRefused() {
 	if (session) session->setWritesEnabled(true);
 	search(phone, QStringLiteral("NOWHERE"));
 	const bool red = QTest::qWaitFor([&] {
-		const QQuickItem *value = within(card(phone, QStringLiteral("NOWHERE")), QStringLiteral("regValue"));
-		const QQuickItem *error = within(card(phone, QStringLiteral("NOWHERE")), QStringLiteral("regError"));
+		const QQuickItem *value = within(regRow(phone, QStringLiteral("NOWHERE")), QStringLiteral("regValue"));
+		const QQuickItem *error = within(regRow(phone, QStringLiteral("NOWHERE")), QStringLiteral("regError"));
 		return value && error && error->isVisible() && near(value->property("color").value<QColor>(), themeColor(&ThemeColors::bad), 2);
 	}, 4000);
-	const QString shown = cardText(phone, QStringLiteral("NOWHERE"), "regValue");
-	const QString why = cardText(phone, QStringLiteral("NOWHERE"), "regError");
+	const QString shown = rowText(phone, QStringLiteral("NOWHERE"), "regValue");
+	const QString why = rowText(phone, QStringLiteral("NOWHERE"), "regError");
+	const QQuickItem *redBar = within(regRow(phone, QStringLiteral("NOWHERE")), QStringLiteral("rowErrorBar"));
+	const bool barShown = redBar && redBar->isVisible();
 	openSheet(phone, QStringLiteral("NOWHERE"));
 	phone.type("sheetField", QStringLiteral("1"));
 	phone.tap(phone.item("sheetApply"));
@@ -1613,10 +1658,11 @@ void checkRegisterRefused() {
 	const QString answer = phone.text("sheetAnswer");
 	const QQuickItem *answerItem = phone.item("sheetAnswer");
 	const bool answerRed = answerItem && near(answerItem->property("color").value<QColor>(), themeColor(&ThemeColors::bad), 2);
-	check(loaded && red && shown == QLatin1String("not available") && !why.isEmpty() && refused && answerRed
+	check(loaded && red && barShown && shown == QLatin1String("not available") && !why.isEmpty() && refused && answerRed
 					&& answer.contains(QLatin1String("offset out of range"))
 					&& session->log()->contains(QStringLiteral("write refused: NOWHERE")),
-			QStringLiteral("phone, refused write: a register the device does not have shows \"%1\" in red and why (\"%2\"); "
+			QStringLiteral("phone, refused write: a register the device does not have shows \"%1\" in red, a red bar at its row's "
+					"start and why (\"%2\"); "
 					"a write to it answers \"%3\" in red, the Log the same").arg(shown, why, answer));
 	if (session) {
 		session->disconnectLink();
@@ -1644,7 +1690,7 @@ void checkWritesOff() {
 	const bool themeKept = QSettings().value(QStringLiteral("ui/dark"), true).toBool(); /* the tap reached nothing in it */
 	check(themeKept && offlineShown && offline == QLatin1String("Not connected: connect in the Connect drawer first.") && writesOffShown
 					&& writesOff == QLatin1String("Writes are off: turn on Allow writes in the Connect drawer.") && drawer,
-			QStringLiteral("phone, write sheet: with no link it says \"%1\", connected with Allow writes off \"%2\", no field and "
+			QStringLiteral("phone, register sheet: with no link it says \"%1\", connected with Allow writes off \"%2\", no field and "
 					"no Apply; its button opens the Connect drawer").arg(offline, writesOff));
 	if (session) session->disconnectLink();
 }
@@ -1661,45 +1707,45 @@ void checkRegisterGlow() {
 	QTest::qWait(int(RegisterModel::GLOW_REST_MS) + 300);
 	const int row = modelRow(session, QStringLiteral("FAN_SPEED"));
 	if (session) session->write(row, wanted);
-	const bool changed = QTest::qWaitFor([&] { return cardText(phone, QStringLiteral("FAN_SPEED"), "regValue") == wanted; }, 3000);
-	QQuickItem *panel = within(card(phone, QStringLiteral("FAN_SPEED")), QStringLiteral("cardPanel"));
-	/* the bar at the card's start edge, and a spot of the card with nothing on it (its end, half way down) */
-	const QPointF barAt = at(panel, 5, panel ? panel->height() / 2 : 0);
-	const QPointF tintAt = at(panel, panel ? panel->width() - 6 : 0, panel ? panel->height() - 6 : 0);
+	const bool changed = QTest::qWaitFor([&] { return rowText(phone, QStringLiteral("FAN_SPEED"), "regValue") == wanted; }, 3000);
+	QQuickItem *panel = within(regRow(phone, QStringLiteral("FAN_SPEED")), QStringLiteral("rowPanel"));
+	/* the bar at the row's start edge, and a spot of the row with nothing on it (its end, near its foot) */
+	const QPointF barAt = at(panel, 1.5, panel ? panel->height() / 2 : 0);
+	const QPointF tintAt = at(panel, panel ? panel->width() - 6 : 0, panel ? panel->height() - 5 : 0);
 	const QImage lit = phone.grab();
 	const QColor surface = themeColor(&ThemeColors::surface), accent = themeColor(&ThemeColors::accent);
 	const QColor barLit = Phone::pixel(lit, barAt), tintLit = Phone::pixel(lit, tintAt);
 	QTest::qWait(int(RegisterModel::GLOW_MS) + 400);
 	const QImage plain = phone.grab();
 	const QColor barPlain = Phone::pixel(plain, barAt), tintPlain = Phone::pixel(plain, tintAt);
-	const QQuickItem *bar = within(card(phone, QStringLiteral("FAN_SPEED")), QStringLiteral("cardGlowBar"));
+	const QQuickItem *bar = within(regRow(phone, QStringLiteral("FAN_SPEED")), QStringLiteral("rowGlowBar"));
 	check(changed && distance(barLit, surface) > 60 && distance(barLit, accent) < distance(barLit, surface)
 					&& tintLit.blue() > surface.blue() + 4 && near(barPlain, surface, 8) && near(tintPlain, surface, 4)
 					&& bar && bar->opacity() == 0,
-			QStringLiteral("phone, glow: FAN_SPEED written after a rest, its card glows in the picture (dpr %1: the bar %2, the "
-					"card %3, on %4) and fades within %5 ms (the bar %6, the card %7)")
+			QStringLiteral("phone, glow: FAN_SPEED written after a rest, its row glows in the picture (dpr %1: the bar %2, the "
+					"row %3, on %4) and fades within %5 ms (the bar %6, the row %7)")
 					.arg(lit.devicePixelRatio()).arg(barLit.name(), tintLit.name(), surface.name()).arg(RegisterModel::GLOW_MS)
 					.arg(barPlain.name(), tintPlain.name()));
 	if (session) session->disconnectLink();
 }
 
-/* polling off: the values are not refreshed, the cards say so and grey them */
+/* polling off: the values are not refreshed, the rows say so and grey them */
 void checkRegisterStale() {
 	Phone phone(PORTRAIT);
 	PhoneSession *session = connectFake(phone);
 	search(phone, QStringLiteral("SUPPLY_V"));
-	const QQuickItem *stale = within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("regStale"));
+	const QQuickItem *stale = within(regRow(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("regStale"));
 	const bool freshAtFirst = stale && !stale->isVisible();
 	if (session) session->setPolling(false);
 	const bool greyed = QTest::qWaitFor([&] {
-		const QQuickItem *value = within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("regValue"));
+		const QQuickItem *value = within(regRow(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("regValue"));
 		return stale && stale->isVisible() && value && near(value->property("color").value<QColor>(), themeColor(&ThemeColors::muted), 2);
 	}, 3000);
-	const QString said = cardText(phone, QStringLiteral("SUPPLY_V"), "regStale");
+	const QString said = rowText(phone, QStringLiteral("SUPPLY_V"), "regStale");
 	if (session) session->setPolling(true);
 	const bool freshAgain = QTest::qWaitFor([&] { return stale && !stale->isVisible(); }, 3000);
 	check(freshAtFirst && greyed && said == QLatin1String("not refreshed") && freshAgain,
-			QStringLiteral("phone, stale: Polling off, SUPPLY_V's value greys and its card says \"%1\"; polling again, it is "
+			QStringLiteral("phone, stale: Polling off, SUPPLY_V's value greys and its row says \"%1\"; polling again, it is "
 					"fresh again").arg(said));
 	if (session) session->disconnectLink();
 }
@@ -1710,13 +1756,13 @@ void checkRegisterSearch() {
 	RegisterList *list = session ? session->registerList() : nullptr;
 	search(phone, QStringLiteral("fan"));
 	const int byName = list ? list->count() : -1;
-	const bool fanCard = card(phone, QStringLiteral("FAN_SPEED")) && !card(phone, QStringLiteral("SUPPLY_V"));
+	const bool fanCard = regRow(phone, QStringLiteral("FAN_SPEED")) && !regRow(phone, QStringLiteral("SUPPLY_V"));
 	const QString count = phone.text("registerCount");
 	search(phone, QStringLiteral("0xd08"));
 	const int byAddr = list ? list->count() : -1;
 	search(phone, QStringLiteral("zzz"));
-	const bool none = list && list->count() == 0 && phone.item("registersEmpty") && phone.item("registersEmpty")->isVisible();
-	const QString empty = phone.text("registersEmpty");
+	const bool none = list && list->count() == 0 && phone.item("registersEmptyText") && phone.item("registersEmptyText")->isVisible();
+	const QString empty = phone.text("registersEmptyText");
 	phone.tap(phone.item("searchClear"));
 	const bool all = list && list->count() == list->total() && phone.text("registerSearch").isEmpty();
 	check(byName == 1 && fanCard && count == QStringLiteral("registers: 1 of %1").arg(list ? list->total() : 0) && byAddr == 4
@@ -1725,53 +1771,55 @@ void checkRegisterSearch() {
 					"(\"%2\"); Clear shows them all again").arg(count, empty));
 }
 
-/* the "⋯" button: Plot marks it plotted, the chart's limit says why not, Copy */
+/* the sheet's Plot marks it plotted, the chart's limit says why not, Copy */
 void checkRegisterPlot() {
 	Phone phone(PORTRAIT);
 	PhoneSession *session = phone.session();
 	RegisterModel *model = session ? session->registers() : nullptr;
-	search(phone, QStringLiteral("SUPPLY_V"));
-	phone.tap(within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("moreButton")));
-	QObject *menu = phone.object("moreMenu");
-	const bool menuOpen = menu && menu->property("opened").toBool();
-	const QString plotText = phone.text("menuPlot");
-	phone.tap(phone.item("menuPlot"));
+	openSheet(phone, QStringLiteral("SUPPLY_V"));
+	const bool opened = sheetOpen(phone);
+	const QString plotText = phone.text("sheetPlot");
+	phone.tap(phone.item("sheetPlot"));
 	const int row = modelRow(session, QStringLiteral("SUPPLY_V"));
 	const bool plotted = model && row >= 0 && model->rows()[row].plot;
-	const QQuickItem *mark = within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("regPlotted"));
+	const QString plotDone = phone.text("sheetDone");
+	const QString offText = phone.text("sheetPlot");
+	const QQuickItem *sheetTag = phone.item("sheetPlottedTag");
+	const bool sheetMarked = sheetTag && sheetTag->isVisible();
+	closeSheet(phone);
+	const QQuickItem *mark = within(regRow(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("regPlotted"));
 	const bool marked = mark && mark->isVisible() && mark->property("text").toString() == QLatin1String("on the chart");
-	const QString plotNotice = phone.text("registerNoticeText");
 
-	/* one line at most: the next is refused with the desktop's words */
+	/* one line at most: the next is refused with the desktop's words, in the sheet */
 	if (model) model->setPlotLimit(1);
-	search(phone, QStringLiteral("SUPPLY_I"));
-	phone.tap(within(card(phone, QStringLiteral("SUPPLY_I")), QStringLiteral("moreButton")));
-	phone.tap(phone.item("menuPlot"));
+	openSheet(phone, QStringLiteral("SUPPLY_I"));
+	phone.tap(phone.item("sheetPlot"));
 	const int other = modelRow(session, QStringLiteral("SUPPLY_I"));
 	const bool refused = model && other >= 0 && !model->rows()[other].plot;
-	const QString limitNotice = phone.text("registerNoticeText");
-	const QQuickItem *noticeBox = phone.item("registerNotice");
-	const bool noticeShown = noticeBox && noticeBox->isVisible();
+	const QString limitDone = phone.text("sheetDone");
+	const QQuickItem *done = phone.item("sheetDone");
+	const bool doneShown = done && done->isVisible() && near(done->property("color").value<QColor>(), themeColor(&ThemeColors::warn), 2);
 
 	/* Copy: the name, the value and the unit on the clipboard */
-	phone.tap(within(card(phone, QStringLiteral("SUPPLY_I")), QStringLiteral("moreButton")));
-	phone.tap(phone.item("menuCopy"));
+	phone.tap(phone.item("sheetCopy"));
 	const QString copied = QGuiApplication::clipboard() ? QGuiApplication::clipboard()->text() : QString();
-	const QString copyNotice = phone.text("registerNoticeText");
-	check(menuOpen && plotText == QLatin1String("Plot") && plotted && marked && plotNotice == QLatin1String("SUPPLY_V on the chart")
-					&& refused && noticeShown
-					&& limitNotice == QLatin1String("At most 1 registers on the chart at 10 samples a second: take one off first"),
-			QStringLiteral("phone, Plot: the \"⋯\" button's menu, Plot marks SUPPLY_V plotted (\"on the chart\" on its card, "
-					"\"%1\"); with a limit of one line the next is refused: \"%2\"").arg(plotNotice, limitNotice));
+	const QString copyDone = phone.text("sheetDone");
+	closeSheet(phone);
+	check(opened && plotText == QLatin1String("Plot") && plotted && sheetMarked && offText == QLatin1String("Take off the chart")
+					&& marked && plotDone == QLatin1String("SUPPLY_V on the chart") && refused && doneShown
+					&& limitDone == QLatin1String("At most 1 registers on the chart at 10 samples a second: take one off first"),
+			QStringLiteral("phone, Plot: a row's sheet has Plot; it marks SUPPLY_V plotted (\"%1\", the button now \"%2\", \"on "
+					"the chart\" on the sheet and the row); with a limit of one line the next is refused in the sheet: \"%3\"")
+					.arg(plotDone, offText, limitDone));
 	check(copied == QStringLiteral("SUPPLY_I = %1 A").arg(modelValue(session, QStringLiteral("SUPPLY_I")))
-					&& copyNotice == QStringLiteral("Copied: ") + copied,
-			QStringLiteral("phone, Copy: the \"⋯\" button's Copy puts \"%1\" on the clipboard and says so").arg(copied));
+					&& copyDone == QStringLiteral("Copied: ") + copied,
+			QStringLiteral("phone, Copy: the sheet's Copy puts \"%1\" on the clipboard and says so").arg(copied));
 }
 
-/* no symbol characters a phone's font may not have: the menu's bars and the "⋯" dots are drawn */
+/* no symbol characters a phone's font may not have: the menu's bars, the rows' and the pill's chevrons are drawn */
 void checkDrawnSymbols() {
 	Phone phone(PORTRAIT);
-	static const QString symbols = QStringLiteral("☰⋯▾▸▴▲▼◀▶✎✕");
+	static const QString symbols = QStringLiteral("☰⋯▾▸▴▲▼◀▶›‹✎✕");
 	QStringList found;
 	forEachItem(topItem(phone.window), [&](QQuickItem *item) {
 		if (!item->inherits("QQuickText")) return;
@@ -1779,16 +1827,18 @@ void checkDrawnSymbols() {
 		for (const QChar c : symbols)
 			if (text.contains(c)) found << text;
 	});
-	int bars = 0, dots = 0;
+	int bars = 0;
 	forEachItem(phone.item("menuButton"), [&](QQuickItem *item) { bars += item->objectName() == QLatin1String("menuBar"); });
 	search(phone, QStringLiteral("SUPPLY_V"));
-	forEachItem(within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("moreButton")),
-			[&](QQuickItem *item) { dots += item->objectName() == QLatin1String("moreDot"); });
+	const QQuickItem *chevron = within(regRow(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("rowChevron"));
+	const QQuickItem *pillChevron = phone.item("linkPillChevron");
+	const bool drawn = chevron && chevron->isVisible() && chevron->property("kind").toString() == QLatin1String("next")
+			&& pillChevron && pillChevron->isVisible() && pillChevron->property("kind").toString() == QLatin1String("down");
 	const QString label = phone.item("menuButton") ? phone.item("menuButton")->property("text").toString() : QStringLiteral("?");
-	check(found.isEmpty() && bars == 3 && dots == 3 && label.isEmpty(),
-			QStringLiteral("phone, symbols: the menu button's three bars and the \"⋯\" button's three dots are drawn (%1 bars, "
-					"%2 dots), no Text holds a symbol a phone's font may lack (\"☰\" showed as a box on a Samsung phone) %3")
-					.arg(bars).arg(dots).arg(found.join(QStringLiteral(" | "))));
+	check(found.isEmpty() && bars == 3 && drawn && label.isEmpty(),
+			QStringLiteral("phone, symbols: the menu button's three bars, a row's chevron and the pill's are drawn (%1 bars, "
+					"chevrons %2), no Text holds a symbol a phone's font may lack (\"☰\" showed as a box on a Samsung phone) %3")
+					.arg(bars).arg(drawn).arg(found.join(QStringLiteral(" | "))));
 }
 
 /* A stand-in between the phone and the fake device that drops the first DEVICE_ID request of each link, as a board still
@@ -1869,15 +1919,15 @@ void checkRegisterTexts() {
 			phone.settle(600);
 			for (const QString &text : textsOutside(phone.window, seen)) bad << code + QStringLiteral(" list: ") + text;
 			if (code == QLatin1String("ar")) latin << latinTexts(phone.window);
-			/* a card's parts: the name at the start edge, the value then its unit left to right */
+			/* a row's parts: the name at the start edge, the value then its unit left to right, the chevron at the end */
 			search(phone, QStringLiteral("SETPOINT"));
-			QQuickItem *setpoint = card(phone, QStringLiteral("SETPOINT"));
+			QQuickItem *setpoint = regRow(phone, QStringLiteral("SETPOINT"));
 			auto x = [&](const char *part) {
 				const QQuickItem *item = within(setpoint, QLatin1String(part));
 				return item ? item->mapToScene(QPointF(item->width() / 2, 0)).x() : -1.0;
 			};
 			const double width = phone.window ? phone.window->width() : 0;
-			const double name = x("regName"), value = x("regValue"), unit = x("regUnit"), more = x("moreButton");
+			const double name = x("regName"), value = x("regValue"), unit = x("regUnit"), more = x("rowChevron");
 			const bool rtl = code == QLatin1String("ar");
 			/* the map's names (Latin) at the start edge too: their text, not only their item */
 			auto align = [&](QQuickItem *in, const char *part) {
@@ -1886,7 +1936,13 @@ void checkRegisterTexts() {
 			};
 			const int start = rtl ? Qt::AlignRight : Qt::AlignLeft;
 			const int nameAlign = align(setpoint, "regName"), groupAlign = align(phone.item("registerList"), "regGroup");
-			const bool ok = value < unit && (rtl ? (value > width / 2 && more < width / 2) : (value < width / 2 && more > width / 2))
+			/* the name at the start edge, the value and the chevron at the end (the left in Arabic, the chevron outermost) */
+			auto left = [&](const char *part) {
+				const QQuickItem *item = within(setpoint, QLatin1String(part));
+				return item ? item->mapToScene(QPointF(0, 0)).x() : -1.0;
+			};
+			const bool ok = left("regValue") < left("regUnit")
+					&& (rtl ? (name > width / 2 && value < width / 2 && more < value) : (name < width / 2 && value > width / 2 && more > unit))
 					&& nameAlign == start && groupAlign == start;
 			if (!ok)
 				mirror << QStringLiteral("%1: name %2, value %3, unit %4, more %5, aligned %6 %7").arg(code).arg(name).arg(value)
@@ -1902,14 +1958,14 @@ void checkRegisterTexts() {
 	language::apply(*qApp, QStringLiteral("en"));
 	latin.removeDuplicates();
 	check(bad.isEmpty() && seen > 60, QStringLiteral("phone, Registers texts: at 412 px, connected, in English and Arabic, the "
-			"cards and the write sheet asking first: every Text inside its parent and not cut (%1 seen) %2")
+			"rows and a register's sheet asking first: every Text inside its parent and not cut (%1 seen) %2")
 			.arg(seen).arg(bad.join(QStringLiteral(" | "))));
 	check(latin.isEmpty() && mirror.isEmpty(), QStringLiteral("phone, Registers in Arabic: every text translated but the "
-			"map's names and the values; the card mirrored (its buttons at the left), the name, the group and the value at the "
+			"map's names and the values; the row mirrored (its value and chevron at the left), the name and the group at the "
 			"right, the value and its unit left to right %1 %2").arg(latin.join(QStringLiteral(" | ")), mirror.join(QStringLiteral(" | "))));
 }
 
-/* the Registers screen in both themes: the window's background, a card's panel and its name in the picture */
+/* the Registers screen in both themes: the window's background, a row's panel and its name in the picture */
 void checkRegisterThemes() {
 	QStringList seen;
 	bool ok = true;
@@ -1917,20 +1973,21 @@ void checkRegisterThemes() {
 		QSettings().setValue(QStringLiteral("ui/dark"), dark);
 		const ThemeColors colors = Theme::colorsFor(dark);
 		Phone phone(PORTRAIT);
-		QQuickItem *panel = within(card(phone, QStringLiteral("DEVICE_ID")), QStringLiteral("cardPanel"));
+		QQuickItem *panel = within(regRow(phone, QStringLiteral("DEVICE_ID")), QStringLiteral("rowPanel"));
 		const QImage image = phone.grab();
-		const QColor cardColor = Phone::pixel(image, at(panel, panel ? panel->width() - 6 : 0, panel ? panel->height() - 6 : 0));
-		const QQuickItem *list = phone.item("registerList");
-		const QColor bg = Phone::pixel(image, at(list, 4, list ? list->height() - 4 : 0));
-		const QQuickItem *name = within(card(phone, QStringLiteral("DEVICE_ID")), QStringLiteral("regName"));
+		const QColor rowColor = Phone::pixel(image, at(panel, panel ? panel->width() - 6 : 0, panel ? panel->height() - 5 : 0));
+		/* the background: behind a section's header, between the groups' panels */
+		const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("regGroup"));
+		const QColor bg = Phone::pixel(image, at(group ? group->parentItem() : nullptr, 4, 4));
+		const QQuickItem *name = within(regRow(phone, QStringLiteral("DEVICE_ID")), QStringLiteral("regName"));
 		const bool nameColor = name && near(name->property("color").value<QColor>(), colors.text, 2);
-		const bool fine = panel && near(cardColor, colors.surface, 4) && near(bg, colors.bg, 4) && nameColor;
-		seen << QStringLiteral("%1: card %2, background %3").arg(dark ? "dark" : "light", cardColor.name(), bg.name());
+		const bool fine = panel && near(rowColor, colors.surface, 4) && near(bg, colors.bg, 4) && nameColor;
+		seen << QStringLiteral("%1: row %2, background %3").arg(dark ? "dark" : "light", rowColor.name(), bg.name());
 		ok = ok && fine;
 	}
 	QSettings().remove(QStringLiteral("ui/dark"));
-	check(ok, QStringLiteral("phone, Registers themes: the cards on the theme's surface, the list on its background, the "
-			"names in its text colour, dark and light (%1)").arg(seen.join(QStringLiteral("; "))));
+	check(ok, QStringLiteral("phone, Registers themes: the rows on the theme's surface, the sections' headers on its "
+			"background, the names in its text colour, dark and light (%1)").arg(seen.join(QStringLiteral("; "))));
 }
 
 /* perf: a line a second while the Registers screen shows, none on another screen */
@@ -2047,18 +2104,23 @@ void checkSearchClear() {
 					"shown only while the field holds a text; a tap empties the field and shows every register").arg(strokes));
 }
 
-/* no link: the card at the top of the Registers screen says how to connect, its button opens the drawer */
+/* no link: the strip at the top of the Registers screen says so, its button opens the drawer */
 void checkOfflineButton() {
 	Phone phone(PORTRAIT);
 	QQuickItem *card = phone.item("registersOffline");
 	const bool shown = card && card->isVisible() && !phone.text("offlineText").isEmpty();
+	/* a slim strip, no longer a card: 56 high (64 in Arabic's longer words at most), right over the list, in view */
+	const bool slim = card && card->height() <= 72;
+	const QRectF strip = sceneRect(card), view = sceneRect(phone.item("registerList"));
+	const bool inView = !strip.isEmpty() && strip.top() >= 48 && std::fabs(strip.bottom() - view.top()) <= 0.5;
 	QQuickItem *button = phone.item("registersConnect");
 	const bool target = button && button->height() >= 48;
 	phone.tap(button);
 	(void) QTest::qWaitFor([&] { return phone.drawerOpen(); }, 3000);
 	const bool opened = phone.drawerOpen();
-	check(shown && target && opened, QStringLiteral("phone, not connected: the Registers screen says how to connect (\"%1\") and "
-			"its Connect button (48 dp) opens the Connect drawer").arg(phone.text("offlineText")));
+	check(shown && slim && inView && target && opened, QStringLiteral("phone, not connected: the Registers screen says so in a "
+			"slim strip right over the list (%1 high at %2, the list from %3, \"%4\") and its Connect button (48 dp) opens the "
+			"Connect drawer").arg(card ? card->height() : -1).arg(strip.top()).arg(view.top()).arg(phone.text("offlineText")));
 }
 
 /* the tab bar: an icon drawn over each name (beside it in landscape), no symbol glyph; the chosen tab in the accent on
@@ -2122,12 +2184,13 @@ void checkTouchTargets() {
 	measure(phone.item("menuButton"), QStringLiteral("menu"));
 	measure(phone.item("linkPill"), QStringLiteral("pill"));
 	search(phone, QStringLiteral("SETPOINT"));
-	measure(within(card(phone, QStringLiteral("SETPOINT")), QStringLiteral("writeButton")), QStringLiteral("Write"));
-	measure(within(card(phone, QStringLiteral("SETPOINT")), QStringLiteral("moreButton")), QStringLiteral("more"));
+	measure(regRow(phone, QStringLiteral("SETPOINT")), QStringLiteral("a row"));
 	measure(phone.item("searchClear"), QStringLiteral("clear"));
 	openSheet(phone, QStringLiteral("FAN_SPEED"));
-	measure(phone.item("sheetApply"), QStringLiteral("Apply"));
+	measure(phone.item("sheetApply"), QStringLiteral("Write"));
 	measure(phone.item("sheetClose"), QStringLiteral("Close"));
+	measure(phone.item("sheetPlot"), QStringLiteral("Plot"));
+	measure(phone.item("sheetCopy"), QStringLiteral("Copy"));
 	phone.type("sheetField", QStringLiteral("150"));
 	phone.tap(phone.item("sheetApply"));
 	measure(phone.item("sheetWriteAnyway"), QStringLiteral("Write anyway"));
@@ -2137,8 +2200,8 @@ void checkTouchTargets() {
 	measure(phone.item("sheetChoice_2"), QStringLiteral("a choice"));
 	closeSheet(phone);
 	for (const char *tab : { "tabRegisters", "tabChart", "tabMonitor", "tabLog" }) measure(phone.item(tab), QLatin1String(tab));
-	check(small.isEmpty(), QStringLiteral("phone, touch targets: the menu, the pill, a card's Write and \"⋯\", search's clear, "
-			"the sheet's Apply, Close, Write anyway, Cancel and an enum's choice, the tabs: each at least 48 x 48 dp %1")
+	check(small.isEmpty(), QStringLiteral("phone, touch targets: the menu, the pill, a register's row, search's clear, the "
+			"sheet's Write, Close, Plot, Copy, Write anyway, Cancel and an enum's choice, the tabs: each at least 48 x 48 dp %1")
 			.arg(small.join(QStringLiteral(" | "))));
 	if (session) session->disconnectLink();
 }
@@ -2156,7 +2219,7 @@ void checkEnumChoices() {
 	const QString before = modelValue(session, QStringLiteral("LED_MODE"));
 	const QString wanted = before.startsWith(QLatin1String("blink")) ? QStringLiteral("1") : QStringLiteral("2");
 	phone.tap(phone.item(wanted == QLatin1String("2") ? "sheetChoice_2" : "sheetChoice_1"));
-	const bool picked = phone.object("writeSheet") && phone.object("writeSheet")->property("chosen").toString() == wanted;
+	const bool picked = phone.object("registerSheet") && phone.object("registerSheet")->property("chosen").toString() == wanted;
 	phone.tap(phone.item("sheetApply"));
 	const bool written = QTest::qWaitFor([&] {
 		return session && session->log()->contains(QStringLiteral("written: LED_MODE = %1").arg(wanted));
@@ -2536,7 +2599,7 @@ void checkBackOrder() {
 	const bool sheetWasOpen = sheetOpen(phone);
 	const bool sheetBack = pressBack(phone);
 	const bool sheetClosed
-			= QTest::qWaitFor([&] { return !phone.object("writeSheet")->property("visible").toBool(); }, 3000);
+			= QTest::qWaitFor([&] { return !phone.object("registerSheet")->property("visible").toBool(); }, 3000);
 	search(phone, QString());
 	const bool leftToAndroid = !pressBack(phone);
 	check(toList && helpClosed && drawerWasOpen && drawerBack && drawerClosed && sheetWasOpen && sheetBack && sheetClosed
@@ -2620,8 +2683,8 @@ void checkBackKeyboard() {
 					.arg(focused).arg(taken).arg(unfocused).arg(stayed).arg(rootNext));
 }
 
-/* the owner's phone: typed in the search field, a card's "..." menu, Plot: the menu closed, the focus went back to the
- * field and its keyboard came up again over the list. The list takes the focus instead */
+/* a tap on a row while the search field has the focus: the sheet, then the list has the focus, not the field (whose
+ * keyboard came up again over the list after the old menu's Plot) */
 void checkMenuFocus() {
 	Phone phone(PORTRAIT);
 	PhoneSession *session = connectFake(phone);
@@ -2629,11 +2692,11 @@ void checkMenuFocus() {
 	search(phone, QStringLiteral("SUPPLY_V"));
 	if (field) field->forceActiveFocus();
 	const bool focused = field && field->hasActiveFocus();
-	phone.tap(within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("moreButton")));
-	QObject *menu = phone.object("moreMenu");
-	const bool opened = menu && QTest::qWaitFor([&] { return menu->property("opened").toBool(); }, 3000);
-	phone.tap(phone.item("menuPlot"));
-	const bool closed = menu && QTest::qWaitFor([&] { return !menu->property("visible").toBool(); }, 3000);
+	phone.tap(regRow(phone, QStringLiteral("SUPPLY_V")));
+	const bool opened = QTest::qWaitFor([&] { return sheetOpen(phone); }, 3000);
+	phone.tap(phone.item("sheetPlot"));
+	closeSheet(phone);
+	const bool closed = !phone.object("registerSheet")->property("visible").toBool();
 	phone.settle(200);
 	const bool fieldLetGo = field && !field->hasActiveFocus();
 	const bool listHas = list && list->hasActiveFocus();
@@ -2641,9 +2704,10 @@ void checkMenuFocus() {
 	if (session && row >= 0) session->setPlot(row, false);
 	search(phone, QString());
 	check(focused && opened && closed && fieldLetGo && listHas,
-			QStringLiteral("phone, Registers: after a card's menu (Plot) the focus goes to the list, not back to the search "
-					"field and its keyboard (field focused before %1, menu opened %2 and closed %3, field let go %4, the list "
+			QStringLiteral("phone, Registers: after a row's sheet (Plot) the focus goes to the list, not back to the search "
+					"field and its keyboard (field focused before %1, sheet opened %2 and closed %3, field let go %4, the list "
 					"has it %5)").arg(focused).arg(opened).arg(closed).arg(fieldLetGo).arg(listHas));
+	if (session) session->disconnectLink();
 }
 
 /* a back while a popup is still sliding in (its `opened` not yet true) closes it, as one fully open: it went to
@@ -3164,19 +3228,21 @@ void checkChartFast() {
 	fake.waitForFinished(3000);
 }
 
-/* no line: the plot says how to plot one, its button goes to the Registers screen */
+/* no line: the plot shows the chart's icon, "No lines yet" and how to plot one; its button goes to the Registers screen */
 void checkChartEmpty() {
 	Phone phone(PORTRAIT);
 	showChart(phone);
 	QQuickItem *empty = phone.item("chartEmpty");
-	const bool shown = empty && empty->isVisible();
-	const QString text = phone.text("chartEmptyText");
+	const bool shown = empty && empty->isVisible() && phone.item("chartEmptyIcon") && phone.item("chartEmptyIcon")->isVisible()
+			&& phone.item("chartEmptyIcon")->property("kind").toString() == QLatin1String("chart");
+	const QString title = phone.text("chartEmptyTitle"), text = phone.text("chartEmptyText");
 	const bool chartTab = phone.item("screens") && phone.item("screens")->property("currentIndex").toInt() == 1;
-	phone.tap(phone.item("chartToRegisters"));
+	phone.tap(phone.item("chartEmptyButton"));
 	const int tab = phone.item("screens") ? phone.item("screens")->property("currentIndex").toInt() : -1;
-	check(shown && chartTab && text == QLatin1String("Plot a register from its ... menu on the Registers screen.") && tab == 0,
-			QStringLiteral("phone, chart: with no line the plot says \"%1\", and its Go to Registers button shows the Registers "
-					"screen (tab %2)").arg(text).arg(tab));
+	check(shown && chartTab && title == QLatin1String("No lines yet")
+					&& text == QLatin1String("Tap a register on the Registers screen, then Plot.") && tab == 0,
+			QStringLiteral("phone, chart: with no line the plot shows its icon, \"%1\" and \"%2\", and its Go to Registers "
+					"button shows the Registers screen (tab %3)").arg(title, text).arg(tab));
 }
 
 /* both themes: a line in the theme's series colour, its chip on the surface with its name in the text colour */
@@ -3275,15 +3341,13 @@ void saveChartPictures(const QString &prefix) {
 				if (QObject *legend = phone.object("legendView")) QMetaObject::invokeMethod(legend, "positionViewAtEnd");
 				phone.settle(500);
 				phone.grab().save(name + QStringLiteral("sixend") + orient);
-				/* a card's "..." menu on the Registers screen */
+				/* a plotted register's sheet on the Registers screen: its trend, Take off the chart */
 				phone.tap(phone.item("tabRegisters"));
-				search(phone, QStringLiteral("SUPPLY_V"));
-				phone.tap(within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("moreButton")));
-				QObject *cardMenu = phone.object("moreMenu");
-				(void) QTest::qWaitFor([&] { return cardMenu && cardMenu->property("opened").toBool(); }, 3000);
+				openSheet(phone, QStringLiteral("SUPPLY_V"));
 				phone.settle(300);
-				phone.grab().save(name + QStringLiteral("cardmenu") + orient);
-				if (cardMenu) QMetaObject::invokeMethod(cardMenu, "close");
+				phone.grab().save(name + QStringLiteral("regsheet") + orient);
+				closeSheet(phone);
+				search(phone, QString());
 				if (session) session->disconnectLink();
 			}
 		}
@@ -4073,14 +4137,6 @@ void checkMenuInside() {
 				(void) QTest::qWaitFor([&] { return menu && !menu->property("visible").toBool(); }, 3000);
 			};
 			{
-				Phone phone(PORTRAIT);
-				search(phone, QStringLiteral("SUPPLY_V"));
-				QQuickItem *more = within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("moreButton"));
-				phone.tap(more);
-				inspect(phone, "moreMenu", more, QStringLiteral("card"), true);
-				search(phone, QString());
-			}
-			{
 				Phone phone(LANDSCAPE);
 				chartWithFedLines(phone, 2);
 				/* the last chip's, at the legend's end (beside the controls it may start out of view) */
@@ -4094,9 +4150,237 @@ void checkMenuInside() {
 	}
 	QSettings().remove(QStringLiteral("ui/dark"));
 	language::apply(*qApp, QStringLiteral("en"));
-	check(bad.isEmpty(), QStringLiteral("phone, menus: a card's and a chip's \"...\" menu inside the window less 8 dp, under "
-			"the button, a card's grown toward the middle (mirrored in Arabic), an edge in the control colour drawn on the "
-			"page, dark and light (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+	check(bad.isEmpty(), QStringLiteral("phone, menus: a chip's \"...\" menu inside the window less 8 dp, under the button, "
+			"an edge in the control colour drawn on the page, dark and light (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* ---- the design pass (part A): the Registers screen as the desktop's table, a register's sheet, the pill */
+
+/* the cards fully in view at 412 x 915, connected, before the rows (phone_shots_b6: DEVICE_ID to MSG_BUFFER) */
+constexpr int CARDS_IN_VIEW_BEFORE = 5;
+
+/* rows as the desktop's table: about twice as many fully in view as the cards were, each at least 48 high, the second
+ * line only with something to say, the values lined up at their right edge in tabular digits, a thin line under each */
+void checkRowDensity() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	phone.settle(600);
+	QQuickItem *list = phone.item("registerList");
+	const QRectF view = sceneRect(list);
+	int whole = 0, separated = 0;
+	double lowest = 1e9;
+	forEachItem(list, [&](QQuickItem *item) {
+		if (!item->objectName().startsWith(QLatin1String("row_")) || !item->isVisible()) return;
+		const QRectF r = sceneRect(item);
+		if (r.top() < view.top() - 0.5 || r.bottom() > view.bottom() + 0.5) return;
+		whole++;
+		lowest = std::min(lowest, r.height());
+		const QQuickItem *line = within(item, QStringLiteral("rowSeparator"));
+		separated += line && line->isVisible() && line->height() <= 1.01;
+	});
+	auto second = [&](const char *reg) {
+		const QQuickItem *line = within(regRow(phone, QLatin1String(reg)), QStringLiteral("rowSecond"));
+		return line && line->isVisible();
+	};
+	const bool secondLines = !second("DEVICE_ID") && !second("UPTIME") && second("STATUS") && second("CONFIG");
+	QStringList edges;
+	QVector<double> rights;
+	bool tabular = true;
+	for (const char *reg : { "DEVICE_ID", "STATUS", "CONFIG", "MSG_CNT", "UPTIME" }) {
+		const QQuickItem *value = within(regRow(phone, QLatin1String(reg)), QStringLiteral("regValue"));
+		if (!value) continue;
+		const double right = value->mapToScene(QPointF(value->width(), 0)).x();
+		rights << right;
+		edges << QStringLiteral("%1 %2").arg(QLatin1String(reg)).arg(right);
+		tabular = tabular && value->property("font").value<QFont>().featureValue(QFont::Tag("tnum")) == 1
+				&& value->property("effectiveHorizontalAlignment").toInt() == Qt::AlignRight;
+	}
+	const bool lined = rights.size() == 5 && *std::max_element(rights.begin(), rights.end())
+			- *std::min_element(rights.begin(), rights.end()) <= 0.5;
+	check(whole >= CARDS_IN_VIEW_BEFORE * 9 / 5 && lowest >= 48 && separated == whole && secondLines && lined && tabular,
+			QStringLiteral("phone, Registers rows: at 412 x 915 connected %1 rows fully in view (the cards: %2), each at least "
+					"48 high (lowest %3) with a thin line under it (%4); a second line only with decoded text (STATUS, CONFIG; "
+					"not DEVICE_ID, UPTIME); the values right-aligned in tabular digits, their right edges lined up (%5)")
+					.arg(whole).arg(CARDS_IN_VIEW_BEFORE).arg(lowest).arg(separated).arg(edges.join(QStringLiteral(", "))));
+	if (session) session->disconnectLink();
+}
+
+/* a tap on a row opens its sheet: the value large with its unit, the address and group, the decoded text, its trend,
+ * Plot and Copy; the write part only for a writable register, the number pad for a number typed with digits */
+void checkRowSheet() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	if (session) session->setWritesEnabled(true);
+	RegisterList *list = session ? session->registerList() : nullptr;
+	const int supply = modelRow(session, QStringLiteral("SUPPLY_V"));
+	/* a few values read: the trend has a line to draw */
+	(void) QTest::qWaitFor([&] { return list && list->trendSize(supply) >= 5; }, 4000);
+	openSheet(phone, QStringLiteral("SUPPLY_V"));
+	const bool opened = sheetOpen(phone);
+	const QString name = phone.text("sheetName"), addr = phone.text("sheetAddr"), unit = phone.text("sheetValueUnit");
+	bool number = false;
+	phone.text("sheetValue").toDouble(&number);
+	const QQuickItem *trend = phone.item("sheetTrend");
+	bool lowOk = false, highOk = false;
+	const double low = phone.text("sheetTrendMin").toDouble(&lowOk), high = phone.text("sheetTrendMax").toDouble(&highOk);
+	const bool trendShown = trend && trend->isVisible() && lowOk && highOk && low <= high
+			&& phone.text("sheetTrendSpan").startsWith(QLatin1String("last "));
+	const QString lowText = phone.text("sheetTrendMin"), highText = phone.text("sheetTrendMax"),
+			span = phone.text("sheetTrendSpan");
+	const bool readOnly = phone.item("sheetWriteRow") && !phone.item("sheetWriteRow")->isVisible()
+			&& phone.item("sheetPlot")->isVisible() && phone.item("sheetCopy")->isVisible();
+	closeSheet(phone);
+
+	openSheet(phone, QStringLiteral("FAN_SPEED"));
+	const QQuickItem *field = phone.item("sheetField");
+	const int fanHints = field ? field->property("inputMethodHints").toInt() : 0;
+	const bool fanPad = field && field->isVisible() && (fanHints & Qt::ImhFormattedNumbersOnly)
+			&& phone.item("sheetApply")->isVisible() && phone.text("sheetApply") == QLatin1String("Write");
+	closeSheet(phone);
+	openSheet(phone, QStringLiteral("CONFIG"));
+	const int configHints = field ? field->property("inputMethodHints").toInt() : 0;
+	const QString decoded = phone.text("sheetDecoded");
+	const bool config = field && field->isVisible() && !(configHints & Qt::ImhFormattedNumbersOnly)
+			&& phone.item("sheetDecoded")->isVisible() && decoded == rowText(phone, QStringLiteral("CONFIG"), "regDecoded");
+	closeSheet(phone);
+	check(opened && name == QLatin1String("SUPPLY_V") && addr == QStringLiteral("0xD004  ·  Power & supply") && number
+					&& unit == QLatin1String("V") && trendShown && readOnly && fanPad && config,
+			QStringLiteral("phone, sheet: a tap on SUPPLY_V's row opens its sheet (\"%1\", \"%2\", its value with \"%3\"), its "
+					"trend from %4 to %5 (%6), Plot and Copy, no write part (read-only); FAN_SPEED's field brings up the "
+					"number pad with Write beside it; CONFIG (hex) the letters' keyboard, its fields \"%7\"")
+					.arg(name, addr, unit, lowText, highText, span, decoded)
+					+ QStringLiteral(" [%1 %2 %3 %4 %5]").arg(trendShown).arg(readOnly).arg(fanPad).arg(config).arg(number));
+	if (session) session->disconnectLink();
+}
+
+/* the desktop's quick write: the field's Enter writes, the answer, then what the device holds read back */
+void checkWriteByEnter() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	if (session) session->setWritesEnabled(true);
+	openSheet(phone, QStringLiteral("FAN_SPEED"));
+	const QString before = modelValue(session, QStringLiteral("FAN_SPEED"));
+	const QString wanted = before == QLatin1String("44") ? QStringLiteral("45") : QStringLiteral("44");
+	phone.type("sheetField", wanted);
+	focusField(phone, "sheetField");
+	QTest::keyClick(phone.window, Qt::Key_Return);
+	const bool written = QTest::qWaitFor([&] {
+		return modelValue(session, QStringLiteral("FAN_SPEED")) == wanted && phone.text("sheetAnswer") == QLatin1String("FAN_SPEED written")
+				&& phone.item("sheetReadBack")->isVisible();
+	}, 3000);
+	const QString readBack = phone.text("sheetReadBack");
+	check(written && readBack == QStringLiteral("Read back: %1 %").arg(wanted)
+					&& session->log()->contains(QStringLiteral("written: FAN_SPEED = %1").arg(wanted)),
+			QStringLiteral("phone, quick write: %1 typed in FAN_SPEED's field and Enter writes it as Write does: \"%2\", \"%3\"")
+					.arg(wanted, phone.text("sheetAnswer"), readBack));
+	if (session) session->disconnectLink();
+}
+
+/* the trend's ring: at most TREND_POINTS values a register, only a plottable one, started again when the clock goes
+ * back (another link) */
+void checkTrendBounded() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	RegisterList *list = session ? session->registerList() : nullptr;
+	const int supply = modelRow(session, QStringLiteral("SUPPLY_V")), bytes = modelRow(session, QStringLiteral("MSG_BUFFER"));
+	if (!list || supply < 0 || bytes < 0) {
+		check(false, "phone, trend: the session's registers");
+		return;
+	}
+	for (int i = 0; i < 300; ++i) list->sample(supply, 1000 + i * 10, i);
+	const int kept = list->trendSize(supply);
+	const QVariantMap trend = list->trend(supply);
+	const int points = int(trend.value(QStringLiteral("points")).toList().size());
+	const double low = trend.value(QStringLiteral("min")).toDouble(), high = trend.value(QStringLiteral("max")).toDouble();
+	const double seconds = trend.value(QStringLiteral("seconds")).toDouble();
+	list->sample(supply, 500, 7);
+	const int after = list->trendSize(supply);
+	list->sample(bytes, 1000, 1);
+	const int none = list->trendSize(bytes);
+	check(kept == RegisterList::TREND_POINTS && points == kept && low == 300 - kept && high == 299
+					&& std::fabs(seconds - (kept - 1) * 0.01) < 1e-9 && after == 1 && none == 0 && list->trend(bytes).isEmpty(),
+			QStringLiteral("phone, trend: 300 values of SUPPLY_V keep the last %1 (%2 points, %3 to %4 over %5 s); a value "
+					"from an earlier time starts it again (%6); a bytes register keeps none (%7)")
+					.arg(kept).arg(points).arg(low).arg(high).arg(seconds).arg(after).arg(none));
+}
+
+/* the pill: a chevron says it opens something, a tap opens the Connect drawer; while connected and polling it has the
+ * poll rate, as the desktop's status bar */
+void checkPill() {
+	Phone phone(PORTRAIT);
+	const QString off = phone.text("linkPillText");
+	phone.tap(phone.item("linkPill"));
+	const bool drawer = QTest::qWaitFor([&] { return phone.drawerOpen(); }, 3000);
+	phone.closeDrawer();
+	PhoneSession *session = connectFake(phone);
+	static const QRegularExpression rate(QStringLiteral("^Connected · (\\d+(\\.\\d)?) Hz$"));
+	QRegularExpressionMatch match;
+	const bool rated = QTest::qWaitFor([&] {
+		match = rate.match(phone.text("linkPillText"));
+		return match.hasMatch() && session && std::fabs(match.captured(1).toDouble() - session->pollHz()) <= 0.51;
+	}, 4000);
+	const QString on = phone.text("linkPillText");
+	if (session) session->setPolling(false);
+	const bool plain = QTest::qWaitFor([&] { return phone.text("linkPillText") == QLatin1String("Connected"); }, 2000);
+	const QQuickItem *chevron = phone.item("linkPillChevron");
+	check(off == QLatin1String("Not connected") && drawer && rated && plain && chevron && chevron->isVisible(),
+			QStringLiteral("phone, pill: \"%1\" with a chevron, a tap opens the Connect drawer; connected and polling \"%2\" "
+					"(the measured %3 polls a second), polling off \"Connected\"")
+					.arg(off, on).arg(session ? session->pollHz() : -1));
+	if (session) {
+		session->setPolling(true);
+		session->disconnectLink();
+	}
+}
+
+/* the header slimmer in portrait (48, was 56): the room goes to the screens; the title smaller, the targets 48 */
+void checkHeaderSlim() {
+	QStringList seen;
+	bool ok = true;
+	for (QSize size : { PORTRAIT, LANDSCAPE }) {
+		Phone phone(size);
+		const QQuickItem *header = phone.item("header"), *title = phone.item("screenTitle"), *menu = phone.item("menuButton");
+		const QQuickItem *screens = phone.item("screens");
+		const int pixels = title ? title->property("font").value<QFont>().pixelSize() : 0;
+		const bool fine = header && header->height() == 48 && pixels == 18 && menu && menu->height() >= 47.5 && screens
+				&& std::fabs(sceneRect(screens).top() - 48) <= 0.5;
+		seen << QStringLiteral("%1: header %2, title %3 px, the screens from %4").arg(sizeText(size)).arg(header ? header->height() : -1)
+						.arg(pixels).arg(screens ? sceneRect(screens).top() : -1);
+		ok = ok && fine;
+	}
+	check(ok, QStringLiteral("phone, header: 48 high in portrait and landscape, the title at 18 px, the menu button 48 dp, "
+			"the screens right under it (%1)").arg(seen.join(QStringLiteral("; "))));
+}
+
+/* an empty Log: its icon, what comes here, and a button to the Connect drawer */
+void checkLogEmpty() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	if (session) session->log()->clear();
+	phone.tap(phone.item("tabLog"));
+	const QQuickItem *icon = phone.item("logEmptyIcon"), *button = phone.item("logEmptyButton");
+	const bool shown = icon && icon->isVisible() && icon->property("kind").toString() == QLatin1String("log") && button
+			&& button->isVisible() && button->height() >= 47.5;
+	const QString title = phone.text("logEmptyTitle"), action = phone.text("logEmptyButton");
+	phone.tap(phone.item("logEmptyButton"));
+	const bool drawer = QTest::qWaitFor([&] { return phone.drawerOpen(); }, 3000);
+	check(shown && title == QLatin1String("Nothing logged yet") && action == QLatin1String("Open the Connect drawer") && drawer,
+			QStringLiteral("phone, empty Log: its icon, \"%1\", and \"%2\" opens the Connect drawer").arg(title, action));
+}
+
+/* a search that finds nothing: the screen says so with one button, which clears the search */
+void checkSearchEmpty() {
+	Phone phone(PORTRAIT);
+	RegisterList *list = phone.session() ? phone.session()->registerList() : nullptr;
+	search(phone, QStringLiteral("zzz"));
+	const QString title = phone.text("registersEmptyTitle"), action = phone.text("registersEmptyButton");
+	const QQuickItem *button = phone.item("registersEmptyButton");
+	const bool shown = button && button->isVisible() && phone.item("registersEmptyIcon")->isVisible();
+	phone.tap(phone.item("registersEmptyButton"));
+	const bool all = list && list->count() == list->total() && phone.text("registerSearch").isEmpty()
+			&& !phone.item("registersEmptyState")->isVisible();
+	check(shown && title == QLatin1String("No match") && action == QLatin1String("Clear the search") && all,
+			QStringLiteral("phone, search empty: \"%1\" with \"%2\", which shows every register again").arg(title, action));
 }
 
 /* EVRE_PHONE_SHOT: both languages and themes. Portrait: the start (not connected) and its drawer, connected (the
@@ -4172,7 +4456,7 @@ void savePictures(const QString &prefix) {
 				openSheet(phone, QStringLiteral("FAN_SPEED"));
 				phone.type("sheetField", QStringLiteral("60"));
 				phone.tap(phone.item("sheetApply"));
-				(void) QTest::qWaitFor([&] { return !phone.object("writeSheet")->property("waiting").toBool(); }, 3000);
+				(void) QTest::qWaitFor([&] { return !phone.object("registerSheet")->property("waiting").toBool(); }, 3000);
 				phone.settle(600);
 				save(phone, name + QStringLiteral("sheet.png"));
 				phone.type("sheetField", QStringLiteral("150"));
@@ -4337,6 +4621,14 @@ int main(int argc, char **argv) {
 	RUN(checkUsbBack);
 	RUN(checkDeviceLineAfterDisconnect);
 	RUN(checkTypedNumbers);
+	RUN(checkRowDensity);
+	RUN(checkRowSheet);
+	RUN(checkWriteByEnter);
+	RUN(checkTrendBounded);
+	RUN(checkPill);
+	RUN(checkHeaderSlim);
+	RUN(checkLogEmpty);
+	RUN(checkSearchEmpty);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));

@@ -5,13 +5,19 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QHash>
+#include <QPointF>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 RegisterList::RegisterList(RegisterModel *model, QObject *parent) : QAbstractListModel(parent), model_(model) {
 	/* the filter is asked only in rebuild(): a value's change never moves a row, so it need not look at changes */
 	filter_.setDynamicSortFilter(false);
 	filter_.setSourceModel(model_); /* before our own connections: it is reset first */
-	connect(model_, &QAbstractItemModel::modelReset, this, &RegisterList::rebuild);
+	connect(model_, &QAbstractItemModel::modelReset, this, [this] {
+		trends_.clear(); /* another map: its rows are other registers */
+		rebuild();
+	});
 	connect(model_, &QAbstractItemModel::dataChanged, this, &RegisterList::forward);
 	staleTimer_.setInterval(STALE_CHECK_MS);
 	connect(&staleTimer_, &QTimer::timeout, this, &RegisterList::checkStale);
@@ -91,6 +97,7 @@ QVariant RegisterList::data(const QModelIndex &index, int role) const {
 	case PlottableRole: return def.canPlot();
 	case DangerRole: return def.danger;
 	case SourceRole: return source;
+	case NumericRole: return def.isNumeric();
 	default: return {};
 	}
 }
@@ -99,7 +106,7 @@ QHash<int, QByteArray> RegisterList::roleNames() const {
 	return { { NameRole, "name" }, { GroupRole, "group" }, { AddrRole, "addr" }, { ValueRole, "value" },
 		{ UnitRole, "unit" }, { DecodedRole, "decoded" }, { GlowRole, "glow" }, { DirectionRole, "direction" },
 		{ WritableRole, "writable" }, { PlottedRole, "plotted" }, { ErrorRole, "error" }, { StaleRole, "stale" },
-		{ PlottableRole, "plottable" }, { DangerRole, "danger" }, { SourceRole, "source" } };
+		{ PlottableRole, "plottable" }, { DangerRole, "danger" }, { SourceRole, "source" }, { NumericRole, "numeric" } };
 }
 
 /* RegisterModel's change, row by row: its columns become the roles a card shows. Its glow's own repaints (GlowRole
@@ -161,4 +168,48 @@ QString RegisterList::copy(int source) const {
 			: QStringLiteral("%1 = %2 %3").arg(def.name, value, def.unit);
 	if (QClipboard *clipboard = QGuiApplication::clipboard()) clipboard->setText(text);
 	return text;
+}
+
+void RegisterList::sample(int source, qint64 ms, double value) {
+	if (source < 0 || source >= model_->rows().size() || !std::isfinite(value)) return;
+	/* a plain number only: an enum's, a bit field's or a hex value's line says nothing */
+	const RegDef &def = model_->rows()[source].def;
+	if (!def.canPlot() || !RegisterModel::showsDirection(def)) return;
+	if (trends_.size() != model_->rows().size()) trends_.resize(model_->rows().size());
+	Trend &trend = trends_[source];
+	if (trend.ms.isEmpty()) {
+		trend.ms.resize(TREND_POINTS);
+		trend.values.resize(TREND_POINTS);
+	}
+	/* a clock that went back (another link's engine): the old values are of another time */
+	const int newest = (trend.head + trend.size - 1) % TREND_POINTS;
+	if (trend.size > 0 && ms < trend.ms[newest]) trend.head = trend.size = 0;
+	const int at = (trend.head + trend.size) % TREND_POINTS;
+	trend.ms[at] = ms;
+	trend.values[at] = value;
+	if (trend.size < TREND_POINTS) trend.size++;
+	else trend.head = (trend.head + 1) % TREND_POINTS;
+}
+
+QVariantMap RegisterList::trend(int source) const {
+	QVariantMap map;
+	if (source < 0 || source >= trends_.size() || trends_[source].size < 2) return map;
+	const Trend &trend = trends_[source];
+	const qint64 newest = trend.ms[(trend.head + trend.size - 1) % TREND_POINTS];
+	QVariantList points;
+	double low = std::numeric_limits<double>::infinity(), high = -low;
+	for (int i = 0; i < trend.size; ++i) {
+		const int at = (trend.head + i) % TREND_POINTS;
+		points << QPointF((trend.ms[at] - newest) / 1000.0, trend.values[at]);
+		low = std::min(low, trend.values[at]);
+		high = std::max(high, trend.values[at]);
+	}
+	const RegDef &def = model_->rows()[source].def;
+	map.insert(QStringLiteral("points"), points);
+	map.insert(QStringLiteral("min"), low);
+	map.insert(QStringLiteral("max"), high);
+	map.insert(QStringLiteral("minText"), formatNumber(def, low));
+	map.insert(QStringLiteral("maxText"), formatNumber(def, high));
+	map.insert(QStringLiteral("seconds"), (newest - trend.ms[trend.head]) / 1000.0);
+	return map;
 }

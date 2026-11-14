@@ -894,28 +894,30 @@ whether EVRe Studio may use it: the pill reads <i>Waiting for permission…</i> 
 board ignores the baud rate.</li>
 <li><b>TCP</b>: the <b>host</b> and <b>port</b> of the device or its gateway, and the <b>token</b> when the device asks
 for one (it is not stored).</li>
-<li><b>Connect</b>: the pill turns green and the device's ID shows. <b>Reconnect by itself</b> brings a lost link back,
-also to a board that was reset or plugged in again.</li>
+<li><b>Connect</b>: the pill turns green and the device's ID shows; while polling, the pill has the polls a second
+(<i>Connected · 48 Hz</i>). <b>Reconnect by itself</b> brings a lost link back, also to a board that was reset or plugged
+in again.</li>
 <li><b>Device</b>: the map (<b>Open…</b> chooses another <code>.json</code>) and <b>Allow writes</b>. <b>Polling</b>: on
 or off, and its interval (0 ms: as fast as the device answers).</li>
 <li>At the drawer's foot: the dark theme, the language (applied when the app is opened again) and <b>Help</b>.</li>
 </ul>
 <h3>Registers</h3>
 <ul>
-<li>A card per register, in its group: the name and address, the value large with its unit, decoded under it. A
-changed value glows; one not read for a while says <i>not refreshed</i>; an error shows in red.</li>
+<li>A row per register, in its group, as the desktop's table: the name and address, the value at the end lined up
+with the others, and its unit. A second line only when there is more to say: the decoded fields, <i>not
+refreshed</i> (a value not read for a while), <i>on the chart</i>, or an error in red. A changed value glows.</li>
 <li><b>Search</b> at the top: a name, a unit or an address.</li>
-<li><b>Write</b> on a writable card, or a tap on the card, opens the write sheet.
-The <b>...</b> button, or a long press: <b>Plot</b>
-(<b>Take off the chart</b> once plotted), <b>Write…</b> and <b>Copy</b>.</li>
-<li>The write sheet: the value now and the map's limits, a field for the new value (an enum: its list), <b>Apply</b>. A
-value past the limits, or a register that moves something, is asked first: <b>Write anyway</b> or <b>Cancel</b>. The
-answer shows under it, and the card then shows what the device holds. Writing needs <b>Allow writes</b> on.</li>
+<li>A tap on a row opens its sheet: the value large, the decoded fields, a small line of its last values, <b>Plot</b>
+(<b>Take off the chart</b> once plotted) and <b>Copy</b>.</li>
+<li>A writable register's sheet writes as the desktop's quick write: type the value (a number brings up the number pad;
+an enum: its list) and <b>Write</b>, or <b>Enter</b>. A value past the map's limits, or a register that moves something,
+is asked first: <b>Write anyway</b> or <b>Cancel</b>. The answer shows under it, then the value read back from the
+device. Writing needs <b>Allow writes</b> on.</li>
 </ul>
 <h3>Chart</h3>
 <ul>
-<li>The lines: registers plotted from their <b>...</b> button, and with <b>Fast lines</b> (a map with streams) a stream's
-channels.</li>
+<li>The lines: registers plotted from their sheet (a tap on a row, <b>Plot</b>), and with <b>Fast lines</b> (a map with
+streams) a stream's channels.</li>
 <li><b>Live</b> follows the newest samples, <b>Hold</b> keeps the view still; the window <b>10 s</b>, <b>1 min</b> or
 <b>5 min</b>.</li>
 <li>A <b>pinch</b> zooms the time, a <b>drag</b> looks back (and holds), a <b>double tap</b> goes live again.</li>
@@ -944,7 +946,7 @@ takes it away.</li>
 the link is up.</li>
 </ul>
 <h3>Back</h3>
-<p>Android's back gesture closes what is open, a step at a time: a Help page to the list, the Help, the write sheet,
+<p>Android's back gesture closes what is open, a step at a time: a Help page to the list, the Help, a register's sheet,
 the drawer. With nothing open, while a link or a recording runs, the app goes to the background as with Home and
 both go on; with no link it closes the app.</p>
 <p>Only on the desktop: the Map editor, the Dump, Listen, the API, math lines, lanes, the trigger and notes.</p>

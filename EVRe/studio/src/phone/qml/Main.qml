@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-// The phone's window (STUDIO.md 25.6): a header (the menu button, the screen's name, the link's state as a pill, which
-// opens the drawer too), the Connect drawer, a tab bar at the bottom (Registers, Chart, Monitor, Log, each with a drawn
-// icon) and the screens above it. Material, coloured from PhoneTheme; right to left in Arabic (the header, the tab
+// The phone's window (STUDIO.md 25.6): a slim header (the menu button, the screen's name, the link's state as a pill
+// with the poll rate while connected and a chevron, which opens the drawer too), the Connect drawer, a tab bar at the
+// bottom (Registers, Chart, Monitor, Log, each with a drawn icon) and the screens above it. Material, coloured from PhoneTheme; right to left in Arabic (the header, the tab
 // bar, the screens and the drawer mirrored).
 // With p9 (phone_app.cpp) the window shows the proof P-9 alone; with perf the Registers screen keeps a bar running
 // and registersShown tells the speed line (EVRE_PERF) when to write; with chartDemo the Chart screen, fed by the chart's
 // test feed (chart_demo.h), chartShown telling the same line when to write.
 // The soft keyboard: the manifest asks Android to make the window smaller over it (adjustResize); keyboardLift is what
-// the keyboard still covers of the window when it does not (an Android that draws the app under it). The write sheet
-// and the drawer keep the field being typed in, and the sheet's Apply, above it.
+// the keyboard still covers of the window when it does not (an Android that draws the app under it). A register's
+// sheet and the drawer keep the field being typed in, and the sheet's Write, above it.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -28,7 +28,7 @@ ApplicationWindow {
     property bool p9: false
     property bool perf: false
     // the Registers screen in view: the speed line's seconds (phone_app.cpp)
-    readonly property bool registersShown: !p9 && tabBar.currentIndex === 0 && !drawer.opened && !writeSheet.opened
+    readonly property bool registersShown: !p9 && tabBar.currentIndex === 0 && !drawer.opened && !registerSheet.opened
     property bool chartDemo: false
     readonly property bool chartShown: !p9 && tabBar.currentIndex === 1 && !drawer.opened
     // the direction comes from the Arabic translation (language.cpp), as on the desktop
@@ -59,7 +59,7 @@ ApplicationWindow {
     Material.foreground: PhoneTheme.text
     color: PhoneTheme.bg
 
-    // Behind a modal (the drawer, the write sheet) the screen darkens in both themes: Material's own dimming is a grey
+    // Behind a modal (the drawer, a register's sheet) the screen darkens in both themes: Material's own dimming is a grey
     // wash, which lightened the dark theme's screen instead. A Drawer of Material's sets its own, so they set this too
     readonly property Component scrim: Rectangle {
         color: Qt.rgba(0, 0, 0, 0.5)
@@ -71,8 +71,8 @@ ApplicationWindow {
         id: header
         objectName: "header"
         visible: !root.p9
-        // lower in landscape (Material's 48 dp there): the Chart's plot keeps the height
-        implicitHeight: root.wide ? 48 : 56
+        // 48 high, the touch targets' height: the room goes to the screens (the Chart's plot in landscape)
+        implicitHeight: 48
         LayoutMirroring.enabled: root.rtl
         LayoutMirroring.childrenInherit: true
         Material.foreground: PhoneTheme.text
@@ -127,14 +127,17 @@ ApplicationWindow {
                 horizontalAlignment: Text.AlignLeft
                 text: root.screenNames[tabBar.currentIndex]
                 color: PhoneTheme.text
-                font.pixelSize: 20
+                font.pixelSize: 18
                 font.weight: Font.Medium
                 elide: Text.ElideRight
             }
             LinkPill {
                 objectName: "linkPill"
-                Layout.maximumWidth: root.width * 0.55
-                text: PhoneSession.pillText
+                Layout.maximumWidth: root.width * 0.6
+                // the polls a second beside "Connected", as the desktop's status bar has them (units stay in Latin)
+                text: PhoneSession.state === PhoneSession.Connected && PhoneSession.polling && PhoneSession.pollHz > 0
+                      ? qsTr("%1 · %2 Hz").arg(PhoneSession.pillText).arg(root.rateText(PhoneSession.pollHz))
+                      : PhoneSession.pillText
                 tone: PhoneSession.state === PhoneSession.Connected ? "good"
                       : PhoneSession.state === PhoneSession.Closed ? "bad"
                       : PhoneSession.state === PhoneSession.Off ? "off" : "busy"
@@ -240,7 +243,7 @@ ApplicationWindow {
             objectName: "screenRegisters"
             perf: root.perf
             onConnectAsked: drawer.open()
-            onWriteAsked: source => writeSheet.openFor(source)
+            onSheetAsked: source => registerSheet.openFor(source)
         }
         ChartScreen {
             objectName: "screenChart"
@@ -253,10 +256,17 @@ ApplicationWindow {
         }
         LogScreen {
             objectName: "screenLog"
+            onConnectAsked: drawer.open()
         }
     }
 
     Component.onCompleted: if (chartDemo) tabBar.currentIndex = 1
+
+    // the poll rate as the pill writes it: whole numbers (a tenth that came and went made the pill flicker), a tenth
+    // under 2 (a slow poll's 0.5 Hz)
+    function rateText(hz) {
+        return hz >= 2 ? Math.round(hz).toString() : (Math.round(hz * 10) / 10).toString()
+    }
 
     // Android's back (phone_app.cpp hands it here first): the keyboard goes, else what is open closes, the topmost
     // first; with nothing open the app goes to the background while a link or a recording runs; false: Android has the
@@ -274,8 +284,8 @@ ApplicationWindow {
             helpScreen.back()
             return true
         }
-        if (showing(writeSheet)) {
-            writeSheet.close()
+        if (showing(registerSheet)) {
+            registerSheet.close()
             return true
         }
         if (showing(drawer)) {
@@ -323,9 +333,9 @@ ApplicationWindow {
         rtl: root.rtl
     }
 
-    WriteSheet {
-        id: writeSheet
-        objectName: "writeSheet"
+    RegisterSheet {
+        id: registerSheet
+        objectName: "registerSheet"
         rtl: root.rtl
         width: root.width
         interactive: opened

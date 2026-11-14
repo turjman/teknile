@@ -796,6 +796,10 @@ void PhoneSession::sync() {
 		copiedVersions_[row] = value.version;
 		model_->applyValue(row, value.raw, value.valid, value.error, value.unavailable,
 				value.valid ? nowMs - value.updatedMs : 0);
+		/* the detail sheet's small line: what was read, when */
+		const RegDef &def = model_->rows()[row].def;
+		if (value.valid && def.canPlot() && value.raw.size() == def.size)
+			list_->sample(row, value.updatedMs, decodeNumber(def, value.raw));
 	}
 }
 

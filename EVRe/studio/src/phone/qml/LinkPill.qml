@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // The link's state in the header, as a pill: a dot in the state's colour (PhoneSession: grey off, amber on the way,
 // green connected, red closed with a reason) and a short text in the text colour, on the state's soft tone (PhoneTheme),
-// so it reads in both themes. The pill is 32 high in a 48 high target. A tap opens the Connect drawer, where the
-// whole story is.
+// so it reads in both themes; while connected the text has the poll rate (Main.qml). The pill is 32 high in a 48 high
+// target, a chevron at its end says it opens something: a tap opens the Connect drawer, where the whole story is.
 import QtQuick
 import QtQuick.Controls
 import EVRe.Phone
@@ -18,8 +18,9 @@ Item {
                                        : tone === "busy" ? PhoneTheme.warnSoft : PhoneTheme.surface2
     signal clicked()
 
-    // the dot, the gap and the text, inside the pill's paddings; the text cut at its end when the header is narrow
-    implicitWidth: label.implicitWidth + 8 + 8 + 28
+    // the dot, the gap, the text, the gap and the chevron, inside the pill's paddings; the text cut at its end when the
+    // header is narrow
+    implicitWidth: label.implicitWidth + 8 + 8 + 6 + 14 + 24
     implicitHeight: 48
     Accessible.role: Accessible.Button
     Accessible.name: label.text
@@ -38,7 +39,7 @@ Item {
         Row {
             id: row
             anchors.centerIn: parent
-            spacing: 8
+            spacing: 6
 
             Rectangle {
                 objectName: "linkPillDot"
@@ -52,11 +53,18 @@ Item {
                 id: label
                 objectName: "linkPillText"
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.max(0, Math.min(implicitWidth, pill.width - 28 - 16))
+                width: Math.max(0, Math.min(implicitWidth, pill.width - 24 - 16 - 20))
                 color: PhoneTheme.text
                 font.pixelSize: 13
                 font.weight: Font.Medium
                 elide: Text.ElideRight
+            }
+            PhoneIcon {
+                objectName: "linkPillChevron"
+                anchors.verticalCenter: parent.verticalCenter
+                kind: "down"
+                size: 14
+                color: PhoneTheme.muted
             }
         }
     }

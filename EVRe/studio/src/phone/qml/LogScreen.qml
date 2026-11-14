@@ -2,7 +2,8 @@
 // The Log screen: what happened on the link (PhoneSession.log), newest last, each line's time muted over its text,
 // the text coloured by its level (the text's colour, amber for a warning, red for an error, with a bar of that colour
 // at the line's start edge). Copy puts it all on the clipboard, Clear empties it. The list follows the newest line
-// while it is at its end; scrolled up, it stays where it is. Empty, it shows the Log's icon and says what comes here.
+// while it is at its end; scrolled up, it stays where it is. Empty, it shows the Log's icon, says what comes here and
+// has a button to the Connect drawer (a link is what fills it).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -12,6 +13,8 @@ import EVRe.Phone
 Item {
     id: screen
     readonly property int lines: PhoneSession.log.count
+
+    signal connectAsked()
 
     ColumnLayout {
         anchors.fill: parent
@@ -132,27 +135,16 @@ Item {
         }
     }
 
-    ColumnLayout {
+    EmptyState {
         objectName: "logEmptyState"
+        prefix: "logEmpty"
         anchors.centerIn: parent
         width: Math.min(parent.width - 48, 320)
         visible: screen.lines === 0
-        spacing: 12
-        PhoneIcon {
-            objectName: "logEmptyIcon"
-            Layout.alignment: Qt.AlignHCenter
-            kind: "log"
-            size: 48
-            color: PhoneTheme.muted
-        }
-        Label {
-            objectName: "logEmpty"
-            Layout.fillWidth: true
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: qsTr("Nothing yet: the map, the link and the recordings are told here.")
-            color: PhoneTheme.muted
-            font.pixelSize: 15
-        }
+        icon: "log"
+        title: qsTr("Nothing logged yet")
+        text: qsTr("The map, the link and the recordings are told here.")
+        action: PhoneSession.connected ? "" : qsTr("Open the Connect drawer")
+        onActed: screen.connectAsked()
     }
 }
