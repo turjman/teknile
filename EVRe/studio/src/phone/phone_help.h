@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The phone's Help (PhoneHelp, a singleton for QML; the Help screen, HelpScreen.qml): the desktop's pages
- * (help_topics.h, split 5), every topic in the language the app runs in, styled with the theme's colours. In Arabic
- * every paragraph runs right to left, also one that starts with a Latin word, and the code blocks left to right, as the
- * desktop's dialog lays them out. */
+/* The phone's Help (PhoneHelp, a singleton for QML; the Help screen, HelpScreen.qml): the pages of help_topics.h
+ * (split 5) that apply on a phone, its own "Using the phone app" first, then the desktop's but the Map editor, the API,
+ * the Dump, the command line and Keys & mouse; every topic in the language the app runs in, styled with the theme's
+ * colours. In Arabic every paragraph runs right to left, also one that starts with a Latin word, and the code blocks
+ * left to right, as the desktop's dialog lays them out. */
 #pragma once
 
 #include <QObject>

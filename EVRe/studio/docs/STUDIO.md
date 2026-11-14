@@ -5206,7 +5206,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `translations/evre_studio_ar.ts` | Arabic: every text and Help page, the phone's QML texts too (`qt_add_translations` on `evre_engine`, built into each program at `:/i18n`) |
 | `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages (`help_topics.cpp`) in a dialog, the topics beside the page |
-| `src/ui/help_topics.h`,&nbsp;`.cpp` | `help::`: the help pages, kept as HTML in the source (context `HelpDialog`), their titles and pages translated, styled and with their markers filled; in `evre_engine`, shown by the desktop's dialog and the phone's Help screen (split 5) |
+| `src/ui/help_topics.h`,&nbsp;`.cpp` | `help::`: the help pages, kept as HTML in the source (context `HelpDialog`), their titles and pages translated, styled and with their markers filled; in `evre_engine`, shown by the desktop's dialog and the phone's Help screen (split 5): the phone its own topic first and the desktop's that apply on a phone (`onPhone`) |
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
 | `src/ui/theme_colors.cpp` | `Theme::colorsFor(dark)`: the dark and the light look's colours, one table for both interfaces (in `evre_engine`, without Qt Widgets) |
 | `src/phone/main_phone.cpp` | `EVReStudioPhone`: the application's names (the desktop's settings), the saved language, the Material style, `Main.qml` (25.6) |
@@ -5218,7 +5218,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/phone/log_model.h`,&nbsp;`.cpp` | `LogModel`: the phone's Log, the newest 2000 lines, Copy and Clear |
 | `src/phone/register_list.h`,&nbsp;`.cpp` | `RegisterList`: the Registers screen's rows over `RegisterModel`, a row per register in sections by group, the desktop's search, its changes forwarded row by row |
 | `src/phone/phone_system.h`,&nbsp;`.cpp` | `SystemBridge`: what Android does for the app: the foreground service with its notification, the screen kept on, a screen's orientation; Android's over JNI to `android/src/com/teknile/evre/EvreService.java`, none elsewhere, a test's stand-in in the test |
-| `src/phone/phone_help.h`,&nbsp;`.cpp` | `PhoneHelp`: the Help screen's topics and pages (`help_topics.cpp`), right to left in Arabic |
+| `src/phone/phone_help.h`,&nbsp;`.cpp` | `PhoneHelp`: the Help screen's topics and pages (`help_topics.cpp`: the phone's list), right to left in Arabic |
 | `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat; also the Registers screen's and the chart demo's speed line, `EVRE_PERF`) |
 | `src/phone/chart_item.h`,&nbsp;`.cpp` | `ChartItem`: the phone's chart, drawn by the GPU from nodes of its own, binned by `ChartData`; `ChartTicks`: an axis's labels; `ChartLines`: the legend (25.6) |
 | `src/phone/chart_demo.h`,&nbsp;`.cpp` | `ChartDemo`: the chart's test feed (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`): 8 lines at 1,000 Hz |
@@ -5826,7 +5826,7 @@ the models, the theme's colours, the language) get no QML macros: QML reaches th
 
 | Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested&nbsp;by |
 |---|---|---|---|
-| `PhoneHelp` | singleton: the Help screen's topics and pages, the desktop's (`help_topics.cpp`), right to left in Arabic | `titles`; `page(index, dark)` | phone test (Help) |
+| `PhoneHelp` | singleton: the Help screen's topics and pages (`help_topics.cpp`): *Using the phone app*, then the desktop's that apply on a phone; right to left in Arabic | `titles`; `page(index, dark)` | phone test (Help) |
 | `PhoneTheme` | singleton: the colours of `Theme::colorsFor(dark)` and `dark`, saved in `ui/dark`; Material follows it in `Main.qml` | `dark`, `bg`, `surface`, `surface2`, `border`, `text`, `muted`, `accent`, `accentFill`, `badFill`, `control`, `good`, `warn`, `bad`, `grid`, `series`, and the phone's soft tones `accentSoft`, `goodSoft`, `warnSoft`, `badSoft` (the state's colour over the surface at 14 % dark, 8 % light: behind chips, the pill, the chosen tab, the warning); signal `changed` | phone test (theme) |
 | `PhoneLanguage` | singleton: the drawer's language choice, saved in `ui/language`, applied at the next start | `codes`, `choice`, `pending`; signal `changed` | phone test (language) |
 | `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()`; DEVICE_ID read again after no answer; the values copied once a frame (`sync`), writes as `MainWindow::onWriteRequested`, Plot with the lines' limit; the chart's feed: a line per plotted register in the theme's next series colour, each poll's samples (`takeSamples`) once a frame on the engine's clock, a disconnect keeping the lines; fast lines: a channel plotted switches its stream on, the blocks (`takeFastBlocks`) into a `fast::Store` per stream, kept for the chart's memory; the Monitor's frames (`takeFrames`) while its screen shows and they are not paused (`IoEngine::setMonitor`); the system (`SystemBridge`): the foreground service while a link is wanted, the screen kept on while connected, a screen's orientation | `state`, `pillText`, `linkText`, `linkDetail`, `connectText`, `connected`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`, `registerList`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`, `editText`, `choices`, `limitsText`, `writeQuestion`, `write`, `setPlot`, `chart`, `fastChannels`, `setFastPlot`, `unplotLine`, `fastLineId`, `frames`, `monitorShown`, `monitoring`; `keepScreenOn`, `serviceText`, `screenKeptOn`, `orientation`; `attachWindow`, `sync`; signals `message(level, text)`, `writeAnswered(row, ok, text)`, `notice(text)`; `setUsbBridgeForTests`, `setSystemBridgeForTests` | phone test (connect to USB gone, DEVICE_ID again, the Registers checks, the chart's lines, fast lines, service, orientation, Monitor) |
@@ -7126,9 +7126,16 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   (`android/keepScreenOn`, on by default).
 - **Each tab its orientation** (A-16): the Chart and the Monitor landscape, the Registers and the Log portrait, either
   way up; Android turns the app when the tab changes. The proof P-9 turns with the phone.
-- **Help**, at the drawer's foot: the desktop's Help, every topic, in the app's language (`ui/help_topics.cpp`,
-  shared with the desktop's dialog: split 5); a tap on a topic opens its page, the header's back chevron goes back to
-  the list. In Arabic every paragraph runs right to left, the code blocks left to right, as on the desktop.
+- **Help**, at the drawer's foot: the Help's topics that apply on a phone, in the app's language
+  (`ui/help_topics.cpp`, shared with the desktop's dialog: split 5). First the phone's own, *Using the phone app*:
+  connecting (the drawer, USB's permission, TCP's host, port and token), the Registers (search, a card's Write and
+  "⋯", the write sheet, the limits), the Chart (Live and Hold, the windows, pinch, drag, double tap, the cursors and
+  their readouts, Y auto), the Monitor and the Log, recording and the background (the notification, the screen off,
+  keeping it on) and the back gesture. Then the desktop's topics, but not the five of what the phone has none of (Q-9):
+  the Map editor, the API, the Dump, the command line and Keys & mouse. The desktop's dialog keeps its 14 topics; a
+  topic's `onPhone` (`help_topics.cpp`) says whether the phone lists it, `help::phoneTopicCount`, `phoneTitle` and
+  `phonePage` give the phone's list. A tap on a topic opens its page, the header's back chevron goes back to the list.
+  In Arabic every paragraph runs right to left, the code blocks left to right, as on the desktop.
 - **Android's back** (the gesture or the button) closes what is open, the topmost first: a Help page goes back to the
   list, then the Help closes, then the write sheet, then the drawer; with nothing open Android has it and the app goes
   to the background. `Main.qml`'s `back()` gets it before anything else (`phone_app.cpp`).
@@ -8226,7 +8233,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 88 (26.11), 1202. The
+the phone test's 89 (26.11), 1203. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8764,7 +8771,8 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | isolation | the run's settings in an ini file of a folder of its own (a temporary one), its recordings beside it |
 | service | through a stand-in for Android (`setSystemBridgeForTests`): the service up while a link is wanted with the link's state, the recording's time in it once a second, back to the link's state when it stops, gone after Disconnect; the screen kept on while connected, let go with the setting off (saved) |
 | orientation | each tab asks for its own: the Chart and the Monitor landscape, the Registers and the Log portrait |
-| Help | the drawer's Help: every topic of the desktop's Help, each page in English and in Arabic with the topic's title; back goes to the list; the list's texts inside their rows |
+| Help | the drawer's Help: every topic of the phone's list, each page in English and in Arabic with the topic's title; back goes to the list; the list's texts inside their rows |
+| Help's&nbsp;list | *Using the phone app* first, then the desktop's topics but the Map editor, the API, the Dump, the command line and Keys & mouse (10); the desktop's dialog keeps its 14 in its order, the phone's page in none of them; the phone's page in Arabic with the English's tags and markers |
 | back | Android's back closes a Help page to its list, the Help, the drawer, the write sheet, each waited for by its state (`opened`, `visible`), not a time; with nothing open it is not taken (Android leaves the app) |
 | back&nbsp;in&nbsp;a&nbsp;slide | a back while the drawer or the Help is still sliding in (not yet `opened`) closes it, not left to Android |
 | USB&nbsp;back | the board reset comes back under another name: the retry opens it by its USB IDs, connected again, the new name saved and in the Log |
@@ -8772,10 +8780,11 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | typed&nbsp;numbers | the write sheet: *1,5* writes 1.5, Arabic digits (*١٢*, *۴۵*) 12 and 45, *0x1A* as typed (26) |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (88 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (89 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
-`portrait`, `drawer`, `help` (its topics), `helppage` (a page), `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,
+`portrait`, `drawer`, `help` (its topics), `helppage` (the phone's own topic; `helppage2` a screen down, `helppage_end`
+its end), `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,
 `registers`, `search`, `sheet` (a write answered), `question` (asked first), `keyboard` (the sheet over a keyboard),
 `enum`; at 915 x 412 `land_registers`, `land_sheet`, `land_drawer`, `land_log` and `landscape`; and the chart's test
 feed 12 s in, `chartdemo` (landscape) and `chartdemo_portrait`; and the Chart screen at both sizes,
