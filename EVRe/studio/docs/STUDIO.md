@@ -5229,7 +5229,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/phone/qml/PhoneIcon.qml` | the drawn icons (rectangles on a grid of 24): the tabs' four, the magnifier, the clear cross, the warning, the chevrons, Copy's |
 | `src/phone/qml/EmptyState.qml` | a screen with nothing to show: its icon, a title, a line, one button (the Chart, the Log, the Registers) |
 | `src/phone/qml/LogScreen.qml` | the Log screen: the lines coloured by level, Copy, Clear, its empty state |
-| `src/phone/qml/RegistersScreen.qml` | the Registers screen: the rows in sections by group (the header kept at the top), the search field (magnifier, clear cross), the strip when not connected, the empty states, the notices |
+| `src/phone/qml/RegistersScreen.qml` | the Registers screen: the rows in sections by group (each header scrolls with its rows: none lies over them), the search field (magnifier, clear cross), the strip when not connected, the empty states, the notices |
 | `src/phone/qml/RegisterRow.qml` | one register's row, as the desktop's table: name and address, the value lined up in tabular digits and its unit, a chevron; the second line (stale, plotted, decoded text, error); the glow |
 | `src/phone/qml/RegisterSheet.qml` | a register's sheet: the value large, the decoded text, its trend, Plot and Copy; the quick write (the field, the number pad, an enum's list, Write and Enter), the limits asked first in a warning box, the answer and the value read back; kept above the keyboard |
 | `src/phone/qml/PlaceholderScreen.qml` | a screen still to come: its note |
@@ -7034,7 +7034,7 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   +--------------------------------------------+
   | ( search  Search: name, unit, address   x ) |   the search field: magnifier, clear cross
   +--------------------------------------------+
-  | Power & supply                             |   the group, kept at the top while its rows pass
+  | Power & supply                             |   the group, over its rows (it scrolls with them)
   | SUPPLY_V  0xD004             12.034 V    > |   name, address; the value lined up, its unit; chevron
   | SUPPLY_I  0xD008              0.512 A    > |
   | Settings                                   |
@@ -7047,7 +7047,7 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   | Part | What it does |
   |---|---|
   | **Search** | the desktop's search: the name, description, group, unit or address (*0xd08*). A rounded field, the magnifier drawn at its start, a cross drawn at its end while it holds a text (a tap empties it); *registers: 1 of 16* at the list's foot. A search that finds nothing says *No match* with **Clear the search** |
-  | **A&nbsp;group** | its name in the accent on the window's background; it stays at the top while its rows scroll under it. The rows are on the surface, so each group reads as a panel of its own |
+  | **A&nbsp;group** | its name in the accent on the window's background, over its rows; it scrolls with them (a header kept at the top lay over the rows passing under it and cut their values on a phone, so none is kept). The rows are on the surface, so each group reads as a panel of its own |
   | **A&nbsp;row** | 52 dp (at least 48), a thin line under it: the name, its address beside it small and muted; the value at the end in tabular digits, right-aligned in a slot of its own so the values of the rows above and below line up digit under digit, its unit after it in a slot of its own; a chevron at the end. A second, smaller line only when there is more to say: *not refreshed*, *on the chart*, the decoded text (an enum's name, the bit fields) or the error. In Arabic the row mirrors (the name at the right, the value at the left by the chevron, the values lined up at their left edge, each unit right after its value), the value and its unit stay left to right. A press shows Material's ripple; a tap opens the register's sheet. In landscape the rows keep a phone's width (640) in the middle |
   | **The&nbsp;glow** | a value that changes after holding still 2 s glows as on the desktop: the row tinted toward the accent and a bar at its start edge, with an arrow up or down before a plain number, fading over 1.5 s |
   | **Stale,&nbsp;error** | a value not refreshed for a while (polling off, the link down) greys and its second line says *not refreshed* in amber; a register the device refused, or a read that failed, shows its value and why in red, a red bar at its start edge |
@@ -8284,7 +8284,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 104 (26.11), 1218. The
+the phone test's 105 (26.11), 1219. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8844,9 +8844,10 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | header | 48 dp high upright and across, the title at 18 px, the screens right under it |
 | empty&nbsp;Log | its icon, *Nothing logged yet*, and **Open the Connect drawer** opens the drawer |
 | empty&nbsp;search | *No match* with **Clear the search**, which shows every register again |
+| headers&nbsp;over&nbsp;rows | the list scrolled down a step at a time, connected: no group header lies over a row in view (a header kept at the top cut a row's value on a phone) |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (104 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (105 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `help` (its topics), `helppage` (the phone's own topic; `helppage2` a screen down, `helppage_end`

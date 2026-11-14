@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The Registers screen: every register of the map as a row of the desktop's table (RegisterRow: the name and address,
-// the value lined up with the others, its unit), in sections by group (the group's header stays at the top while its
-// rows scroll under it), the values live while the link is up (PhoneSession.registerList, RegisterModel's values copied
+// the value lined up with the others, its unit), in sections by group (each group's header in the list over its rows;
+// none is kept over the rows: on a phone it covered the row under it, its value cut), the values live while the link is up (PhoneSession.registerList, RegisterModel's values copied
 // once a frame). A tap on a row opens the register's sheet (Main.qml: its value, trend, Plot, Copy and Write). A search
 // field at the top (the desktop's search: name, description, group, unit or address), its magnifier and its clear cross
 // drawn; how many registers show, quietly at the list's foot. While no link is up a slim strip at the top says so, with
@@ -228,9 +228,10 @@ Item {
 
             section.property: "group"
             section.criteria: ViewSection.FullString
-            // the group's name stays at the top while its rows pass under it: on the window's background, the rows
-            // on the surface, so each group reads as a panel of its own
-            section.labelPositioning: ViewSection.InlineLabels | ViewSection.CurrentLabelAtStart
+            // the group's name over its rows, on the window's background, the rows on the surface, so each group reads
+            // as a panel of its own. In the list only, not kept at the view's top: a header kept there lay over the
+            // rows passing under it and cut their values (the owner's phone)
+            section.labelPositioning: ViewSection.InlineLabels
             section.delegate: Rectangle {
                 required property string section
                 width: ListView.view.width

@@ -36,13 +36,18 @@ Item {
         color: tap.pressed ? PhoneTheme.border : pill.softColor
         border.color: pill.tone === "off" ? PhoneTheme.border : "transparent"
 
-        Row {
+        // the dot, the text and the chevron placed by anchors, not a Row: a Row places its children at the next
+        // frame, and the text changes twice a second (the rate), so for a frame the text stood past its room
+        Item {
             id: row
             anchors.centerIn: parent
-            spacing: 6
+            width: 8 + 6 + label.width + 6 + 14
+            height: 20
 
             Rectangle {
+                id: dot
                 objectName: "linkPillDot"
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 width: 8
                 height: 8
@@ -52,6 +57,8 @@ Item {
             Label {
                 id: label
                 objectName: "linkPillText"
+                anchors.left: dot.right
+                anchors.leftMargin: 6
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(0, Math.min(implicitWidth, pill.width - 24 - 16 - 20))
                 color: PhoneTheme.text
@@ -61,6 +68,8 @@ Item {
             }
             PhoneIcon {
                 objectName: "linkPillChevron"
+                anchors.left: label.right
+                anchors.leftMargin: 6
                 anchors.verticalCenter: parent.verticalCenter
                 kind: "down"
                 size: 14

@@ -33,7 +33,8 @@
  * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
  * The design pass (part A): the Registers screen's rows counted in view against the cards before, a register's sheet
  * (its trend, Plot, Copy, the quick write by Enter, the number pad), the trend's bounded ring, the pill's poll rate and
- * chevron, the slimmer header, the empty Log and the empty search with their one button.
+ * chevron, the slimmer header, the empty Log and the empty search with their one button, no group header over a row
+ * while the list scrolls.
  * The cursors and the Monitor (B.4): placed by the Cursors button, A dragged by its handle, the readouts against
  * statsOf; the fake device's frames, Pause, Clear, the empty state; texts in both languages and themes. Their pictures:
  * <prefix>_<en|ar>_<dark|light>_<cursors|cursors6|cursors6end|monitor|paused>_<portrait|landscape>.png.
@@ -4383,6 +4384,52 @@ void checkSearchEmpty() {
 			QStringLiteral("phone, search empty: \"%1\" with \"%2\", which shows every register again").arg(title, action));
 }
 
+/* the owner's phone: a group's header kept at the view's top lay over the row under it, its value cut. Scrolled down
+ * the whole list a step at a time, no group header covers any part of a row in view */
+void checkHeadersOverRows() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	phone.settle(600);
+	QQuickItem *list = phone.item("registerList");
+	RegisterList *rows = session ? session->registerList() : nullptr;
+	QStringList covered;
+	int steps = 0, pairs = 0;
+	if (list && rows) {
+		const QRectF view = sceneRect(list);
+		const double most = std::max(0.0, list->property("contentHeight").toDouble() - list->height());
+		const double first = list->property("originY").toDouble();
+		for (double y = first; y <= first + most + 0.5; y += 23) {
+			list->setProperty("contentY", y);
+			phone.settle(120);
+			steps++;
+			QList<QRectF> headers;
+			forEachItem(list, [&](QQuickItem *item) {
+				if (item->objectName() != QLatin1String("regGroup") || !item->isVisible() || !item->parentItem()) return;
+				const QRectF r = sceneRect(item->parentItem()).intersected(view);
+				if (!r.isEmpty()) headers << r;
+			});
+			for (int i = 0; i < rows->count(); ++i) {
+				QQuickItem *row = nullptr;
+				QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, row), Q_ARG(int, i));
+				if (!row || !row->isVisible()) continue;
+				const QRectF r = sceneRect(row).intersected(view);
+				if (r.isEmpty()) continue;
+				for (const QRectF &header : headers) {
+					pairs++;
+					const double overlap = std::min(r.bottom(), header.bottom()) - std::max(r.top(), header.top());
+					if (overlap > 0.5)
+						covered << QStringLiteral("at %1: %2 under a header by %3").arg(y).arg(row->objectName()).arg(overlap);
+				}
+			}
+		}
+	}
+	covered.removeDuplicates();
+	check(steps > 5 && pairs > 20 && covered.isEmpty(),
+			QStringLiteral("phone, Registers headers: scrolled down the list in %1 steps, no group header lies over a row in view "
+					"(%2 pairs looked at) %3").arg(steps).arg(pairs).arg(covered.mid(0, 6).join(QStringLiteral(" | "))));
+	if (session) session->disconnectLink();
+}
+
 /* EVRE_PHONE_SHOT: both languages and themes. Portrait: the start (not connected) and its drawer, connected (the
  * drawer, the Log, the Registers screen, a search, the write sheet after a write, asking first, an enum's list, the
  * sheet and the drawer over a keyboard stood for, drawn grey); landscape: the Registers screen, the drawer, the sheet,
@@ -4629,6 +4676,7 @@ int main(int argc, char **argv) {
 	RUN(checkHeaderSlim);
 	RUN(checkLogEmpty);
 	RUN(checkSearchEmpty);
+	RUN(checkHeadersOverRows);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
