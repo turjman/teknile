@@ -4,7 +4,9 @@
 // values of the rows above and below line up, its unit after it in a slot of its own; a chevron at the end, since a
 // tap opens the register's sheet (its value large, its trend, Plot, Copy and Write). A second, smaller line only when
 // there is more to say: "not refreshed", "on the chart", the decoded text (an enum's name, the bit fields) or the
-// error. A thin line under each row; the screen's sections give the groups. At least 48 high, about 52.
+// error. A thin line under each row; the screen's sections give the groups. At least 48 high, about 52. Across
+// (compact, the Registers screen in landscape) a row is one line 42 high: what the second line says goes between the
+// address and the value, so seven rows show at 760 x 384 (a full-width target, a full-width target).
 // A changed value glows as on the desktop: the row tinted toward the accent and a bar at its start edge, fading over
 // GLOW_MS (RegisterModel), with an arrow up or down for a plain number before the value. A value not refreshed for a
 // while is greyed and the second line says so; a register the device refused, or a read that failed, shows its value
@@ -32,11 +34,13 @@ Item {
     required property string error
     required property bool stale
     required property int source
+    // one line, 42 high (across)
+    property bool compact: false
 
     signal opened(int source)
 
     objectName: "row_" + name
-    implicitHeight: Math.max(52, body.implicitHeight + 14)
+    implicitHeight: compact ? 42 : Math.max(52, body.implicitHeight + 14)
 
     readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
     readonly property bool failed: error.length > 0
@@ -113,6 +117,55 @@ Item {
                 font.pixelSize: 11
                 font.weight: Font.Medium
             }
+        }
+    }
+
+    // what the second line says: "not refreshed", "on the chart", the decoded text or the error. `suffix` names the
+    // inline copy's parts apart from the second line's
+    component SecondLine: RowLayout {
+        property string suffix: ""
+        spacing: 6
+        Tag {
+            objectName: "regStaleTag" + parent.suffix
+            visible: row.stale
+            color: PhoneTheme.warnSoft
+            text: qsTr("not refreshed")
+            textColor: PhoneTheme.warn
+            textName: "regStale" + parent.suffix
+        }
+        Tag {
+            objectName: "regPlottedTag" + parent.suffix
+            visible: row.plotted
+            color: PhoneTheme.accentSoft
+            dot: PhoneTheme.accent
+            text: qsTr("on the chart")
+            textColor: PhoneTheme.text
+            textName: "regPlotted" + parent.suffix
+        }
+        Label {
+            objectName: "regDecoded" + parent.suffix
+            horizontalAlignment: Text.AlignLeft
+            Layout.fillWidth: true
+            visible: !row.failed && text.length > 0
+            text: row.decoded
+            color: PhoneTheme.muted
+            font.pixelSize: 12
+            elide: Text.ElideRight
+        }
+        Label {
+            objectName: "regError" + parent.suffix
+            horizontalAlignment: Text.AlignLeft
+            Layout.fillWidth: true
+            visible: row.failed
+            text: row.error
+            color: PhoneTheme.bad
+            font.pixelSize: 12
+            elide: Text.ElideRight
+        }
+        // the tags alone: they keep to the start edge
+        Item {
+            Layout.fillWidth: true
+            visible: !row.failed && row.decoded.length === 0
         }
     }
 
@@ -200,7 +253,7 @@ Item {
                 Label {
                     id: addrText
                     objectName: "regAddr"
-                    Layout.fillWidth: true
+                    Layout.fillWidth: !(row.compact && row.secondLine)
                     Layout.alignment: Qt.AlignBaseline
                     // left to right, beside the name at its start edge
                     horizontalAlignment: Text.AlignLeft
@@ -209,6 +262,14 @@ Item {
                     font.pixelSize: 12
                     font.features: { "tnum": 1 }
                     elide: Text.ElideRight
+                }
+                // across: the second line's words here, between the address and the value
+                SecondLine {
+                    objectName: "rowSecondInline"
+                    suffix: "Inline"
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: row.compact && row.secondLine
                 }
 
                 // the value's slots, left to right in every language: the arrow, the value right-aligned (left-aligned
@@ -274,54 +335,11 @@ Item {
                 }
             }
 
-            // the second line, only when there is more to say
-            RowLayout {
+            // the second line, only when there is more to say (upright)
+            SecondLine {
                 objectName: "rowSecond"
                 Layout.fillWidth: true
-                visible: row.secondLine
-                spacing: 6
-                Tag {
-                    objectName: "regStaleTag"
-                    visible: row.stale
-                    color: PhoneTheme.warnSoft
-                    text: qsTr("not refreshed")
-                    textColor: PhoneTheme.warn
-                    textName: "regStale"
-                }
-                Tag {
-                    objectName: "regPlottedTag"
-                    visible: row.plotted
-                    color: PhoneTheme.accentSoft
-                    dot: PhoneTheme.accent
-                    text: qsTr("on the chart")
-                    textColor: PhoneTheme.text
-                    textName: "regPlotted"
-                }
-                Label {
-                    objectName: "regDecoded"
-                    horizontalAlignment: Text.AlignLeft
-                    Layout.fillWidth: true
-                    visible: !row.failed && text.length > 0
-                    text: row.decoded
-                    color: PhoneTheme.muted
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
-                }
-                Label {
-                    objectName: "regError"
-                    horizontalAlignment: Text.AlignLeft
-                    Layout.fillWidth: true
-                    visible: row.failed
-                    text: row.error
-                    color: PhoneTheme.bad
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
-                }
-                // the tags alone: they keep to the start edge
-                Item {
-                    Layout.fillWidth: true
-                    visible: !row.failed && row.decoded.length === 0
-                }
+                visible: row.secondLine && !row.compact
             }
         }
 

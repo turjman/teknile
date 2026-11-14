@@ -53,6 +53,9 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QMutex>
 #include <QPainter>
@@ -260,6 +263,13 @@ QObject *Phone::object(const char *name) const {
 	forEachItem(topItem(window), [&](QQuickItem *item) {
 		if (!found && item->objectName() == QLatin1String(name)) found = item;
 	});
+	/* a tab while the Chart has the whole window (no rail, no tab bar): its bars brought back first, as a finger would
+	 * with the bars button */
+	if (!found && QByteArray(name).startsWith("tab") && window->property("chartFull").toBool()) {
+		window->setProperty("chartBars", true);
+		settle(300);
+		return object(name);
+	}
 	return found;
 }
 
@@ -310,7 +320,7 @@ QStringList latinTexts(QQuickWindow *window) {
 	/* the language list (each language in its own words), the links' names, and the chart's windows (a unit stays as it
 	 * is) */
 	static const QStringList kept{ QStringLiteral("English"), QStringLiteral("USB"), QStringLiteral("TCP"),
-		QStringLiteral("10 s"), QStringLiteral("1 min"), QStringLiteral("5 min") };
+		QStringLiteral("10 s"), QStringLiteral("1 min"), QStringLiteral("5 min"), QStringLiteral("TX"), QStringLiteral("RX") };
 	/* the data shown as it is: the map's device name, a USB device's name and IDs; a register's name, group, value,
 	 * unit, decoded text, address and the device's error */
 	static const QStringList data{ QStringLiteral("mapText"), QStringLiteral("portText"), QStringLiteral("regName"),
@@ -322,7 +332,9 @@ QStringList latinTexts(QQuickWindow *window) {
 		QStringLiteral("frameBytes"), QStringLiteral("frameNote"), QStringLiteral("cursorName"), QStringLiteral("readoutName"),
 		QStringLiteral("readoutA"), QStringLiteral("readoutB"), QStringLiteral("readoutDelta"), QStringLiteral("readoutMin"),
 		QStringLiteral("readoutMax"), QStringLiteral("readoutMean"), QStringLiteral("readoutTimeA"),
-		QStringLiteral("readoutTimeB"), QStringLiteral("readoutSpan") };
+		QStringLiteral("readoutTimeB"), QStringLiteral("readoutSpan"), QStringLiteral("frameType"),
+		QStringLiteral("frameSheetType"), QStringLiteral("frameSheetWhen"), QStringLiteral("frameFieldName"),
+		QStringLiteral("frameFieldBytes"), QStringLiteral("frameFieldMeaning"), QStringLiteral("menuButtonLabel") };
 	QStringList found;
 	forEachItem(topItem(window), [&](QQuickItem *item) {
 		if (!item->inherits("QQuickText") || !item->isVisible() || data.contains(item->objectName())) return;
@@ -768,25 +780,47 @@ void doubleTap(const Phone &phone, QQuickItem *on) {
 	QTest::qWait(100);
 }
 
+/* the window's button tapped, its menu's item for `seconds` (10, 60, 300) found while it shows; nullptr: none */
+QQuickItem *windowItem(const Phone &phone, int seconds) {
+	phone.tap(phone.item("windowButton"));
+	QQuickItem *found = nullptr;
+	const QString name = QStringLiteral("window%1").arg(seconds);
+	forEachItem(topItem(phone.window), [&](QQuickItem *item) {
+		if (!found && item->objectName() == name && item->isVisible()) found = item;
+	});
+	return found;
+}
+
+/* the window chosen from its menu, as a finger does */
+void chooseWindow(const Phone &phone, int seconds) {
+	phone.tap(windowItem(phone, seconds));
+}
+
 void checkChartPinch() {
 	Phone phone(LANDSCAPE);
 	ChartItem *chart = showChart(phone);
 	QQuickItem *area = phone.item("chartArea");
 	const double before = chart ? chart->windowSeconds() : 0;
-	QQuickItem *oneMinute = phone.item("window60");
-	const bool chosenBefore = oneMinute && oneMinute->property("checked").toBool();
+	const QString shownBefore = phone.text("windowButton");
 	/* the handler takes the fingers once they have moved past the drag threshold: from 160 px apart (taken by then)
 	 * to 320, twice the spread, the window is halved */
 	double middle = 0;
 	if (area) pinch(phone, area, 100, 160, 320, [&] { middle = chart ? chart->windowSeconds() : 0; });
 	const double after = chart ? chart->windowSeconds() : 0;
+	const QString shownAfter = phone.text("windowButton");
+	/* the window's menu: no length marked now */
+	QQuickItem *oneMinute = windowItem(phone, 60);
 	const bool chosenAfter = oneMinute && oneMinute->property("checked").toBool();
+	if (QObject *menu = phone.object("windowMenu")) QMetaObject::invokeMethod(menu, "close");
+	phone.settle();
 	const double ratio = after > 0 ? middle / after : 0;
-	check(chart && before == 60 && middle < 60 && ratio > 1.95 && ratio < 2.05 && chart->live() && chosenBefore
-			&& !chosenAfter,
+	const QString want = QString::number(after, 'g', 3) + QStringLiteral(" s");
+	check(chart && before == 60 && middle < 60 && ratio > 1.95 && ratio < 2.05 && chart->live() && oneMinute
+					&& !chosenAfter && shownBefore == QLatin1String("1 min") && shownAfter == want,
 			QStringLiteral("phone, chart: a pinch to twice the fingers' spread halves the window (%1 s, %2 s at 160 px "
-					"apart, %3 s at 320: %4 times shorter), the view stays live and the 1 min choice is no longer marked")
-					.arg(before).arg(middle, 0, 'f', 2).arg(after, 0, 'f', 2).arg(ratio, 0, 'f', 3));
+					"apart, %3 s at 320: %4 times shorter), the view stays live, the window's button says it (\"%5\", then "
+					"\"%6\") and its menu marks none of its lengths")
+					.arg(before).arg(middle, 0, 'f', 2).arg(after, 0, 'f', 2).arg(ratio, 0, 'f', 3).arg(shownBefore, shownAfter));
 }
 
 void checkChartDragAndLive() {
@@ -1377,12 +1411,16 @@ void checkLogScreen() {
 			newest = item;
 	});
 	const bool red = newest && newest->isVisible() && near(newest->property("color").value<QColor>(), themeColor(&ThemeColors::bad), 2);
-	const QString count = phone.text("logCount");
+	/* the levels' chips count the lines: "Info 1, Warnings 0, Errors 1" */
+	int counted = 0;
+	for (const char *chipName : { "logLevel0", "logLevel1", "logLevel2" })
+		if (const QObject *levelChip = phone.object(chipName)) counted += levelChip->property("count").toInt();
+	const QString count = QStringLiteral("%1 in the chips").arg(counted);
 	const bool mapLine = session && session->log()->contains(QStringLiteral("map loaded: "));
 	phone.tap(phone.item("logClear"));
 	const bool cleared = session && session->log()->count() == 0 && list && list->property("count").toInt() == 0
 			&& phone.item("logEmptyText") && phone.item("logEmptyText")->isVisible();
-	check(lines >= 2 && mapLine && red && count == QStringLiteral("lines: %1").arg(lines) && cleared,
+	check(lines >= 2 && mapLine && red && counted == lines && cleared,
 			QStringLiteral("phone, Log screen: the session's lines (%1: the map loaded, a map that did not), an error in "
 					"red, \"%2\"; Clear empties it and says nothing is there yet").arg(lines).arg(count));
 }
@@ -2157,15 +2195,15 @@ void checkTabIcons() {
 			const QColor want = themeColor(chosen ? &ThemeColors::accent : &ThemeColors::muted);
 			const bool coloured = icon && label && near(icon->property("color").value<QColor>(), want, 2)
 					&& near(label->property("color").value<QColor>(), want, 2);
-			const bool placed = icon && label && (size == PORTRAIT ? bottomOf(icon) <= topOf(label) + 1
-					: icon->mapToScene(QPointF(icon->width(), 0)).x() <= label->mapToScene(QPointF(0, 0)).x() + 1);
+			/* upright in the tab bar, across in the rail: over its name either way */
+			const bool placed = icon && label && bottomOf(icon) <= topOf(label) + 1;
 			if (!icon || !icon->isVisible() || icon->width() < 20 || strokes < 3 || glyph || inked < 15 || !coloured || !placed)
 				bad << QStringLiteral("%1 %2: %3 strokes, %4 inked px%5%6%7").arg(sizeText(size), QLatin1String(name)).arg(strokes)
 								.arg(inked).arg(glyph ? ", a glyph" : "").arg(coloured ? "" : ", colour").arg(placed ? "" : ", placed");
 		}
 	}
-	check(bad.isEmpty(), QStringLiteral("phone, tab icons: each tab's icon drawn (rectangles, no glyph) over its name, beside it "
-			"in landscape; the chosen tab's in the accent, the others muted %1").arg(bad.join(QStringLiteral(" | "))));
+	check(bad.isEmpty(), QStringLiteral("phone, tab icons: each tab's icon drawn (rectangles, no glyph) over its name, in the "
+			"tab bar upright and the rail across; the chosen tab's in the accent, the others muted %1").arg(bad.join(QStringLiteral(" | "))));
 }
 
 /* the buttons on the cards, in the write sheet and around them: at least 48 dp high and wide (Material's own) */
@@ -2379,7 +2417,8 @@ void checkOwnSettings() {
 
 /* the system's stand-in: what the session asked of Android's (phone_system.h), noted */
 struct FakeSystem : SystemBridge {
-	int holds = 0, releases = 0, toBack = 0;
+	int holds = 0, releases = 0, toBack = 0, buzzes = 0;
+	double scale = 1; /* the animator scale it says: 0, Remove animations */
 	bool serviceUp = false, screenOn = false;
 	QString text;
 	QStringList orientations;
@@ -2394,6 +2433,8 @@ struct FakeSystem : SystemBridge {
 	}
 	void keepScreenOn(bool on) override { screenOn = on; }
 	void moveToBack() override { ++toBack; }
+	void haptic() override { ++buzzes; }
+	double animationScale() override { return scale; }
 	void requestOrientation(Orientation orientation) override {
 		orientations << (orientation == Portrait ? QStringLiteral("portrait")
 						: orientation == Landscape ? QStringLiteral("landscape") : QStringLiteral("any"));
@@ -3100,8 +3141,9 @@ void checkChartYRange() {
 	/* Auto: the values in view and a twentieth of their span each side */
 	const bool spans = chart && std::fabs(chart->yLow() - (0.5 - 0.15)) < 0.02 && std::fabs(chart->yHigh() - (3.5 + 0.15)) < 0.02;
 	const bool autoRows = chart && rowsRight(autoSaid);
-	/* Auto off: the sheet opens with the range drawn, Min 0 and Max 10 applied */
-	phone.tap(phone.item("yAutoSwitch"));
+	/* the Y button opens the sheet with the range drawn; Min 0 and Max 10 applied */
+	const QString autoText = phone.text("yButton");
+	phone.tap(phone.item("yButton"));
 	QObject *sheet = phone.object("ySheet");
 	const bool sheetOpen = sheet && sheet->property("opened").toBool();
 	const bool stillAuto = chart && chart->yAuto(); /* nothing applied yet */
@@ -3111,24 +3153,23 @@ void checkChartYRange() {
 	chartFrame(phone, chart, 3);
 	const bool manual = chart && !chart->yAuto() && chart->yLow() == 0 && chart->yHigh() == 10;
 	const bool manualRows = chart && rowsRight(manualSaid);
-	const QString rangeText = phone.text("yRangeButton");
+	const QString rangeText = phone.text("yButton");
 	/* a max under the min is refused with a reason */
-	phone.tap(phone.item("yRangeButton"));
+	phone.tap(phone.item("yButton"));
 	phone.type("yMinField", QStringLiteral("5"));
 	phone.type("yMaxField", QStringLiteral("1"));
 	phone.tap(phone.item("ySheetApply"));
 	const QString refused = phone.text("ySheetError");
-	if (QObject *open = phone.object("ySheet")) QMetaObject::invokeMethod(open, "close");
-	phone.settle();
-	/* Auto again */
-	phone.tap(phone.item("yAutoSwitch"));
+	/* Auto again: the sheet's Auto, the sheet closed */
+	phone.tap(phone.item("ySheetAuto"));
 	chartFrame(phone, chart, 3);
-	const bool autoAgain = chart && chart->yAuto() && chart->yHigh() < 4;
-	check(autoOn && spans && autoRows && sheetOpen && stillAuto && manual && manualRows
+	const bool autoAgain = chart && chart->yAuto() && chart->yHigh() < 4 && !phone.object("ySheet")->property("visible").toBool()
+			&& phone.text("yButton") == QLatin1String("Y auto");
+	check(autoOn && spans && autoRows && sheetOpen && stillAuto && manual && manualRows && autoText == QLatin1String("Y auto")
 					&& rangeText == QLatin1String("Y 0 to 10") && refused == QLatin1String("Max must be above min.") && autoAgain,
-			QStringLiteral("phone, chart Y: Auto spans the values in view (%1), off the sheet's Min 0 and Max 10 hold it (%2; "
-					"\"%3\"), a max under the min is refused (\"%4\"), Auto again spans the values")
-					.arg(autoSaid, manualSaid, rangeText, refused));
+			QStringLiteral("phone, chart Y: Auto spans the values in view (%1, the button \"%5\"), its sheet's Min 0 and Max 10 "
+					"hold it (%2; \"%3\"), a max under the min is refused (\"%4\"), the sheet's Auto spans the values again")
+					.arg(autoSaid, manualSaid, rangeText, refused, autoText));
 }
 
 /* a fast line's bins as the desktop's check compares them (ChartView::freshBins against lastBins) */
@@ -3946,12 +3987,18 @@ void checkFastPlotLimit() {
 void checkChartButtonsStay() {
 	Phone phone(LANDSCAPE);
 	ChartItem *chart = showChart(phone);
-	QQuickItem *live = phone.item("liveButton"), *minute = phone.item("window60");
+	QQuickItem *live = phone.item("liveButton");
+	QQuickItem *minute = windowItem(phone, 60);
 	const bool before = live && live->property("checked").toBool() && minute && minute->property("checked").toBool();
-	phone.tap(live);
 	phone.tap(minute);
+	phone.tap(live);
+	minute = windowItem(phone, 60);
+	phone.tap(minute);
+	minute = windowItem(phone, 60);
 	const bool after = live && live->property("checked").toBool() && minute && minute->property("checked").toBool()
 			&& chart && chart->live() && chart->windowSeconds() == 60;
+	if (QObject *menu = phone.object("windowMenu")) QMetaObject::invokeMethod(menu, "close");
+	phone.settle();
 	phone.tap(phone.item("holdButton"));
 	const bool holdShown = phone.item("holdButton")->property("checked").toBool() && !live->property("checked").toBool();
 	phone.tap(phone.item("holdButton"));
@@ -3991,27 +4038,34 @@ QRectF sceneRect(const QQuickItem *item) {
 	return item ? QRectF(item->mapToScene(QPointF(0, 0)), QSizeF(item->width(), item->height())) : QRectF();
 }
 
-/* the owner's phone across (2340 x 1080 px at 450 dpi: 832 x 384 dp, 354 under the status bar): the plot had 260 of
- * 1080 px. At 832 x 384, under the status bar and at the test's landscape size, in English and Arabic, with two lines:
- * the chart's area (the plot and its labels) is at least 45 % of the window's height; every button of the controls
- * shows, inside the window, at least 48 x 48 dp, its text whole, none over another or over the legend; the gesture line
- * hidden. Upright, the gesture line still shows */
+/* the owner's phone across (2340 x 1080 px at 450 dpi): the window beside its navigation buttons is about 760 x 384 dp,
+ * and the plot had about 40 % of it (the header, the tab bar, two rows of controls and the legend's row). Across the
+ * Chart is the whole window now: at 760 x 384, 832 x 384, under the status bar (755 x 354) and at the test's landscape
+ * size, in English and Arabic, with two lines: no header and no tab bar; the chart's area (the plot and its labels) at
+ * least 75 % of the window's height; every button of the controls shows, inside the window, at least 48 x 48 dp, its
+ * text whole, none over another or over the legend; the legend beside them with room for a chip, its first chip's
+ * value showing inside it; no text cut or outside its parent; the gesture line hidden. Upright, the gesture line still
+ * shows, with the header and the tab bar */
 void checkChartLandscapeRoom() {
 	QStringList seen, bad;
 	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 		language::apply(*qApp, code);
-		for (QSize size : { QSize(832, 384), QSize(755, 354), LANDSCAPE }) {
+		for (QSize size : { QSize(760, 384), QSize(832, 384), QSize(755, 354), LANDSCAPE }) {
 			Phone phone(size);
 			ChartItem *chart = chartWithFedLines(phone, 2);
+			phone.settle(300);
 			const QQuickItem *area = phone.item("chartArea");
 			const double share = area && phone.window ? area->height() / phone.window->height() : 0;
 			const QString where = QStringLiteral("%1 %2").arg(code, sizeText(size));
-			if (!chart || share < 0.45)
+			if (!chart || share < 0.75)
 				bad << QStringLiteral("%1: the plot %2 % of the height").arg(where).arg(share * 100, 0, 'f', 1);
+			const QQuickItem *header = phone.item("header"), *tabs = phone.item("tabBar");
+			if (!header || !tabs || header->isVisible() || tabs->isVisible())
+				bad << QStringLiteral("%1: the header or the tab bar shows").arg(where);
 			QList<QRectF> taken;
 			QStringList widths;
-			for (const char *name : { "liveButton", "holdButton", "window10", "window60", "window300", "yAutoSwitch",
-						 "cursorsButton", "chartClear" }) {
+			for (const char *name : { "barsButton", "liveButton", "holdButton", "windowButton", "yButton", "cursorsButton",
+						 "chartClear" }) {
 				const QQuickItem *button = phone.item(name);
 				const QRectF r = sceneRect(button);
 				const bool whole = button && button->property("implicitContentWidth").toDouble()
@@ -4022,32 +4076,90 @@ void checkChartLandscapeRoom() {
 				taken << r;
 				widths << QString::number(r.width(), 'f', 0);
 				if (!button || !button->isVisible() || r.width() < 47.5 || r.height() < 47.5 || r.left() < -0.5
-						|| r.right() > size.width() + 0.5 || !whole || over)
+						|| r.right() > size.width() + 0.5 || r.top() < -0.5 || !whole || over)
 					bad << QStringLiteral("%1: %2 %3 x %4 at %5 (text whole %6, over another %7)").arg(where, QLatin1String(name))
 							.arg(r.width()).arg(r.height()).arg(r.left()).arg(whole).arg(over);
 			}
 			const QRectF legend = sceneRect(phone.item("legendView"));
 			for (const QRectF &r : taken)
 				if (r.intersected(legend).width() > 0.5) bad << QStringLiteral("%1: a button over the legend").arg(where);
+			const QQuickItem *top = phone.item("chartTop");
+			const bool beside = top && top->property("columns").toInt() == 2;
+			const QQuickItem *firstValue = nullptr;
+			forEachItem(topItem(phone.window), [&](QQuickItem *item) {
+				if (!firstValue && item->objectName() == QLatin1String("chipValue") && item->isVisible()) firstValue = item;
+			});
+			const QRectF value = sceneRect(firstValue);
+			if (!beside || legend.width() < 160 || !firstValue || !legend.adjusted(-0.5, -0.5, 0.5, 0.5).contains(value))
+				bad << QStringLiteral("%1: the legend %2 wide (beside %3), its first value at %4..%5").arg(where)
+						.arg(legend.width()).arg(beside).arg(value.left()).arg(value.right());
+			int texts = 0;
+			const QStringList outside = textsOutside(phone.window, texts);
+			if (!outside.isEmpty()) bad << where + QStringLiteral(": ") + outside.join(QStringLiteral(", "));
 			const QQuickItem *hint = phone.item("chartHint");
 			if (hint && hint->isVisible()) bad << QStringLiteral("%1: the gesture line shows").arg(where);
-			const QQuickItem *top = phone.item("chartTop");
-			seen << QStringLiteral("%1: plot %2 of %3 (%4 %), buttons %6, legend %5, rows above %7").arg(where)
-							.arg(area ? area->height() : 0)
-							.arg(size.height()).arg(share * 100, 0, 'f', 0)
-							.arg(top && top->property("columns").toInt() == 2 ? QStringLiteral("beside the controls")
-																			   : QStringLiteral("on its own row"))
-							.arg(widths.join(QLatin1Char('+'))).arg(top ? top->height() : 0);
+			seen << QStringLiteral("%1: plot %2 of %3 (%4 %), buttons %5, legend %6 wide, rows above %7").arg(where)
+							.arg(area ? area->height() : 0).arg(size.height()).arg(share * 100, 0, 'f', 0)
+							.arg(widths.join(QLatin1Char('+'))).arg(legend.width(), 0, 'f', 0).arg(top ? top->height() : 0);
 		}
 		Phone upright(PORTRAIT);
 		chartWithFedLines(upright, 2);
 		const QQuickItem *hint = upright.item("chartHint");
-		if (!hint || !hint->isVisible()) bad << code + QStringLiteral(" portrait: the gesture line hidden");
+		const QQuickItem *header = upright.item("header"), *tabs = upright.item("tabBar"), *bars = upright.item("barsButton");
+		if (!hint || !hint->isVisible() || !header || !header->isVisible() || !tabs || !tabs->isVisible() || !bars
+				|| bars->isVisible())
+			bad << code + QStringLiteral(" portrait: the gesture line, the header or the tab bar hidden, or the bars button shown");
 	}
 	language::apply(*qApp, QStringLiteral("en"));
-	check(bad.isEmpty(), QStringLiteral("phone, chart across: the plot at least 45 % of the window's height, every button "
-			"of the controls shown whole and 48 dp to the touch, none over another or the legend, the gesture line upright "
-			"only (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+	check(bad.isEmpty(), QStringLiteral("phone, chart across: the whole window, no header nor tab bar, the plot at least 75 % "
+			"of its height, every button of the controls shown whole and 48 dp to the touch, none over another or the "
+			"legend, the legend beside them with its first value, no text cut, the gesture line upright only (%1) %2")
+			.arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* the bars back, discoverably: across, the bars button at the controls' start (four corners in, a tooltip, the link's
+ * colour as a dot: grey with no link); a tap shows the rail (the plot narrower), its icon four corners
+ * out; a tap again hides them. Android's back in the whole window brings them back too (taken: the app stays); another
+ * tab chosen and the Chart again: the whole window again */
+void checkChartFullScreen() {
+	QStringList bad;
+	Phone phone(QSize(760, 384));
+	chartWithFedLines(phone, 2);
+	const QQuickItem *header = phone.item("header"), *tabs = phone.item("tabBar"), *area = phone.item("chartArea");
+	const QQuickItem *rail = phone.item("navRail");
+	QQuickItem *bars = phone.item("barsButton");
+	QObject *icon = phone.object("barsIcon");
+	const QQuickItem *dot = phone.item("barsLinkDot");
+	const auto full = [&] { return header && tabs && rail && !header->isVisible() && !tabs->isVisible() && !rail->isVisible(); };
+	const double fullWidth = area ? area->width() : 0;
+	const QString tip = bars ? bars->property("tip").toString() : QString();
+	if (!full() || !bars || !bars->isVisible() || !icon || icon->property("kind").toString() != QLatin1String("shrink") || !dot
+			|| !dot->isVisible() || !near(dot->property("color").value<QColor>(), themeColor(&ThemeColors::muted), 2))
+		bad << QStringLiteral("at the start: not the whole window, or the bars button, its icon or its dot wrong");
+	phone.tap(bars);
+	const bool shown = rail && rail->isVisible() && area && area->width() < fullWidth - 40
+			&& icon && icon->property("kind").toString() == QLatin1String("expand") && dot && !dot->isVisible();
+	if (!shown) bad << QStringLiteral("a tap did not bring the rail back (%1 wide, was %2)").arg(area ? area->width() : 0).arg(fullWidth);
+	phone.tap(bars);
+	if (!full()) bad << QStringLiteral("a second tap did not hide them");
+	const bool taken = pressBack(phone);
+	if (!taken || full()) bad << QStringLiteral("a back did not bring them back (taken %1)").arg(taken);
+	QQuickItem *registers = phone.item("tabRegisters");
+	const QRectF at = sceneRect(registers);
+	phone.tap(registers);
+	const int afterRegisters = phone.object("tabBar")->property("currentIndex").toInt();
+	phone.tap(phone.item("tabChart"));
+	if (afterRegisters != 0)
+		bad << QStringLiteral("Registers' tab at %1,%2 %3x%4 visible %5 did not show the Registers").arg(at.left()).arg(at.top())
+				.arg(at.width()).arg(at.height()).arg(registers && registers->isVisible());
+	if (!full())
+		bad << QStringLiteral("the Chart chosen again is not the whole window (tab %1, bars %2, rail %3)")
+				.arg(phone.object("tabBar")->property("currentIndex").toInt()).arg(phone.window->property("chartBars").toBool())
+				.arg(rail && rail->isVisible());
+	check(bad.isEmpty() && tip == QLatin1String("Show the tabs and the link"),
+			QStringLiteral("phone, chart across: the bars button (\"%1\") brings the rail back and hides "
+					"them again, a back brings them back, the Chart chosen again is the whole window %2")
+					.arg(tip, bad.join(QStringLiteral(" | "))));
 }
 
 /* the owner's phone: with many lines the last chip was cut at the screen's edge ("SETPOIN") and nothing said the row
@@ -4343,14 +4455,17 @@ void checkHeaderSlim() {
 		const QQuickItem *header = phone.item("header"), *title = phone.item("screenTitle"), *menu = phone.item("menuButton");
 		const QQuickItem *screens = phone.item("screens");
 		const int pixels = title ? title->property("font").value<QFont>().pixelSize() : 0;
-		const bool fine = header && header->height() == 48 && pixels == 18 && menu && menu->height() >= 47.5 && screens
-				&& std::fabs(sceneRect(screens).top() - 48) <= 0.5;
+		const bool fine = size == PORTRAIT
+				? header && header->isVisible() && header->height() == 48 && pixels == 18 && menu && menu->height() >= 47.5
+						&& screens && std::fabs(sceneRect(screens).top() - 48) <= 0.5
+				: header && !header->isVisible() && menu && menu->height() >= 47.5 && screens
+						&& std::fabs(sceneRect(screens).top()) <= 0.5;
 		seen << QStringLiteral("%1: header %2, title %3 px, the screens from %4").arg(sizeText(size)).arg(header ? header->height() : -1)
 						.arg(pixels).arg(screens ? sceneRect(screens).top() : -1);
 		ok = ok && fine;
 	}
-	check(ok, QStringLiteral("phone, header: 48 high in portrait and landscape, the title at 18 px, the menu button 48 dp, "
-			"the screens right under it (%1)").arg(seen.join(QStringLiteral("; "))));
+	check(ok, QStringLiteral("phone, header: 48 high upright, the title at 18 px, the menu button 48 dp, the screens right "
+			"under it; across no header, the screens from the window's top (%1)").arg(seen.join(QStringLiteral("; "))));
 }
 
 /* an empty Log: its icon, what comes here, and a button to the Connect drawer */
@@ -4434,6 +4549,767 @@ void checkHeadersOverRows() {
  * drawer, the Log, the Registers screen, a search, the write sheet after a write, asking first, an enum's list, the
  * sheet and the drawer over a keyboard stood for, drawn grey); landscape: the Registers screen, the drawer, the sheet,
  * the Log and the Chart */
+/* ---- part B of the design pass: the lost link on the chart */
+
+/* A stand-in between the phone and the fake device that loses the link at drop() and, on every later link, hands the
+ * device's answers over in bunches (all that came in the last BUNCH_MS at once), as a phone's TCP through a port forward
+ * did after a reconnect; the requests go on at once. On a thread of its own. */
+class BunchingProxy : public QObject {
+public:
+	static constexpr int BUNCH_MS = 450;
+	std::atomic<int> connections{ 0 };
+	std::atomic<quint16> port{ 0 };
+
+	void start() {
+		auto *server = new QTcpServer(this);
+		QObject::connect(server, &QTcpServer::newConnection, this, [this, server] {
+			while (QTcpSocket *client = server->nextPendingConnection()) {
+				const bool bunched = ++connections > 1;
+				clients_ << client;
+				client->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+				auto *device = new QTcpSocket(client);
+				device->connectToHost(QStringLiteral("127.0.0.1"), FAKE_DEVICE_PORT);
+				device->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+				QObject::connect(client, &QTcpSocket::readyRead, device, [client, device] { device->write(client->readAll()); });
+				if (bunched) {
+					auto held = std::make_shared<QByteArray>();
+					QObject::connect(device, &QTcpSocket::readyRead, client, [device, held] { *held += device->readAll(); });
+					auto *flush = new QTimer(client);
+					QObject::connect(flush, &QTimer::timeout, client, [client, held] {
+						if (held->isEmpty()) return;
+						client->write(*held);
+						held->clear();
+					});
+					flush->start(BUNCH_MS);
+				} else {
+					QObject::connect(device, &QTcpSocket::readyRead, client, [client, device] { client->write(device->readAll()); });
+				}
+				QObject::connect(client, &QTcpSocket::disconnected, client, &QObject::deleteLater);
+			}
+		});
+		if (server->listen(QHostAddress::LocalHost)) port = server->serverPort();
+	}
+	void drop() {
+		for (const QPointer<QTcpSocket> &client : std::as_const(clients_))
+			if (client) client->disconnectFromHost();
+		clients_.clear();
+	}
+
+private:
+	QList<QPointer<QTcpSocket>> clients_;
+};
+
+/* the example map with one register left (UPTIME, the fake device's milliseconds: a straight slope), so a poll is one
+ * block and four polls can be under way on TCP (a bunched link then answers several at once); written to `dir` */
+QString uptimeMap(const QTemporaryDir &dir) {
+	QFile in(phone::mapsFolder() + QStringLiteral("/example_device.json"));
+	QJsonObject map = in.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(in.readAll()).object() : QJsonObject();
+	QJsonArray kept;
+	for (const QJsonValue &reg : map.value(QStringLiteral("registers")).toArray())
+		if (reg.toObject().value(QStringLiteral("name")).toString() == QLatin1String("UPTIME")) kept << reg;
+	map.insert(QStringLiteral("registers"), kept);
+	const QString file = dir.filePath(QStringLiteral("uptime.json"));
+	QFile out(file);
+	if (out.open(QIODevice::WriteOnly)) out.write(QJsonDocument(map).toJson());
+	return file;
+}
+
+/* The owner's phone: the link dropped (the port forward went) and came back. The polled line bridged the drop with a
+ * flat step and a jump, and the slope after the reconnect went up in stairs (the answers came in bunches, each bunch
+ * one time). UPTIME plotted through a proxy that drops the link, then bunches the answers: the line has a break at the
+ * first sample after the drop (a bin marked as a gap) and none of its colour lies in the picture between the samples
+ * around the drop; after the reconnect each sample's value lies on the slope its times give (within 45 ms of it: the
+ * fake device's values step every 20 ms), not on stairs */
+void checkChartLinkGap() {
+	OnThread<BunchingProxy> proxy;
+	QTemporaryDir dir;
+	const QString file = uptimeMap(dir);
+	Phone phone(LANDSCAPE);
+	PhoneSession *session = phone.session();
+	const bool loaded = session && session->loadMap(file);
+	if (session) {
+		session->setAutoReconnect(true);
+		session->setPolling(true);
+		session->setIntervalMs(100);
+		session->connectTcp(QStringLiteral("127.0.0.1"), proxy.stand->port, QString());
+	}
+	const int row = modelRow(session, QStringLiteral("UPTIME"));
+	const bool up = waitForState(session, PhoneSession::Connected)
+			&& QTest::qWaitFor([&] { return row >= 0 && session->registers()->rows()[row].valid; }, 4000);
+	ChartItem *chart = showChart(phone);
+	const bool plotted = up && session->setPlot(row, true);
+	const int id = row >= 0 ? int(regKey(session->registers()->rows()[row].def)) : -1;
+	if (chart) chart->setWindowSeconds(10);
+	QTest::qWait(2000);
+	proxy.run([](BunchingProxy *stand) { stand->drop(); });
+	(void) QTest::qWaitFor([&] { return session->state() != PhoneSession::Connected; }, 3000);
+	const bool back = QTest::qWaitFor([&] { return session->state() == PhoneSession::Connected; }, 5000);
+	QTest::qWait(4000);
+	if (chart) chart->setLive(false);
+	chartFrame(phone, chart, 3);
+
+	/* the drop: the widest step between two samples */
+	const ChartData::Series *s = chart ? chart->series(id) : nullptr;
+	qsizetype after = -1;
+	double widest = 0;
+	for (qsizetype i = 1; s && i < s->times.size(); ++i)
+		if (s->times[i] - s->times[i - 1] > widest) {
+			widest = s->times[i] - s->times[i - 1];
+			after = i;
+		}
+	bool marked = false;
+	for (const ChartData::Bin &bin : chart ? chart->bins(id) : QVector<ChartData::Bin>())
+		marked = marked || (bin.gap && after >= 0 && bin.firstSample == s->dropped + after);
+	int across = -1, drawn = 0;
+	QString gapText;
+	if (s && after > 0 && chart) {
+		const QImage image = phone.grab();
+		const qreal dpr = image.devicePixelRatio();
+		const QRectF plot = plotInPicture(chart, image);
+		const auto xOf = [&](double t) {
+			return (chart->mapToScene(QPointF(chart->plotRect().left(), 0)).x()
+						   + (t - chart->viewStart()) / (chart->viewEnd() - chart->viewStart()) * chart->plotRect().width()) * dpr;
+		};
+		const double x0 = xOf(s->times[after - 1]) + 4 * dpr, x1 = xOf(s->times[after]) - 4 * dpr;
+		if (x1 > x0) across = colourIn(image, QRectF(x0, plot.top(), x1 - x0, plot.height()), chart->lineColour(id)).pixels;
+		drawn = colourIn(image, plot, chart->lineColour(id)).pixels;
+		gapText = QStringLiteral("%1 s, %2 px").arg(widest, 0, 'f', 2).arg((x1 - x0) / dpr, 0, 'f', 0);
+	}
+	check(loaded && plotted && back && widest > 0.4 && marked && across == 0 && drawn > 50,
+			QStringLiteral("phone, chart: a lost link breaks the polled line: the first sample after it begins a new piece "
+					"(its bin a gap: %1), none of the line's colour between the samples around the drop (%2 pixels; the "
+					"drop %3; %4 pixels of it in the plot)").arg(marked).arg(across).arg(gapText).arg(drawn));
+
+	/* after the reconnect: the samples' values against a straight line through them (least squares) */
+	double worst = -1;
+	int count = 0, risers = 0;
+	if (s && after > 0) {
+		double st = 0, sv = 0, stt = 0, stv = 0;
+		const qsizetype first = after + 2; /* the link's first polls apart */
+		const double t0 = first < s->times.size() ? s->times[first] : 0; /* times near 0: the sums keep their digits */
+		for (qsizetype i = first; i < s->times.size(); ++i, ++count) {
+			const double t = s->times[i] - t0;
+			st += t;
+			sv += s->values[i];
+			stt += t * t;
+			stv += t * s->values[i];
+		}
+		const double slope = count > 2 ? (count * stv - st * sv) / (count * stt - st * st) : 0;
+		const double offset = count > 0 ? (sv - slope * st) / count : 0;
+		for (qsizetype i = first; slope > 0 && i < s->times.size(); ++i) {
+			worst = std::max(worst, std::fabs(s->values[i] - (offset + slope * (s->times[i] - t0))) / slope);
+			/* a stair's riser: two samples a moment apart, their values far apart on the slope */
+			if (i > first && s->times[i] - s->times[i - 1] < 0.005 && (s->values[i] - s->values[i - 1]) / slope > 0.03)
+				++risers;
+		}
+	}
+	check(count >= 15 && worst >= 0 && worst <= 0.045 && risers == 0,
+			QStringLiteral("phone, chart: after a reconnect through a link that hands the answers over in bunches (every "
+					"%1 ms), the polled samples keep their times: each within %2 ms of the slope (at most 45), no stair's "
+					"riser (%3: two samples within 5 ms whose values lie over 30 ms apart; %4 samples)")
+					.arg(BunchingProxy::BUNCH_MS).arg(worst * 1000, 0, 'f', 1).arg(risers).arg(count));
+	if (session) {
+		session->disconnectLink();
+		session->loadMap(phone::mapsFolder() + QStringLiteral("/example_device.json"));
+	}
+}
+
+/* ---- part B of the design pass: the Log's levels, the Monitor's kinds and sheet, motion and the buzz */
+
+/* the visible items named `name` under `root`, in their order */
+QList<QQuickItem *> visibleNamed(QQuickItem *root, const QString &name) {
+	QList<QQuickItem *> found;
+	forEachItem(root, [&](QQuickItem *item) {
+		if (item->objectName() == name && item->isVisible()) found << item;
+	});
+	return found;
+}
+
+/* The Log as the desktop's: a line of each level, each with its level's icon (info, warn, error: three shapes) in its
+ * colour (the accent, amber, red) and its text in the desktop's colour (the text colour, amber, red); the times in the
+ * fixed-pitch family; a filter chip per level with its count. Info's chip off: its lines go (the list the warnings and
+ * errors), the chip struck through, the choice kept (phone/logLevels) and back in a new window; Copy then puts the
+ * lines shown with their levels (WARN, ERROR); every level off: "No line of the levels chosen" and Show all levels */
+void checkLogLevels() {
+	QSettings().remove(QStringLiteral("phone/logLevels"));
+	QStringList bad;
+	QString copied;
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = phone.session();
+		LogModel *log = session ? session->log() : nullptr;
+		if (log) {
+			log->clear();
+			log->add(LogModel::Info, QStringLiteral("connected: 127.0.0.1:1210"));
+			log->add(LogModel::Warning, QStringLiteral("the map is for device 0x1002, this is 0x1001"));
+			log->add(LogModel::Error, QStringLiteral("connection lost: closed by 127.0.0.1:1210"));
+			log->add(LogModel::Info, QStringLiteral("disconnected"));
+		}
+		phone.tap(phone.item("tabLog"));
+		QQuickItem *list = phone.item("logList");
+		/* in the list's order (top to bottom), not the delegates' */
+		const auto byTop = [](QList<QQuickItem *> items) {
+			std::sort(items.begin(), items.end(), [](QQuickItem *a, QQuickItem *b) { return sceneRect(a).top() < sceneRect(b).top(); });
+			return items;
+		};
+		const QList<QQuickItem *> icons = byTop(visibleNamed(list, QStringLiteral("logIcon")));
+		const QList<QQuickItem *> texts = byTop(visibleNamed(list, QStringLiteral("logText")));
+		const QList<QQuickItem *> times = byTop(visibleNamed(list, QStringLiteral("logTime")));
+		const char *kinds[] = { "info", "warn", "error", "info" };
+		const QColor tones[] = { themeColor(&ThemeColors::accent), themeColor(&ThemeColors::warn), themeColor(&ThemeColors::bad),
+			themeColor(&ThemeColors::accent) };
+		const QColor textTones[] = { themeColor(&ThemeColors::text), themeColor(&ThemeColors::warn), themeColor(&ThemeColors::bad),
+			themeColor(&ThemeColors::text) };
+		if (icons.size() != 4 || texts.size() != 4 || times.size() != 4) bad << QStringLiteral("%1 icons, %2 texts, %3 times")
+					.arg(icons.size()).arg(texts.size()).arg(times.size());
+		for (int i = 0; i < 4 && i < icons.size() && i < texts.size(); ++i)
+			if (icons[i]->property("kind").toString() != QLatin1String(kinds[i])
+					|| !near(icons[i]->property("color").value<QColor>(), tones[i], 2)
+					|| !near(texts[i]->property("color").value<QColor>(), textTones[i], 2))
+				bad << QStringLiteral("line %1: icon %2 in %3, text in %4").arg(i).arg(icons[i]->property("kind").toString())
+						.arg(icons[i]->property("color").value<QColor>().name(), texts[i]->property("color").value<QColor>().name());
+		/* the time beside the text, not over it, and in the fixed-pitch family */
+		if (!times.isEmpty() && !texts.isEmpty()) {
+			const QFontInfo info(times.first()->property("font").value<QFont>());
+			if (!info.fixedPitch()) bad << QStringLiteral("the time in %1, not fixed pitch").arg(info.family());
+			if (sceneRect(times.first()).right() > sceneRect(texts.first()).left() + 0.5
+					|| std::fabs(sceneRect(times.first()).center().y() - sceneRect(texts.first()).top()
+							- sceneRect(texts.first()).height() / 2) > sceneRect(texts.first()).height())
+				bad << QStringLiteral("the time not beside the text");
+		}
+		QQuickItem *info = phone.item("logLevel0"), *warn = phone.item("logLevel1"), *error = phone.item("logLevel2");
+		const auto countOf = [](QQuickItem *chip) { return chip ? chip->property("count").toInt() : -1; };
+		if (!info || !warn || !error || countOf(info) != 2 || countOf(warn) != 1 || countOf(error) != 1
+				|| !info->property("checked").toBool() || sceneRect(info).height() < 47.5)
+			bad << QStringLiteral("the chips: %1 %2 %3").arg(countOf(info)).arg(countOf(warn)).arg(countOf(error));
+		phone.tap(info);
+		const int shown = list ? list->property("count").toInt() : -1;
+		const QQuickItem *name = within(info, QStringLiteral("filterChipName"));
+		if (shown != 2 || info->property("checked").toBool() || !name || !name->property("font").value<QFont>().strikeOut())
+			bad << QStringLiteral("Info off: %1 lines shown").arg(shown);
+		if (QGuiApplication::clipboard()) QGuiApplication::clipboard()->clear();
+		phone.tap(phone.item("logCopy"));
+		copied = QGuiApplication::clipboard() ? QGuiApplication::clipboard()->text() : QString();
+		if (copied.count(QLatin1Char('\n')) != 1 || !copied.contains(QLatin1String("  WARN   the map is for"))
+				|| !copied.contains(QLatin1String("  ERROR  connection lost")))
+			bad << QStringLiteral("Copy: \"%1\"").arg(copied);
+		if (QSettings().value(QStringLiteral("phone/logLevels")).toString() != QLatin1String("1,2"))
+			bad << QStringLiteral("not saved");
+		phone.tap(warn);
+		phone.tap(error);
+		const QQuickItem *filtered = phone.item("logFilteredState");
+		if (!filtered || !filtered->isVisible() || list->property("count").toInt() != 0)
+			bad << QStringLiteral("every level off: no word of it");
+		phone.tap(phone.item("logFilteredButton"));
+		if (list->property("count").toInt() != 4) bad << QStringLiteral("Show all levels: %1 lines").arg(list->property("count").toInt());
+		phone.tap(info);
+	}
+	{
+		/* the choice back in a new window */
+		Phone phone(PORTRAIT);
+		phone.tap(phone.item("tabLog"));
+		const QQuickItem *info = phone.item("logLevel0"), *warn = phone.item("logLevel1");
+		if (!info || info->property("checked").toBool() || !warn || !warn->property("checked").toBool())
+			bad << QStringLiteral("the choice not back in a new window");
+	}
+	QSettings().remove(QStringLiteral("phone/logLevels"));
+	check(bad.isEmpty(), QStringLiteral("phone, Log: each line its level's icon and colour, the time in the fixed-pitch "
+			"family beside the text; a chip per level with its count, Info off hides its lines and is kept, Copy the lines "
+			"shown with their levels, every level off says so and Show all levels %1").arg(bad.join(QStringLiteral(" | "))));
+}
+
+/* The Monitor's frames labelled by their function, coloured by its kind (READ asked in the accent, READ_RESP in
+ * green) on its soft tone; TX and RX filter chips with their counts: TX off leaves the received frames only, RX off too
+ * says so; kept in phone/monitorSides */
+void checkMonitorKinds() {
+	QSettings().remove(QStringLiteral("phone/monitorSides"));
+	QStringList bad;
+	Phone phone(LANDSCAPE);
+	PhoneSession *session = connectFake(phone);
+	phone.tap(phone.item("tabMonitor"));
+	FrameLog *frames = session ? session->frames() : nullptr;
+	(void) QTest::qWaitFor([&] { return frames && frames->sentCount() >= 6 && frames->receivedCount() >= 6; }, 4000);
+	phone.tap(phone.item("monitorPause"));
+	phone.settle(300);
+	QQuickItem *list = phone.item("monitorList");
+	const QList<QQuickItem *> types = visibleNamed(list, QStringLiteral("frameType"));
+	QSet<QString> named;
+	for (QQuickItem *type : types) {
+		const QString text = type->property("text").toString();
+		named << text;
+		const QColor colour = type->property("color").value<QColor>();
+		const QColor want = text == QLatin1String("READ") ? themeColor(&ThemeColors::accent)
+				: text == QLatin1String("READ_RESP") ? themeColor(&ThemeColors::good) : QColor();
+		if (!near(colour, want, 2)) bad << QStringLiteral("%1 in %2").arg(text, colour.name());
+	}
+	if (!named.contains(QStringLiteral("READ")) || !named.contains(QStringLiteral("READ_RESP")))
+		bad << QStringLiteral("labels: %1").arg(QStringList(named.begin(), named.end()).join(QLatin1Char(',')));
+	QQuickItem *tx = phone.item("monitorTx"), *rx = phone.item("monitorRx");
+	const int sent = frames ? frames->sentCount() : 0, received = frames ? frames->receivedCount() : 0;
+	if (!tx || !rx || tx->property("count").toInt() != sent || rx->property("count").toInt() != received || sent == 0)
+		bad << QStringLiteral("the chips' counts (%1, %2)").arg(sent).arg(received);
+	phone.tap(tx);
+	phone.settle(200);
+	bool onlyReceived = list && list->property("count").toInt() == received;
+	for (QQuickItem *direction : visibleNamed(list, QStringLiteral("frameDirection")))
+		onlyReceived = onlyReceived && direction->property("text").toString() == QLatin1String("RX");
+	if (!onlyReceived) bad << QStringLiteral("TX off: %1 rows (want %2)").arg(list ? list->property("count").toInt() : -1).arg(received);
+	if (QSettings().value(QStringLiteral("phone/monitorSides")).toString() != QLatin1String("1,2")) bad << QStringLiteral("TX off not saved");
+	phone.tap(rx);
+	const QString empty = phone.text("monitorEmpty");
+	if (empty != QLatin1String("TX and RX both off: turn one on to see its frames."))
+		bad << QStringLiteral("both off: \"%1\"").arg(empty);
+	phone.tap(tx);
+	phone.tap(rx);
+	if (session) session->disconnectLink();
+	QSettings().remove(QStringLiteral("phone/monitorSides"));
+	check(bad.isEmpty(), QStringLiteral("phone, Monitor: each frame's function a label in its kind's colour (%1), TX and "
+			"RX chips with their counts filter the frames and are kept, both off it says so %2")
+			.arg(QStringList(named.begin(), named.end()).join(QStringLiteral(", ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* A frame tapped: its sheet slides up with the frame field by field as the desktop's Dump spells it: the eight fields
+ * in the wire's order, FUNCTION READ_RESP, OFFSET naming the map's register, CRC OK, the Dump's words under each; back
+ * closes it. FrameLog.decode against built frames: an ERROR_RESP's code named, a request's CRC computed, a frame with a
+ * wrong CRC not spelled out */
+void checkFrameSheet() {
+	QStringList bad;
+	Phone phone(LANDSCAPE);
+	PhoneSession *session = connectFake(phone);
+	phone.tap(phone.item("tabMonitor"));
+	FrameLog *frames = session ? session->frames() : nullptr;
+	(void) QTest::qWaitFor([&] { return frames && frames->receivedCount() >= 4; }, 4000);
+	phone.tap(phone.item("monitorPause"));
+	phone.settle(300);
+	QQuickItem *answer = nullptr;
+	for (QQuickItem *row : visibleNamed(phone.item("monitorList"), QStringLiteral("frameRow"))) {
+		const QQuickItem *type = within(row, QStringLiteral("frameType"));
+		if (type && type->property("text").toString() == QLatin1String("READ_RESP") && sceneRect(row).bottom() < phone.window->height())
+			answer = row;
+	}
+	phone.tap(answer);
+	(void) QTest::qWaitFor([&] { return phone.object("frameSheet") && phone.object("frameSheet")->property("opened").toBool(); }, 3000);
+	QQuickItem *sheet = phone.item("frameSheetFlick");
+	QStringList names, meanings;
+	int words = 0;
+	for (QQuickItem *field : visibleNamed(sheet, QStringLiteral("frameField"))) {
+		const QQuickItem *name = within(field, QStringLiteral("frameFieldName"));
+		const QQuickItem *meaning = within(field, QStringLiteral("frameFieldMeaning"));
+		const QQuickItem *said = within(field, QStringLiteral("frameFieldWords"));
+		names << (name ? name->property("text").toString() : QString());
+		meanings << (meaning ? meaning->property("text").toString() : QString());
+		words += said && !said->property("text").toString().isEmpty();
+	}
+	const QString want = QStringLiteral("START,SLAVE,FUNCTION,OFFSET,COUNT,DATA,CRC,END");
+	if (names.join(QLatin1Char(',')) != want || words != 8 || meanings.value(2) != QLatin1String("READ_RESP")
+			|| !meanings.value(3).contains(QStringLiteral(" · ")) || meanings.value(6) != QLatin1String("OK")
+			|| phone.text("frameSheetType") != QLatin1String("READ_RESP"))
+		bad << QStringLiteral("fields %1, meanings %2, %3 words").arg(names.join(QLatin1Char(',')), meanings.join(QLatin1Char('|'))).arg(words);
+	const bool closed = pressBack(phone) && QTest::qWaitFor([&] { return !phone.object("frameSheet")->property("visible").toBool(); }, 3000);
+	if (!closed) bad << QStringLiteral("back did not close it");
+	/* the decoder alone */
+	const auto rowsOf = [&](const QByteArray &raw, const char *direction) {
+		return frames ? frames->decode(evre::hex(raw), QLatin1String(direction)) : QVariantList();
+	};
+	const QVariantList error = rowsOf(evre::build(1, evre::ERROR_RESP, 0xD0F0, 1, QByteArray(1, char(4))), "RX");
+	const QString errorText = error.size() == 8 ? error[5].toMap().value(QStringLiteral("meaning")).toString() : QString();
+	if (errorText != QLatin1String("ERROR 4 offset out of range")) bad << QStringLiteral("ERROR_RESP: \"%1\"").arg(errorText);
+	const QVariantList request = rowsOf(evre::build(1, evre::READ, 0xD000, 4), "TX");
+	const QString crcWords = request.size() == 8 ? request[6].toMap().value(QStringLiteral("words")).toString() : QString();
+	const QString offset = request.size() == 8 ? request[3].toMap().value(QStringLiteral("meaning")).toString() : QString();
+	if (!crcWords.endsWith(QLatin1String("the Studio computed it")) || offset != QStringLiteral("0xD000 · UPTIME"))
+		bad << QStringLiteral("READ: \"%1\", \"%2\"").arg(offset, crcWords);
+	QByteArray broken = evre::build(1, evre::READ, 0xD000, 4);
+	broken[broken.size() - 2] = char(broken.at(broken.size() - 2) ^ 0x55);
+	if (!rowsOf(broken, "TX").isEmpty()) bad << QStringLiteral("a wrong CRC spelled out");
+	if (session) session->disconnectLink();
+	check(bad.isEmpty(), QStringLiteral("phone, Monitor: a tap on a frame opens its sheet, the frame field by field as the "
+			"Dump spells it (%1), back closes it; an error answer's code, a request's CRC and its register named, a wrong "
+			"CRC not spelled out %2").arg(names.join(QLatin1Char(' ')), bad.join(QStringLiteral(" | "))));
+}
+
+/* Motion: a tab's screen comes in with a short fade and slide (under way a moment after the tap, done after); the
+ * register sheet slides up. Android's animations removed (the animator scale 0): the session's motion off, the screen
+ * there at once, the sheet open at once */
+void checkMotion() {
+	QStringList seen;
+	bool ok = true;
+	FakeSystem system;
+	for (double scale : { 1.0, 0.0 }) {
+		system.scale = scale;
+		PhoneSession::setSystemBridgeForTests(&system);
+		{
+			Phone phone(PORTRAIT);
+			PhoneSession *session = phone.session();
+			QObject *tabs = phone.object("tabBar");
+			QObject *motion = phone.object("tabMotion");
+			const QQuickItem *log = phone.item("screenLog");
+			if (tabs) tabs->setProperty("currentIndex", 3);
+			QTest::qWait(40);
+			const bool running = motion && motion->property("running").toBool();
+			const double opacity = log ? log->opacity() : -1;
+			phone.settle(500);
+			const bool done = log && log->opacity() == 1 && motion && !motion->property("running").toBool()
+					&& phone.object("screens")->property("shift").toDouble() == 0;
+			if (tabs) tabs->setProperty("currentIndex", 0);
+			phone.settle(500);
+			/* the register sheet: under way, or open at once */
+			QObject *sheet = phone.object("registerSheet");
+			if (sheet) QMetaObject::invokeMethod(sheet, "openFor", Q_ARG(QVariant, 0));
+			QTest::qWait(40);
+			const double position = sheet ? sheet->property("position").toDouble() : -1;
+			phone.settle(600);
+			if (sheet) QMetaObject::invokeMethod(sheet, "close");
+			phone.settle(600);
+			const bool on = scale > 0;
+			const bool right = session && session->motion() == on && done
+					&& (on ? running && opacity < 0.99 && position < 0.99 : !running && opacity == 1 && position > 0.99);
+			ok = ok && right;
+			seen << QStringLiteral("scale %1: motion %2, the tab's motion %3 (opacity %4 at 40 ms), the sheet at %5 at 40 ms")
+							.arg(scale).arg(session && session->motion()).arg(running).arg(opacity, 0, 'f', 2).arg(position, 0, 'f', 2);
+		}
+		PhoneSession::setSystemBridgeForTests(nullptr);
+	}
+	check(ok, QStringLiteral("phone, motion: a tab's screen fades and slides in, the sheet slides up; with Android's "
+			"animations removed both are there at once (%1)").arg(seen.join(QStringLiteral("; "))));
+}
+
+/* the buzz (Android's haptic feedback): once when the link comes up, once when the device takes a write; none for a
+ * write the app did not send (writes off) */
+void checkHaptics() {
+	FakeSystem system;
+	PhoneSession::setSystemBridgeForTests(&system);
+	int afterConnect = -1, afterWrite = -1, afterRefused = -1;
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = connectFake(phone);
+		afterConnect = system.buzzes;
+		const int row = modelRow(session, QStringLiteral("FAN_SPEED"));
+		bool answered = false;
+		QMetaObject::Connection watch;
+		if (session) {
+			watch = QObject::connect(session, &PhoneSession::writeAnswered, session, [&](int, bool good, const QString &) {
+				answered = answered || good;
+			});
+			session->setWritesEnabled(true);
+			session->write(row, QStringLiteral("37"));
+		}
+		(void) QTest::qWaitFor([&] { return answered; }, 3000);
+		afterWrite = system.buzzes;
+		if (session) {
+			session->setWritesEnabled(false);
+			session->write(row, QStringLiteral("38"));
+		}
+		phone.settle(300);
+		afterRefused = system.buzzes;
+		QObject::disconnect(watch);
+		if (session) session->disconnectLink();
+	}
+	PhoneSession::setSystemBridgeForTests(nullptr);
+	check(afterConnect == 1 && afterWrite == 2 && afterRefused == 2,
+			QStringLiteral("phone, haptics: a short buzz when the link comes up (%1) and when the device takes a write (%2), "
+					"none for a write not sent (%3)").arg(afterConnect).arg(afterWrite).arg(afterRefused));
+}
+
+/* part B's pictures for the eye (not checks): <prefix>_<en|ar>_<dark|light>_<name>.png. At the owner's phone across
+ * (760 x 384): registers760 (the rail, one-line rows), sheet760 (FAN_SPEED's sheet in two columns), chart760_two (two
+ * registers, live, the whole window), chart760_bars (the bars back), chart760_window (the
+ * window's menu), chart760_ysheet, chart760_six (six lines), chart760_cursors, chart760_gap (a lost link: the break, then
+ * the slope after the reconnect), monitor760, monitor760_rx (TX off), frame760 (a READ_RESP's sheet); upright:
+ * chart_portrait, log_levels, log_filtered (Info off), frame_portrait (a READ's sheet). EVRE_PHONE_ONLY=partb saves
+ * only these */
+void savePartBPictures(const QString &prefix) {
+	const QSize phoneAcross(760, 384);
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		for (bool dark : { true, false }) {
+			QSettings().setValue(QStringLiteral("ui/dark"), dark);
+			const QString name = QStringLiteral("%1_%2_%3_").arg(prefix, code, dark ? "dark" : "light");
+			{
+				Phone phone(phoneAcross);
+				PhoneSession *session = connectFake(phone);
+				if (session) session->setWritesEnabled(true);
+				QTest::qWait(1500);
+				phone.grab().save(name + QStringLiteral("registers760.png"));
+				openSheet(phone, QStringLiteral("FAN_SPEED"));
+				phone.settle(500);
+				phone.grab().save(name + QStringLiteral("sheet760.png"));
+				closeSheet(phone);
+				ChartItem *chart = showChart(phone);
+				for (const char *reg : { "SUPPLY_V", "TEMPERATURE" }) {
+					const int row = modelRow(session, QLatin1String(reg));
+					if (session && row >= 0) session->setPlot(row, true);
+				}
+				if (chart) chart->setWindowSeconds(10);
+				QTest::qWait(6000);
+				phone.grab().save(name + QStringLiteral("chart760_two.png"));
+				phone.tap(phone.item("barsButton"));
+				phone.settle(400);
+				phone.grab().save(name + QStringLiteral("chart760_bars.png"));
+				phone.tap(phone.item("barsButton"));
+				phone.tap(phone.item("windowButton"));
+				phone.settle(400);
+				phone.grab().save(name + QStringLiteral("chart760_window.png"));
+				if (QObject *menu = phone.object("windowMenu")) QMetaObject::invokeMethod(menu, "close");
+				phone.settle(400);
+				phone.tap(phone.item("yButton"));
+				phone.settle(500);
+				phone.grab().save(name + QStringLiteral("chart760_ysheet.png"));
+				if (QObject *sheet = phone.object("ySheet")) QMetaObject::invokeMethod(sheet, "close");
+				phone.settle(400);
+				for (const char *reg : { "SUPPLY_I", "PRESSURE", "SETPOINT", "MOTOR_SPEED" }) {
+					const int more = modelRow(session, QLatin1String(reg));
+					if (session && more >= 0) session->setPlot(more, true);
+				}
+				QTest::qWait(4000);
+				phone.grab().save(name + QStringLiteral("chart760_six.png"));
+				phone.tap(phone.item("cursorsButton"));
+				phone.settle(800);
+				phone.grab().save(name + QStringLiteral("chart760_cursors.png"));
+				phone.tap(phone.item("cursorsButton"));
+				phone.tap(phone.item("tabMonitor"));
+				QTest::qWait(1500);
+				phone.tap(phone.item("monitorPause"));
+				phone.settle(400);
+				phone.grab().save(name + QStringLiteral("monitor760.png"));
+				phone.tap(phone.item("monitorTx"));
+				phone.settle(400);
+				phone.grab().save(name + QStringLiteral("monitor760_rx.png"));
+				QQuickItem *answer = nullptr;
+				for (QQuickItem *row : visibleNamed(phone.item("monitorList"), QStringLiteral("frameRow")))
+					if (!answer && sceneRect(row).top() > 60) answer = row;
+				phone.tap(answer);
+				phone.settle(700);
+				phone.grab().save(name + QStringLiteral("frame760.png"));
+				pressBack(phone);
+				phone.tap(phone.item("monitorTx"));
+				if (session) session->disconnectLink();
+			}
+			{
+				/* the lost link and the reconnect through the bunching proxy */
+				OnThread<BunchingProxy> proxy;
+				QTemporaryDir dir;
+				Phone phone(phoneAcross);
+				PhoneSession *session = phone.session();
+				if (session) {
+					session->loadMap(uptimeMap(dir));
+					session->setAutoReconnect(true);
+					session->setPolling(true);
+					session->setIntervalMs(100);
+					session->connectTcp(QStringLiteral("127.0.0.1"), proxy.stand->port, QString());
+				}
+				const int row = modelRow(session, QStringLiteral("UPTIME"));
+				(void) QTest::qWaitFor([&] { return session && row >= 0 && session->registers()->rows()[row].valid; }, 4000);
+				ChartItem *chart = showChart(phone);
+				if (session && row >= 0) session->setPlot(row, true);
+				if (chart) chart->setWindowSeconds(10);
+				QTest::qWait(3000);
+				proxy.run([](BunchingProxy *stand) { stand->drop(); });
+				(void) QTest::qWaitFor([&] { return session->state() != PhoneSession::Connected; }, 3000);
+				(void) QTest::qWaitFor([&] { return session->state() == PhoneSession::Connected; }, 5000);
+				QTest::qWait(4000);
+				phone.grab().save(name + QStringLiteral("chart760_gap.png"));
+				if (session) {
+					session->disconnectLink();
+					session->loadMap(phone::mapsFolder() + QStringLiteral("/example_device.json"));
+				}
+			}
+			{
+				Phone phone(PORTRAIT);
+				PhoneSession *session = connectFake(phone);
+				ChartItem *chart = showChart(phone);
+				for (const char *reg : { "SUPPLY_V", "TEMPERATURE" }) {
+					const int row = modelRow(session, QLatin1String(reg));
+					if (session && row >= 0) session->setPlot(row, true);
+				}
+				if (chart) chart->setWindowSeconds(10);
+				QTest::qWait(5000);
+				phone.grab().save(name + QStringLiteral("chart_portrait.png"));
+				phone.tap(phone.item("tabMonitor"));
+				QTest::qWait(1200);
+				phone.tap(phone.item("monitorPause"));
+				phone.settle(400);
+				QQuickItem *request = nullptr;
+				for (QQuickItem *row : visibleNamed(phone.item("monitorList"), QStringLiteral("frameRow"))) {
+					const QQuickItem *type = within(row, QStringLiteral("frameType"));
+					if (!request && type && type->property("text").toString() == QLatin1String("READ")) request = row;
+				}
+				phone.tap(request);
+				phone.settle(700);
+				phone.grab().save(name + QStringLiteral("frame_portrait.png"));
+				pressBack(phone);
+				if (LogModel *log = session ? session->log() : nullptr) {
+					log->add(LogModel::Warning, QStringLiteral("the map is for device 0x1002, this is 0x1001"));
+					log->add(LogModel::Error, QStringLiteral("write refused: NOWHERE = 1 (01 at 0xD0F0): offset out of range"));
+					log->add(LogModel::Info, QStringLiteral("written: FAN_SPEED = 42"));
+				}
+				phone.tap(phone.item("tabLog"));
+				phone.settle(500);
+				phone.grab().save(name + QStringLiteral("log_levels.png"));
+				phone.tap(phone.item("logLevel0"));
+				phone.settle(400);
+				phone.grab().save(name + QStringLiteral("log_filtered.png"));
+				phone.tap(phone.item("logLevel0"));
+				if (session) session->disconnectLink();
+			}
+		}
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	QSettings().remove(QStringLiteral("phone/logLevels"));
+	QSettings().remove(QStringLiteral("phone/monitorSides"));
+	language::apply(*qApp, QStringLiteral("en"));
+}
+
+/* ---- the coordinator's review of part A's pictures: landscape's height, the sheet across, numbers with units */
+
+/* Across, every tab: the bottom tab bar and the header give way to a rail at the start edge (the right in Arabic): the
+ * menu button, the four tabs (each 48 dp or more, the chosen one marked), the link's state; the screens beside it from
+ * the window's top. At 760 x 384, connected, the Registers screen shows 7 rows or more whole (4 before), each one line
+ * and at least 42 high; a tap on the rail's Log shows the Log, its menu button opens the drawer */
+void checkLandscapeRail() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		Phone phone(QSize(760, 384));
+		PhoneSession *session = connectFake(phone);
+		phone.settle(600);
+		const bool rtl = code == QLatin1String("ar");
+		const QQuickItem *rail = phone.item("navRail"), *header = phone.item("header"), *tabs = phone.item("tabBar");
+		const QQuickItem *screens = phone.item("screens");
+		const QRectF railAt = sceneRect(rail), screensAt = sceneRect(screens);
+		if (!rail || !rail->isVisible() || (header && header->isVisible()) || (tabs && tabs->isVisible()))
+			bad << code + QStringLiteral(": the rail hidden, or the header or the tab bar shown");
+		if (rtl ? std::fabs(railAt.right() - 760) > 0.5 : std::fabs(railAt.left()) > 0.5)
+			bad << code + QStringLiteral(": the rail not at the start edge (%1..%2)").arg(railAt.left()).arg(railAt.right());
+		if (screensAt.intersected(railAt).width() > 0.5 || std::fabs(screensAt.top()) > 0.5 || screensAt.height() < 383.5)
+			bad << code + QStringLiteral(": the screens %1,%2 %3x%4").arg(screensAt.left()).arg(screensAt.top())
+					.arg(screensAt.width()).arg(screensAt.height());
+		for (const char *name : { "menuButton", "tabRegisters", "tabChart", "tabMonitor", "tabLog", "linkPill" }) {
+			const QQuickItem *item = phone.item(name);
+			const QRectF r = sceneRect(item);
+			if (!item || !item->isVisible() || r.width() < 47.5 || r.height() < 47.5 || !railAt.adjusted(-0.5, -0.5, 0.5, 0.5).contains(r))
+				bad << QStringLiteral("%1: %2 %3x%4 at %5,%6").arg(code, QLatin1String(name)).arg(r.width()).arg(r.height())
+						.arg(r.left()).arg(r.top());
+		}
+		/* the Registers' rows whole in view */
+		QQuickItem *list = phone.item("registerList");
+		const QRectF view = sceneRect(list);
+		int whole = 0;
+		double lowest = 1e9;
+		forEachItem(list, [&](QQuickItem *item) {
+			if (!item->objectName().startsWith(QLatin1String("row_")) || !item->isVisible()) return;
+			const QRectF r = sceneRect(item);
+			if (r.top() < view.top() - 0.5 || r.bottom() > view.bottom() + 0.5) return;
+			++whole;
+			lowest = std::min(lowest, r.height());
+			const QQuickItem *second = within(item, QStringLiteral("rowSecond"));
+			if (second && second->isVisible()) bad << code + QStringLiteral(": a second line across");
+		});
+		if (whole < 7 || lowest < 41.5) bad << QStringLiteral("%1: %2 rows whole, the lowest %3").arg(code).arg(whole).arg(lowest);
+		/* STATUS's decoded text on its one line */
+		const QQuickItem *inline_ = within(regRow(phone, QStringLiteral("STATUS")), QStringLiteral("regDecodedInline"));
+		if (!inline_ || !inline_->isVisible() || inline_->property("text").toString().isEmpty())
+			bad << code + QStringLiteral(": STATUS's decoded text not on its line");
+		const QString linkText = phone.text("railLinkText");
+		phone.tap(phone.item("tabLog"));
+		QObject *bar = phone.object("tabBar");
+		if (!bar || bar->property("currentIndex").toInt() != 3) bad << code + QStringLiteral(": the rail's Log did not show the Log");
+		phone.openDrawer();
+		if (!phone.drawerOpen()) bad << code + QStringLiteral(": the rail's menu did not open the drawer");
+		phone.closeDrawer();
+		seen << QStringLiteral("%1: the rail %2..%3, %4 rows whole (lowest %5), the link \"%6\"").arg(code).arg(railAt.left())
+						.arg(railAt.right()).arg(whole).arg(lowest).arg(linkText);
+		if (session) session->disconnectLink();
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, across: a rail at the start edge (the menu, the four tabs, the link's state, "
+			"each 48 dp or more), no header nor tab bar, the screens beside it; at 760 x 384 the Registers show 7 rows or "
+			"more, each one line (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* The register sheet across (the owner's picture: Write and its field cut at the foot): at 760 x 384, English and
+ * Arabic, FAN_SPEED's sheet in two columns (the register, its value and trend; Plot, Copy and the write), all of it
+ * inside the window with nothing to scroll: the name, the value, the trend, Plot, Copy, the limits, the field and Write
+ * whole in view, no text cut */
+void checkSheetAcross() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		Phone phone(QSize(760, 384));
+		PhoneSession *session = connectFake(phone);
+		if (session) session->setWritesEnabled(true);
+		QTest::qWait(1500); /* a few values for the trend */
+		openSheet(phone, QStringLiteral("FAN_SPEED"));
+		phone.settle(400);
+		const QQuickItem *flick = phone.item("sheetFlick");
+		const QRectF viewport = sceneRect(flick).intersected(QRectF(0, 0, 760, 384));
+		const double contentHeight = flick ? flick->property("contentHeight").toDouble() : 1e9;
+		if (!flick || contentHeight > flick->height() + 0.5)
+			bad << QStringLiteral("%1: %2 of content in %3").arg(code).arg(contentHeight).arg(flick ? flick->height() : 0);
+		const QRectF about = sceneRect(phone.item("sheetAbout")), actions = sceneRect(phone.item("sheetActions"));
+		if (about.intersected(actions).width() > 0.5 || std::fabs(about.top() - actions.top()) > 0.5)
+			bad << code + QStringLiteral(": not two columns side by side");
+		for (const char *name : { "sheetName", "sheetValue", "sheetTrend", "sheetPlot", "sheetCopy", "sheetLimits",
+					 "sheetField", "sheetApply", "sheetClose" }) {
+			const QQuickItem *item = phone.item(name);
+			const QRectF r = sceneRect(item);
+			if (!item || !item->isVisible() || !viewport.adjusted(-0.5, -0.5, 0.5, 0.5).contains(r))
+				bad << QStringLiteral("%1: %2 at %3,%4 %5x%6 (the view %7..%8)").arg(code, QLatin1String(name)).arg(r.left())
+						.arg(r.top()).arg(r.width()).arg(r.height()).arg(viewport.top()).arg(viewport.bottom());
+		}
+		int texts = 0;
+		const QStringList outside = textsOutside(phone.window, texts);
+		if (!outside.isEmpty()) bad << code + QStringLiteral(": ") + outside.join(QStringLiteral(", "));
+		seen << QStringLiteral("%1: content %2 in %3").arg(code).arg(contentHeight).arg(flick ? flick->height() : 0);
+		closeSheet(phone);
+		if (session) session->disconnectLink();
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, the register sheet across: at 760 x 384 in two columns, every part in view "
+			"with nothing to scroll, no text cut (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* Arabic: a number and its unit one left-to-right run (between U+2066 and U+2069), not "% 100": the sheet's limits
+ * ("100 %"), its trend's span ("3 s"), the pill's rate upright ("10 Hz") and the rail's across */
+void checkArabicRuns() {
+	language::apply(*qApp, QStringLiteral("ar"));
+	const QChar lri(0x2066), pdi(0x2069);
+	QStringList bad, seen;
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = connectFake(phone);
+		if (session) session->setWritesEnabled(true);
+		QTest::qWait(2500);
+		const QString pill = phone.text("linkPillText");
+		static const QRegularExpression rate(QStringLiteral("\\x{2066}[0-9.]+ Hz\\x{2069}"));
+		if (!rate.match(pill).hasMatch()) bad << QStringLiteral("the pill \"%1\"").arg(pill);
+		openSheet(phone, QStringLiteral("FAN_SPEED"));
+		phone.settle(400);
+		const QString limits = phone.text("sheetLimits"), span = phone.text("sheetTrendSpan");
+		if (!limits.contains(lri + QStringLiteral("100 %") + pdi)) bad << QStringLiteral("the limits \"%1\"").arg(limits);
+		static const QRegularExpression seconds(QStringLiteral("\\x{2066}[0-9]+ s\\x{2069}"));
+		if (!seconds.match(span).hasMatch()) bad << QStringLiteral("the trend's span \"%1\"").arg(span);
+		seen << pill << limits << span;
+		closeSheet(phone);
+		if (session) session->disconnectLink();
+	}
+	{
+		Phone phone(QSize(760, 384));
+		PhoneSession *session = connectFake(phone);
+		QTest::qWait(2500);
+		const QString rail = phone.text("railLinkText");
+		static const QRegularExpression rate(QStringLiteral("^\\x{2066}[0-9.]+ Hz\\x{2069}$"));
+		if (!rate.match(rail).hasMatch()) bad << QStringLiteral("the rail \"%1\"").arg(rail);
+		seen << rail;
+		if (session) session->disconnectLink();
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	QString shown = seen.join(QStringLiteral(" | "));
+	shown.replace(lri, QStringLiteral("[")).replace(pdi, QStringLiteral("]"));
+	check(bad.isEmpty(), QStringLiteral("phone, Arabic: a number and its unit one left-to-right run (isolated): the sheet's "
+			"limits keep \"100 %\", the trend's span, the pill's and the rail's rate (%1) %2").arg(shown, bad.join(QStringLiteral(" | "))));
+}
+
 void savePictures(const QString &prefix) {
 	/* the window as drawn, the keyboard stood for drawn over its part */
 	auto save = [](const Phone &phone, const QString &file, double keyboard = 0) {
@@ -4576,10 +5452,17 @@ int main(int argc, char **argv) {
 		savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		saveChartPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		saveToolsPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		savePartBPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		QSettings().clear();
 		return 0;
 	}
 
+	/* part B's pictures alone */
+	if (qEnvironmentVariable("EVRE_PHONE_ONLY") == QLatin1String("partb")) {
+		savePartBPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		QSettings().clear();
+		return 0;
+	}
 	/* EVRE_PHONE_ONLY=<text>: only the checks whose function's name holds it (a run of a few, by hand) */
 	const QString only = qEnvironmentVariable("EVRE_PHONE_ONLY");
 #define RUN(f) if (only.isEmpty() || QStringLiteral(#f).contains(only)) f()
@@ -4621,12 +5504,14 @@ int main(int argc, char **argv) {
 	RUN(checkFastPlotLimit);
 	RUN(checkChartButtonsStay);
 	RUN(checkChartLandscapeRoom);
+	RUN(checkChartFullScreen);
 	RUN(checkChartLegendScroll);
 	RUN(checkMenuInside);
 	RUN(checkLogScreen);
 	RUN(checkTcpLink);
 	RUN(checkRefusedLink);
 	RUN(checkReconnect);
+	RUN(checkChartLinkGap);
 	RUN(checkTokenStops);
 	RUN(checkUsbPorts);
 	RUN(checkUsbPermission);
@@ -4677,12 +5562,21 @@ int main(int argc, char **argv) {
 	RUN(checkLogEmpty);
 	RUN(checkSearchEmpty);
 	RUN(checkHeadersOverRows);
+	RUN(checkLogLevels);
+	RUN(checkMonitorKinds);
+	RUN(checkFrameSheet);
+	RUN(checkMotion);
+	RUN(checkHaptics);
+	RUN(checkLandscapeRail);
+	RUN(checkSheetAcross);
+	RUN(checkArabicRuns);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		if (only.isEmpty() || only.contains(QLatin1String("Chart"))) saveChartPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		if (only.isEmpty() || only.contains(QLatin1String("Cursor")) || only.contains(QLatin1String("Monitor")))
 			saveToolsPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		if (only.isEmpty()) savePartBPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 	}
 	QCoreApplication::processEvents();
 	checkThreadWarnings();

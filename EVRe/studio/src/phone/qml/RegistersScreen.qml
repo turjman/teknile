@@ -20,6 +20,9 @@ Item {
     readonly property var registers: PhoneSession.registerList
     // in landscape the cards keep a phone's width, in the middle: a card 900 wide reads as a stretched line
     readonly property real columnWidth: 640
+    // across (760 x 384 on the owner's phone, beside the rail): the search 40 high, the groups' names lower, the rows one
+    // line 42 high (RegisterRow's compact), so seven rows show
+    readonly property bool wide: width > height
 
     signal connectAsked()
     signal sheetAsked(int source)
@@ -65,10 +68,10 @@ Item {
             Layout.alignment: Qt.AlignHCenter
             Layout.leftMargin: 12
             Layout.rightMargin: 12
-            Layout.topMargin: 8
+            Layout.topMargin: screen.wide ? 4 : 8
             Layout.bottomMargin: 4
-            implicitHeight: 48
-            radius: 24
+            implicitHeight: screen.wide ? 40 : 48
+            radius: implicitHeight / 2
             color: PhoneTheme.surface2
             border.color: searchField.activeFocus ? PhoneTheme.accent : PhoneTheme.border
             border.width: searchField.activeFocus ? 2 : 1
@@ -235,7 +238,7 @@ Item {
             section.delegate: Rectangle {
                 required property string section
                 width: ListView.view.width
-                height: section.length > 0 ? 34 : 4
+                height: section.length > 0 ? (screen.wide ? 20 : 34) : 4
                 color: PhoneTheme.bg
                 Label {
                     objectName: "regGroup"
@@ -245,7 +248,7 @@ Item {
                     anchors.bottom: parent.bottom
                     anchors.leftMargin: 16
                     anchors.rightMargin: 16
-                    anchors.bottomMargin: 6
+                    anchors.bottomMargin: screen.wide ? 2 : 6
                     text: parent.section
                     color: PhoneTheme.accent
                     font.pixelSize: 13
@@ -257,6 +260,7 @@ Item {
 
             delegate: RegisterRow {
                 width: ListView.view.width
+                compact: screen.wide
                 // the list takes the focus from the search field first: a closed sheet gives it back to what had it,
                 // and the field's keyboard came up again over the list
                 onOpened: source => {

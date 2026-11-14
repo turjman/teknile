@@ -564,6 +564,8 @@ void ChartItem::clear() {
 		line->binned = ChartData::BinnedLine();
 		line->vertices.clear();
 		line->value.clear();
+		line->pieceStarts.clear();
+		line->breakNext = false;
 	}
 	++generation_;
 	yHeld_ = false;
@@ -597,6 +599,10 @@ void ChartItem::appendSamples(int id, const QVector<double> &times, const QVecto
 	for (qsizetype i = 0; i < std::min(times.size(), values.size()); ++i) {
 		const double t = times[i], v = values[i];
 		if (!std::isfinite(v) || !std::isfinite(t) || (!s.times.isEmpty() && t < s.times.last())) continue;
+		/* after a lost link or a gap no poll filled: a new piece of the line from this sample */
+		if (!s.times.isEmpty() && (line->breakNext || (gapSeconds_ > 0 && t - s.times.last() > gapSeconds_)))
+			line->pieceStarts.push_back(s.dropped + s.times.size());
+		line->breakNext = false;
 		ChartData::roomForOne(s.times, most, s.spread);
 		ChartData::roomForOne(s.values, most, s.spread);
 		s.times.push_back(t);
@@ -606,7 +612,32 @@ void ChartItem::appendSamples(int id, const QVector<double> &times, const QVecto
 		s.hasLast = true;
 	}
 	trim(s);
+	const auto kept = std::lower_bound(line->pieceStarts.begin(), line->pieceStarts.end(), s.dropped);
+	line->pieceStarts.erase(line->pieceStarts.begin(), kept);
 	polish();
+}
+
+void ChartItem::setGapSeconds(double seconds) {
+	if (!(seconds >= 0) || seconds == gapSeconds_) return;
+	gapSeconds_ = seconds;
+}
+
+void ChartItem::breakLines() {
+	for (auto &line : lines_)
+		if (!line->series.fast) line->breakNext = true;
+}
+
+/* a polled line's pieces (pieceStarts) as the bins' gaps, as a fast line's lost records are: the bin that starts with a
+ * piece's first sample begins a new piece of the polyline. A piece that starts inside a column (a gap shorter than
+ * one) is not seen at that zoom, and is not marked */
+void ChartItem::markPieces(Line &line) {
+	if (line.series.fast || line.pieceStarts.isEmpty() || line.binned.bins.isEmpty()) return;
+	QVector<ChartData::Bin> &bins = line.binned.bins;
+	for (qsizetype start : std::as_const(line.pieceStarts)) {
+		const auto at = std::lower_bound(bins.cbegin(), bins.cend(), start,
+				[](const ChartData::Bin &bin, qsizetype sample) { return bin.firstSample < sample; });
+		if (at != bins.cend() && at->firstSample == start && at != bins.cbegin()) bins[at - bins.cbegin()].gap = true;
+	}
 }
 
 /* past the memory: the oldest samples go, in whole chunks of the largest level as the desktop's memory drops them
@@ -762,6 +793,7 @@ void ChartItem::updatePolish() {
 		ChartData::binViewSeries(line->series, axes_.t0, axes_.t1, axes_.columns, fresh, &line->binned, generation_,
 				polledBinned_, fastBinned_);
 		line->binned = std::move(fresh);
+		markPieces(*line);
 	}
 	updateYRange();
 	makeTicks(grid_);
@@ -787,7 +819,8 @@ void ChartItem::updatePolish() {
 				hair, &breaks);
 		out.reserve((bands.size() + poly.size()) * 12);
 		for (const QRectF &band : std::as_const(bands)) rect(out, band.left(), band.top(), band.right(), band.bottom());
-		/* piece by piece between the breaks (a fast line's gaps): nothing across one; a piece of one point a dot */
+		/* piece by piece between the breaks (a fast line's gaps, a polled line's lost link): nothing across one; a piece
+		 * of one point a dot */
 		qsizetype start = 0;
 		for (qsizetype k = 0; k <= breaks.size(); ++k) {
 			const qsizetype end = k < breaks.size() ? breaks[k] : poly.size();

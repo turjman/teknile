@@ -883,8 +883,8 @@ const Topic PHONE_TOPICS[] = {
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Using the phone app"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Using the phone app</h2>
 <p>EVRe Studio on a phone: the desktop's engine and maps, four screens in the tab bar at the bottom: <b>Registers</b>,
-<b>Chart</b>, <b>Monitor</b> and <b>Log</b>. The Chart and the Monitor turn the screen across; the Registers and the Log
-follow the way the phone is held. The other topics of this Help are the desktop's: where they speak of the sidebar, here
+<b>Chart</b>, <b>Monitor</b> and <b>Log</b> (across, in a rail at the side, with the menu and the link's state). The
+Chart and the Monitor turn the screen across; the Registers and the Log follow the way the phone is held. The other topics of this Help are the desktop's: where they speak of the sidebar, here
 it is the drawer; a click is a tap.</p>
 <h3>Connecting</h3>
 <p>The menu button at the top, or the link's pill beside it, opens the <b>Connect</b> drawer.</p>
@@ -918,10 +918,15 @@ device. Writing needs <b>Allow writes</b> on.</li>
 <ul>
 <li>The lines: registers plotted from their sheet (a tap on a row, <b>Plot</b>), and with <b>Fast lines</b> (a map with
 streams) a stream's channels.</li>
-<li><b>Live</b> follows the newest samples, <b>Hold</b> keeps the view still; the window <b>10 s</b>, <b>1 min</b> or
-<b>5 min</b>.</li>
+<li>Across, the chart has the whole screen: the rail with the tabs goes. The button with four corners at the start
+of its row brings it back (a dot on it shows the link's state: green connected, amber on the way, red lost); a tap
+again gives the chart the whole screen. Android's back brings it back too.</li>
+<li><b>Live</b> follows the newest samples, <b>Hold</b> keeps the view still. The window's button shows its length
+(<i>1 min</i>): a tap offers <b>10 s</b>, <b>1 min</b> or <b>5 min</b>.</li>
 <li>A <b>pinch</b> zooms the time, a <b>drag</b> looks back (and holds), a <b>double tap</b> goes live again.</li>
-<li><b>Y auto</b> fits the values in view; turned off, a small sheet asks for the <b>Min</b> and <b>Max</b>.</li>
+<li>The <b>Y</b> button shows the range: <i>Y auto</i> fits the values in view. A tap opens a small sheet: a
+<b>Min</b> and a <b>Max</b> with <b>Apply</b>, or <b>Auto</b>.</li>
+<li>A lost link, or a stretch no poll filled, leaves a gap in a line: nothing is drawn across it.</li>
 <li>The legend: a chip per line with its latest value; a tap hides or shows the line, its <b>...</b> button
 offers <b>Take off the chart</b>. <b>Clear</b> empties the chart.</li>
 <li><b>Cursors</b> puts A and B on the view and holds it; drag each by its round handle (A's at the top, B's at the
@@ -930,10 +935,15 @@ B − A, and the min, max and mean between them. <b>Cursors</b> again takes them
 </ul>
 <h3>Monitor and Log</h3>
 <ul>
-<li><b>Monitor</b>: every frame on the link while the screen shows, its time and direction (TX, RX) over its bytes.
-<b>Pause</b> keeps what is there, <b>Clear</b> empties it.</li>
-<li><b>Log</b>: what happened (the map, the link, the writes and their answers, the recordings), warnings in amber
-and errors in red. <b>Copy</b> puts it all on the clipboard, <b>Clear</b> empties it.</li>
+<li><b>Monitor</b>: every frame on the link while the screen shows: its time, its direction (TX, RX) and its function
+(READ, READ_RESP ...: a read asked in blue, a write in amber, an answer in green, an error in red) over its bytes.
+<b>TX</b> and <b>RX</b> at the top show or hide the frames each way, with their counts. A tap on a frame shows it
+field by field, as the desktop's Dump spells it: START, SLAVE, FUNCTION, OFFSET (with the registers it covers), COUNT,
+DATA, CRC and END. <b>Pause</b> keeps what is there, <b>Clear</b> empties it.</li>
+<li><b>Log</b>: what happened (the map, the link, the writes and their answers, the recordings), each line with its
+level's mark: an <i>i</i> for information, a triangle in amber for a warning, a cross in red for an error. The chips at
+the top show or hide each level, with its count. <b>Copy</b> puts the lines shown on the clipboard, <b>Clear</b>
+empties it.</li>
 </ul>
 <h3>Recording and the background</h3>
 <ul>
@@ -944,10 +954,12 @@ link and a recording go on with the screen off or another app in front. A tap on
 takes it away.</li>
 <li><b>Keep the screen on while connected</b> (at the drawer's foot, on at first): the screen does not go dark while
 the link is up.</li>
+<li>A short buzz says the link is up and that the device took a write (with the phone's touch feedback on). The tabs
+and the sheets move; with Android's <i>Remove animations</i> on, they do not.</li>
 </ul>
 <h3>Back</h3>
-<p>Android's back gesture closes what is open, a step at a time: a Help page to the list, the Help, a register's sheet,
-the drawer. With nothing open, while a link or a recording runs, the app goes to the background as with Home and
+<p>Android's back gesture closes what is open, a step at a time: a Help page to the list, the Help, a register's or a
+frame's sheet, the drawer; on the Chart's whole screen it brings the tab bar back. With nothing open, while a link or a recording runs, the app goes to the background as with Home and
 both go on; with no link it closes the app.</p>
 <p>Only on the desktop: the Map editor, the Dump, Listen, the API, math lines, lanes, the trigger and notes.</p>
 )HTML") },

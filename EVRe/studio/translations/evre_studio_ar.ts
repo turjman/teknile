@@ -631,7 +631,7 @@ Double-click to edit</source>
     </message>
     <message>
         <source>Y %1 to %2</source>
-        <translation>مدى Y من %1 إلى %2</translation>
+        <translation>مدى Y من ⁦%1⁩ إلى ⁦%2⁩</translation>
     </message>
     <message>
         <source>Clear</source>
@@ -686,10 +686,6 @@ Double-click to edit</source>
         <translation>مدى Y</translation>
     </message>
     <message>
-        <source>Auto off: the value axis stays between these.</source>
-        <translation>التلقائي معطّل: يبقى محور القيم بين هذين الحدّين.</translation>
-    </message>
-    <message>
         <source>Min</source>
         <translation>الأدنى</translation>
     </message>
@@ -732,6 +728,34 @@ Double-click to edit</source>
     <message>
         <source>Tap a register on the Registers screen, then Plot.</source>
         <translation>يُرسم المسجّل من صفحته: لمسة عليه في شاشة المسجّلات، ثم «رسم».</translation>
+    </message>
+    <message>
+        <source>Show the tabs</source>
+        <translation>إظهار الألسنة</translation>
+    </message>
+    <message>
+        <source>Hide the tabs</source>
+        <translation>إخفاء الألسنة</translation>
+    </message>
+    <message>
+        <source>Show the tabs and the link</source>
+        <translation>إظهار الألسنة وحالة الوصلة</translation>
+    </message>
+    <message>
+        <source>Hide the tabs: the chart on the whole screen</source>
+        <translation>إخفاء الألسنة: المخطط على الشاشة كلها</translation>
+    </message>
+    <message>
+        <source>Window: %1</source>
+        <translation>النافذة: %1</translation>
+    </message>
+    <message>
+        <source>Auto follows the values in view. Or type a range: the value axis stays between these.</source>
+        <translation>التلقائي يتبع القيم المعروضة. أو اكتب مدى: يبقى محور القيم بين هذين الحدّين.</translation>
+    </message>
+    <message>
+        <source>Auto</source>
+        <translation>تلقائي</translation>
     </message>
 </context>
 <context>
@@ -2931,6 +2955,13 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
     </message>
 </context>
 <context>
+    <name>FilterChip</name>
+    <message>
+        <source>%1: %2</source>
+        <translation>%1: %2</translation>
+    </message>
+</context>
+<context>
     <name>FormulaCompleter</name>
     <message>
         <source>constant</source>
@@ -2946,6 +2977,51 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
     <message>
         <source>… %1 frames not shown (too many to show)</source>
         <translation>… %1 إطار لم يُعرض (أكثر من أن يُعرض)</translation>
+    </message>
+    <message numerus="yes">
+        <source>Data: the %n bytes written</source>
+        <translation>
+            <numerusform>البيانات: %n بايت مكتوب</numerusform>
+            <numerusform>البيانات: بايت واحد مكتوب</numerusform>
+            <numerusform>البيانات: بايتان مكتوبان</numerusform>
+            <numerusform>البيانات: %n بايتات مكتوبة</numerusform>
+            <numerusform>البيانات: %n بايتًا مكتوبًا</numerusform>
+            <numerusform>البيانات: %n بايت مكتوب</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Data: the %n bytes read (the payload)</source>
+        <translation>
+            <numerusform>البيانات: %n بايت مقروء (الحمولة)</numerusform>
+            <numerusform>البيانات: بايت واحد مقروء (الحمولة)</numerusform>
+            <numerusform>البيانات: بايتان مقروءان (الحمولة)</numerusform>
+            <numerusform>البيانات: %n بايتات مقروءة (الحمولة)</numerusform>
+            <numerusform>البيانات: %n بايتًا مقروءًا (الحمولة)</numerusform>
+            <numerusform>البيانات: %n بايت مقروء (الحمولة)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>CRC-16/X-25 over every byte before it, low byte first: %1; checked when the frame came (a frame whose CRC fails is dropped)</source>
+        <translation>⁦CRC-16/X-25⁩ على كل بايت قبله، البايت الأدنى أولًا: ⁦%1⁩؛ فُحص حين وصل الإطار (الإطار الذي يفشل فحص CRC فيه يُسقط)</translation>
+    </message>
+</context>
+<context>
+    <name>FrameSheet</name>
+    <message>
+        <source>Close</source>
+        <translation>إغلاق</translation>
+    </message>
+    <message>
+        <source>Not one whole EVRe frame: its bytes as they came.</source>
+        <translation>ليس إطار EVRe كاملًا: بايتاته كما وصلت.</translation>
+    </message>
+    <message>
+        <source>Copy the bytes</source>
+        <translation>نسخ البايتات</translation>
+    </message>
+    <message>
+        <source>Copied</source>
+        <translation>نُسخت</translation>
     </message>
 </context>
 <context>
@@ -4675,8 +4751,8 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
         <source>
 &lt;h2&gt;Using the phone app&lt;/h2&gt;
 &lt;p&gt;EVRe Studio on a phone: the desktop&apos;s engine and maps, four screens in the tab bar at the bottom: &lt;b&gt;Registers&lt;/b&gt;,
-&lt;b&gt;Chart&lt;/b&gt;, &lt;b&gt;Monitor&lt;/b&gt; and &lt;b&gt;Log&lt;/b&gt;. The Chart and the Monitor turn the screen across; the Registers and the Log
-follow the way the phone is held. The other topics of this Help are the desktop&apos;s: where they speak of the sidebar, here
+&lt;b&gt;Chart&lt;/b&gt;, &lt;b&gt;Monitor&lt;/b&gt; and &lt;b&gt;Log&lt;/b&gt; (across, in a rail at the side, with the menu and the link&apos;s state). The
+Chart and the Monitor turn the screen across; the Registers and the Log follow the way the phone is held. The other topics of this Help are the desktop&apos;s: where they speak of the sidebar, here
 it is the drawer; a click is a tap.&lt;/p&gt;
 &lt;h3&gt;Connecting&lt;/h3&gt;
 &lt;p&gt;The menu button at the top, or the link&apos;s pill beside it, opens the &lt;b&gt;Connect&lt;/b&gt; drawer.&lt;/p&gt;
@@ -4710,10 +4786,15 @@ device. Writing needs &lt;b&gt;Allow writes&lt;/b&gt; on.&lt;/li&gt;
 &lt;ul&gt;
 &lt;li&gt;The lines: registers plotted from their sheet (a tap on a row, &lt;b&gt;Plot&lt;/b&gt;), and with &lt;b&gt;Fast lines&lt;/b&gt; (a map with
 streams) a stream&apos;s channels.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Live&lt;/b&gt; follows the newest samples, &lt;b&gt;Hold&lt;/b&gt; keeps the view still; the window &lt;b&gt;10 s&lt;/b&gt;, &lt;b&gt;1 min&lt;/b&gt; or
-&lt;b&gt;5 min&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;Across, the chart has the whole screen: the rail with the tabs goes. The button with four corners at the start
+of its row brings it back (a dot on it shows the link&apos;s state: green connected, amber on the way, red lost); a tap
+again gives the chart the whole screen. Android&apos;s back brings it back too.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Live&lt;/b&gt; follows the newest samples, &lt;b&gt;Hold&lt;/b&gt; keeps the view still. The window&apos;s button shows its length
+(&lt;i&gt;1 min&lt;/i&gt;): a tap offers &lt;b&gt;10 s&lt;/b&gt;, &lt;b&gt;1 min&lt;/b&gt; or &lt;b&gt;5 min&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;A &lt;b&gt;pinch&lt;/b&gt; zooms the time, a &lt;b&gt;drag&lt;/b&gt; looks back (and holds), a &lt;b&gt;double tap&lt;/b&gt; goes live again.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Y auto&lt;/b&gt; fits the values in view; turned off, a small sheet asks for the &lt;b&gt;Min&lt;/b&gt; and &lt;b&gt;Max&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;The &lt;b&gt;Y&lt;/b&gt; button shows the range: &lt;i&gt;Y auto&lt;/i&gt; fits the values in view. A tap opens a small sheet: a
+&lt;b&gt;Min&lt;/b&gt; and a &lt;b&gt;Max&lt;/b&gt; with &lt;b&gt;Apply&lt;/b&gt;, or &lt;b&gt;Auto&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;A lost link, or a stretch no poll filled, leaves a gap in a line: nothing is drawn across it.&lt;/li&gt;
 &lt;li&gt;The legend: a chip per line with its latest value; a tap hides or shows the line, its &lt;b&gt;...&lt;/b&gt; button
 offers &lt;b&gt;Take off the chart&lt;/b&gt;. &lt;b&gt;Clear&lt;/b&gt; empties the chart.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Cursors&lt;/b&gt; puts A and B on the view and holds it; drag each by its round handle (A&apos;s at the top, B&apos;s at the
@@ -4722,10 +4803,15 @@ B − A, and the min, max and mean between them. &lt;b&gt;Cursors&lt;/b&gt; agai
 &lt;/ul&gt;
 &lt;h3&gt;Monitor and Log&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;b&gt;Monitor&lt;/b&gt;: every frame on the link while the screen shows, its time and direction (TX, RX) over its bytes.
-&lt;b&gt;Pause&lt;/b&gt; keeps what is there, &lt;b&gt;Clear&lt;/b&gt; empties it.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Log&lt;/b&gt;: what happened (the map, the link, the writes and their answers, the recordings), warnings in amber
-and errors in red. &lt;b&gt;Copy&lt;/b&gt; puts it all on the clipboard, &lt;b&gt;Clear&lt;/b&gt; empties it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Monitor&lt;/b&gt;: every frame on the link while the screen shows: its time, its direction (TX, RX) and its function
+(READ, READ_RESP ...: a read asked in blue, a write in amber, an answer in green, an error in red) over its bytes.
+&lt;b&gt;TX&lt;/b&gt; and &lt;b&gt;RX&lt;/b&gt; at the top show or hide the frames each way, with their counts. A tap on a frame shows it
+field by field, as the desktop&apos;s Dump spells it: START, SLAVE, FUNCTION, OFFSET (with the registers it covers), COUNT,
+DATA, CRC and END. &lt;b&gt;Pause&lt;/b&gt; keeps what is there, &lt;b&gt;Clear&lt;/b&gt; empties it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Log&lt;/b&gt;: what happened (the map, the link, the writes and their answers, the recordings), each line with its
+level&apos;s mark: an &lt;i&gt;i&lt;/i&gt; for information, a triangle in amber for a warning, a cross in red for an error. The chips at
+the top show or hide each level, with its count. &lt;b&gt;Copy&lt;/b&gt; puts the lines shown on the clipboard, &lt;b&gt;Clear&lt;/b&gt;
+empties it.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;Recording and the background&lt;/h3&gt;
 &lt;ul&gt;
@@ -4736,17 +4822,19 @@ link and a recording go on with the screen off or another app in front. A tap on
 takes it away.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Keep the screen on while connected&lt;/b&gt; (at the drawer&apos;s foot, on at first): the screen does not go dark while
 the link is up.&lt;/li&gt;
+&lt;li&gt;A short buzz says the link is up and that the device took a write (with the phone&apos;s touch feedback on). The tabs
+and the sheets move; with Android&apos;s &lt;i&gt;Remove animations&lt;/i&gt; on, they do not.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;Back&lt;/h3&gt;
-&lt;p&gt;Android&apos;s back gesture closes what is open, a step at a time: a Help page to the list, the Help, a register&apos;s sheet,
-the drawer. With nothing open, while a link or a recording runs, the app goes to the background as with Home and
+&lt;p&gt;Android&apos;s back gesture closes what is open, a step at a time: a Help page to the list, the Help, a register&apos;s or a
+frame&apos;s sheet, the drawer; on the Chart&apos;s whole screen it brings the tab bar back. With nothing open, while a link or a recording runs, the app goes to the background as with Home and
 both go on; with no link it closes the app.&lt;/p&gt;
 &lt;p&gt;Only on the desktop: the Map editor, the Dump, Listen, the API, math lines, lanes, the trigger and notes.&lt;/p&gt;
 </source>
         <translation>
 &lt;h2&gt;استخدام تطبيق الهاتف&lt;/h2&gt;
 &lt;p&gt;EVRe Studio على الهاتف: محرّك سطح المكتب وخرائطه، وأربع شاشات في شريط الألسنة أسفل الشاشة: &lt;b&gt;المسجّلات&lt;/b&gt;،
-و&lt;b&gt;المخطط&lt;/b&gt;، و&lt;b&gt;المراقبة&lt;/b&gt;، و&lt;b&gt;السجل&lt;/b&gt;. يدير المخطط والمراقبة الشاشة بالعرض، وتتبع المسجّلات والسجل اتجاه الهاتف كما تمسكه.
+و&lt;b&gt;المخطط&lt;/b&gt;، و&lt;b&gt;المراقبة&lt;/b&gt;، و&lt;b&gt;السجل&lt;/b&gt; (وبالعرض في شريط جانبي، مع القائمة وحالة الوصلة). يدير المخطط والمراقبة الشاشة بالعرض، وتتبع المسجّلات والسجل اتجاه الهاتف كما تمسكه.
 المواضيع الأخرى في هذه المساعدة مواضيع سطح المكتب: حيث تذكر الشريط الجانبي فهو هنا لوحة الاتصال، والنقرة لمسة.&lt;/p&gt;
 &lt;h3&gt;الاتصال&lt;/h3&gt;
 &lt;p&gt;زر القائمة في الأعلى، أو شارة الوصلة بجانبه، يفتح &lt;b&gt;لوحة الاتصال&lt;/b&gt;.&lt;/p&gt;
@@ -4778,10 +4866,15 @@ both go on; with no link it closes the app.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;الخطوط: المسجّلات المرسومة من ورقتها (لمسة على صف، ثم &lt;b&gt;رسم&lt;/b&gt;)، ومع &lt;b&gt;الخطوط السريعة&lt;/b&gt; (خريطة فيها تدفقات) قنوات تدفق
 سريع.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;مباشر&lt;/b&gt; يتابع أحدث العينات، و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي العرض ساكنًا؛ والنافذة &lt;b&gt;⁦10&#xa0;s⁩&lt;/b&gt; أو &lt;b&gt;⁦1&#xa0;min⁩&lt;/b&gt;
-أو &lt;b&gt;⁦5&#xa0;min⁩&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;بالعرض يأخذ المخطط الشاشة كلها: يختفي الشريط الجانبي بالألسنة. الزر ذو الزوايا الأربع في أول صفه يعيده
+(ونقطة عليه تُظهر حالة الوصلة: خضراء متصلة، وكهرمانية في الطريق، وحمراء مفقودة)؛ ولمسة أخرى تعطي المخطط الشاشة كلها.
+ورجوع أندرويد يعيده كذلك.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;مباشر&lt;/b&gt; يتابع أحدث العينات، و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي العرض ساكنًا. زر النافذة يُظهر طولها
+(&lt;i&gt;⁦1&#xa0;min⁩&lt;/i&gt;): لمسة عليه تقدّم &lt;b&gt;⁦10&#xa0;s⁩&lt;/b&gt; أو &lt;b&gt;⁦1&#xa0;min⁩&lt;/b&gt; أو &lt;b&gt;⁦5&#xa0;min⁩&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;القرص&lt;/b&gt; يكبّر الزمن، و&lt;b&gt;السحب&lt;/b&gt; يرجع إلى الأقدم (ويثبّت العرض)، و&lt;b&gt;النقر المزدوج&lt;/b&gt; يعود إلى المباشر.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;مدى Y تلقائي&lt;/b&gt; يلائم القيم المعروضة؛ وحين يُطفأ تسأل ورقة صغيرة عن &lt;b&gt;الأدنى&lt;/b&gt; و&lt;b&gt;الأعلى&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;زر &lt;b&gt;Y&lt;/b&gt; يُظهر المدى: &lt;i&gt;مدى Y تلقائي&lt;/i&gt; يلائم القيم المعروضة. ولمسة عليه تفتح ورقة صغيرة:
+&lt;b&gt;الأدنى&lt;/b&gt; و&lt;b&gt;الأعلى&lt;/b&gt; مع &lt;b&gt;تطبيق&lt;/b&gt;، أو &lt;b&gt;تلقائي&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;الوصلة المفقودة، أو مدة لم يملأها استطلاع، تترك فجوة في الخط: لا يُرسم شيء عبرها.&lt;/li&gt;
 &lt;li&gt;وسيلة الإيضاح: شارة لكل خط بآخر قيمة له؛ لمسة عليها تُخفي الخط أو تُظهره، وزر &lt;b&gt;...&lt;/b&gt; الخاص بها يقدّم
 &lt;b&gt;إزالة من المخطط&lt;/b&gt;. &lt;b&gt;مسح&lt;/b&gt; يُفرغ المخطط.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;المؤشران&lt;/b&gt; يضع A وB على العرض ويثبّته؛ اسحب كلًّا منهما من مقبضه المستدير (مقبض A في الأعلى، ومقبض B في
@@ -4790,10 +4883,14 @@ both go on; with no link it closes the app.&lt;/p&gt;
 &lt;/ul&gt;
 &lt;h3&gt;المراقبة والسجل&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;b&gt;المراقبة&lt;/b&gt;: كل إطار على الوصلة ما دامت الشاشة ظاهرة، زمنه واتجاهه (TX، RX) فوق بايتاته. &lt;b&gt;إيقاف مؤقت&lt;/b&gt;
+&lt;li&gt;&lt;b&gt;المراقبة&lt;/b&gt;: كل إطار على الوصلة ما دامت الشاشة ظاهرة: زمنه واتجاهه (TX، RX) ووظيفته (READ، READ_RESP ...:
+القراءة المطلوبة بالأزرق، والكتابة بالكهرماني، والرد بالأخضر، والخطأ بالأحمر) فوق بايتاته. &lt;b&gt;TX&lt;/b&gt; و&lt;b&gt;RX&lt;/b&gt;
+في الأعلى تُظهر الإطارات في كل اتجاه أو تُخفيها، مع عددها. لمسة على إطار تعرضه حقلًا حقلًا كما يعرضه عرض الذاكرة في سطح
+المكتب: START وSLAVE وFUNCTION وOFFSET (مع المسجّلات التي يغطيها) وCOUNT وDATA وCRC وEND. &lt;b&gt;إيقاف مؤقت&lt;/b&gt;
 يُبقي ما هناك، و&lt;b&gt;مسح&lt;/b&gt; يُفرغه.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;السجل&lt;/b&gt;: ما حدث (الخريطة، والوصلة، والكتابات وردودها، والتسجيلات)، التحذيرات بالكهرماني والأخطاء بالأحمر.
-&lt;b&gt;نسخ&lt;/b&gt; يضعه كله في الحافظة، و&lt;b&gt;مسح&lt;/b&gt; يُفرغه.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;السجل&lt;/b&gt;: ما حدث (الخريطة، والوصلة، والكتابات وردودها، والتسجيلات)، كل سطر بعلامة مستواه: &lt;i&gt;i&lt;/i&gt;
+للمعلومات، ومثلث كهرماني للتحذير، وعلامة تقاطع حمراء للخطأ. الشارات في الأعلى تُظهر كل مستوى أو تُخفيه، مع عدده.
+&lt;b&gt;نسخ&lt;/b&gt; يضع الأسطر المعروضة في الحافظة، و&lt;b&gt;مسح&lt;/b&gt; يُفرغه.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;التسجيل والخلفية&lt;/h3&gt;
 &lt;ul&gt;
@@ -4803,10 +4900,12 @@ both go on; with no link it closes the app.&lt;/p&gt;
 مطفأة أو تطبيق آخر في المقدمة. لمسة عليه تفتح التطبيق؛ و&lt;b&gt;قطع الاتصال&lt;/b&gt; يزيله.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;إبقاء الشاشة مضاءة أثناء الاتصال&lt;/b&gt; (في أسفل لوحة الاتصال، مفعّل في البداية): لا تُظلم الشاشة ما دامت الوصلة
 قائمة.&lt;/li&gt;
+&lt;li&gt;اهتزاز قصير يقول إن الوصلة قامت وإن الجهاز أخذ الكتابة (حين تكون ردود فعل اللمس في الهاتف مفعّلة). تتحرك الألسنة
+والأوراق؛ ومع &lt;i&gt;إزالة الرسوم المتحركة&lt;/i&gt; في أندرويد لا تتحرك.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;الرجوع&lt;/h3&gt;
-&lt;p&gt;إيماءة الرجوع في أندرويد تغلق ما هو مفتوح، خطوةً خطوة: صفحة المساعدة إلى القائمة، ثم المساعدة، ثم ورقة المسجّل، ثم
-لوحة الاتصال. وإن لم يكن شيء مفتوحًا والوصلة أو التسجيل قائمان، ينتقل التطبيق إلى الخلفية كما بزر الرئيسية ويستمر
+&lt;p&gt;إيماءة الرجوع في أندرويد تغلق ما هو مفتوح، خطوةً خطوة: صفحة المساعدة إلى القائمة، ثم المساعدة، ثم ورقة المسجّل أو الإطار، ثم
+لوحة الاتصال؛ وفي الشاشة الكاملة للمخطط يعيد شريط الألسنة. وإن لم يكن شيء مفتوحًا والوصلة أو التسجيل قائمان، ينتقل التطبيق إلى الخلفية كما بزر الرئيسية ويستمر
 كلاهما؛ وبلا وصلة تُغلق التطبيق.&lt;/p&gt;
 &lt;p&gt;على سطح المكتب فقط: محرر الخريطة، وعرض الذاكرة، والاستماع، وواجهة API، والخطوط الرياضية، والمسارات، والقدح،
 والملاحظات.&lt;/p&gt;
@@ -4986,10 +5085,6 @@ both go on; with no link it closes the app.&lt;/p&gt;
 <context>
     <name>LogScreen</name>
     <message>
-        <source>lines: %1</source>
-        <translation>الأسطر: %1</translation>
-    </message>
-    <message>
         <source>Copy</source>
         <translation>نسخ</translation>
     </message>
@@ -5008,6 +5103,37 @@ both go on; with no link it closes the app.&lt;/p&gt;
     <message>
         <source>Open the Connect drawer</source>
         <translation>فتح لوحة الاتصال</translation>
+    </message>
+    <message>
+        <source>Info</source>
+        <translation>معلومات</translation>
+    </message>
+    <message>
+        <source>Warnings</source>
+        <translation>تحذيرات</translation>
+    </message>
+    <message>
+        <source>Errors</source>
+        <translation>أخطاء</translation>
+    </message>
+    <message>
+        <source>No line of the levels chosen</source>
+        <translation>لا سطر من المستويات المختارة</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n line(s) hidden by the filter above.</source>
+        <translation>
+            <numerusform>%n سطر مخفي بالمرشّح أعلاه.</numerusform>
+            <numerusform>سطر واحد مخفي بالمرشّح أعلاه.</numerusform>
+            <numerusform>سطران مخفيان بالمرشّح أعلاه.</numerusform>
+            <numerusform>%n أسطر مخفية بالمرشّح أعلاه.</numerusform>
+            <numerusform>%n سطرًا مخفيًا بالمرشّح أعلاه.</numerusform>
+            <numerusform>%n سطر مخفي بالمرشّح أعلاه.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Show all levels</source>
+        <translation>عرض كل المستويات</translation>
     </message>
 </context>
 <context>
@@ -5133,7 +5259,7 @@ both go on; with no link it closes the app.&lt;/p&gt;
     </message>
     <message>
         <source>connecting to %1:%2%3</source>
-        <translation>يتصل بـ %1:%2%3</translation>
+        <translation>يتصل بـ ⁦%1:%2⁩%3</translation>
     </message>
     <message>
         <source> (with a token)</source>
@@ -6638,14 +6764,6 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
 <context>
     <name>MonitorScreen</name>
     <message>
-        <source>paused · frames: %1</source>
-        <translation>متوقف مؤقتًا · الإطارات: %1</translation>
-    </message>
-    <message>
-        <source>frames: %1</source>
-        <translation>الإطارات: %1</translation>
-    </message>
-    <message>
         <source>Resume</source>
         <translation>استئناف</translation>
     </message>
@@ -6672,6 +6790,18 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>Connect…</source>
         <translation>اتصال…</translation>
+    </message>
+    <message>
+        <source>paused</source>
+        <translation>متوقف مؤقتًا</translation>
+    </message>
+    <message>
+        <source>Frame %1 %2: show its fields</source>
+        <translation>الإطار ⁦%1 %2⁩: عرض حقوله</translation>
+    </message>
+    <message>
+        <source>TX and RX both off: turn one on to see its frames.</source>
+        <translation>TX وRX كلاهما مطفأ: تشغيل أحدهما يُظهر إطاراته.</translation>
     </message>
 </context>
 <context>
@@ -6940,7 +7070,7 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     </message>
     <message>
         <source>connecting to %1:%2%3</source>
-        <translation>يتصل بـ %1:%2%3</translation>
+        <translation>يتصل بـ ⁦%1:%2⁩%3</translation>
     </message>
     <message>
         <source> (with a token)</source>
@@ -7161,6 +7291,17 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>%1 is back as %2</source>
         <translation>عاد ⁦%1⁩ باسم ⁦%2⁩</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n more</source>
+        <translation>
+            <numerusform>%n أخرى</numerusform>
+            <numerusform>واحد آخر</numerusform>
+            <numerusform>اثنان آخران</numerusform>
+            <numerusform>%n أخرى</numerusform>
+            <numerusform>%n أخرى</numerusform>
+            <numerusform>%n أخرى</numerusform>
+        </translation>
     </message>
 </context>
 <context>

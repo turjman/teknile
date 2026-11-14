@@ -35,6 +35,13 @@ public:
 	void moveToBack() override {
 		QJniObject::callStaticMethod<void>(SERVICE, "toBack", "(Landroid/content/Context;)V", context().object());
 	}
+	void haptic() override {
+		QJniObject::callStaticMethod<void>(SERVICE, "haptic", "(Landroid/content/Context;)V", context().object());
+	}
+	double animationScale() override {
+		return QJniObject::callStaticMethod<jfloat>(SERVICE, "animationScale", "(Landroid/content/Context;)F",
+				context().object());
+	}
 
 private:
 	static QJniObject context() { return QNativeInterface::QAndroidApplication::context(); }

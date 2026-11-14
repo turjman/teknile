@@ -36,7 +36,9 @@
  *   the system    while a link is wanted, Android's foreground service with its notification (the link's state, and
  *                 the recording's time once a second), so both go on with the screen off; the screen kept on while
  *                 connected (keepScreenOn, android/keepScreenOn, on by default); the orientation a screen asks for
- *                 (Main.qml, A-16). Through SystemBridge (phone_system.h): Android's, or a test's
+ *                 (Main.qml, A-16); a short buzz when a link comes up and when the device takes a write; motion
+ *                 off when Android's animations are removed (read at the start and each time the app comes back).
+ *                 Through SystemBridge (phone_system.h): Android's, or a test's
  *
  * QML only calls it on the window's thread; the engine is reached by post() and answers by queued signals, as
  * MainWindow does. Every text through tr() in this class's context. */
@@ -116,6 +118,7 @@ class PhoneSession : public QObject {
 	Q_PROPERTY(QString serviceText READ serviceText NOTIFY systemChanged)
 	Q_PROPERTY(bool screenKeptOn READ screenKeptOn NOTIFY systemChanged)
 	Q_PROPERTY(QString orientation READ orientation WRITE setOrientation NOTIFY systemChanged)
+	Q_PROPERTY(bool motion READ motion NOTIFY systemChanged)
 
 public:
 	/* Off: no link, none wanted. Waiting: Android's permission dialog for the USB device is up. Connecting: a try under
@@ -231,6 +234,8 @@ public:
 	/* the service's notification text while a link is wanted; empty: the service is not up */
 	QString serviceText() const { return serviceText_; }
 	bool screenKeptOn() const { return screenKeptOn_; }
+	/* the app's own motion (the tabs' change, the sheets' slide): off when Android's animations are removed */
+	bool motion() const { return motion_; }
 	/* Android's back with nothing open (Main.qml's back()): while a link is wanted or a recording runs, the app to the
 	 * background as Home does (true: the back is taken); else false, and Android closes the app */
 	Q_INVOKABLE bool backToBackground();
@@ -280,6 +285,8 @@ private:
 	void findUsbAgain();
 	static QString typedNumber(const RegDef &def, const QString &text);
 	void updateSystem();
+	void readMotion();
+	void buzz(); /* the system's short haptic, if any */
 	void refreshStats();
 	void markDeviceLost();
 	void retryDeviceId();
@@ -293,6 +300,7 @@ private:
 	void syncChart();
 	void pushMonitor();
 	void updateStaleAfter();
+	double lineGapSeconds() const;
 	double sampleRateHz() const;
 	uint8_t slaveOf(const RegDef &def) const;
 	QString mapWarning(quint16 id) const;
@@ -325,6 +333,7 @@ private:
 	QElapsedTimer recordClock_;
 	bool keepScreenOn_ = true;
 	bool screenKeptOn_ = false;
+	bool motion_ = true;
 	QString serviceText_;
 	QString orientation_;
 

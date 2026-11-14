@@ -5,7 +5,9 @@
 // polling and recording while it is up. Android 14 wants the type in the manifest, its permission
 // (FOREGROUND_SERVICE_CONNECTED_DEVICE) and one of its prerequisites: CHANGE_NETWORK_STATE, declared for a TCP link
 // (a USB link's permission request is one too). Also the screen kept on while connected (A-5), the orientation a screen
-// asks for (A-16) and the task moved to the background by a back at the root, on the activity's thread. Called by src/phone/phone_system.cpp.
+// asks for (A-16) and the task moved to the background by a back at the root, on the activity's thread; a short buzz
+// (the view's haptic feedback, which follows the phone's touch feedback setting) and the animator scale (0: Remove
+// animations). Called by src/phone/phone_system.cpp.
 package com.teknile.evre;
 
 import android.app.Activity;
@@ -20,7 +22,10 @@ import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
+import android.provider.Settings;
 import android.util.Log;
+import android.view.HapticFeedbackConstants;
+import android.view.View;
 import android.view.WindowManager;
 
 public final class EvreService extends Service {
@@ -83,6 +88,23 @@ public final class EvreService extends Service {
         if (!(context instanceof Activity)) return;
         final Activity activity = (Activity) context;
         activity.runOnUiThread(() -> activity.moveTaskToBack(true));
+    }
+
+    // a short buzz: a write the device took, a link up. The view's own feedback: none when the phone's touch feedback
+    // is off, and no VIBRATE permission
+    public static void haptic(Context context) {
+        if (!(context instanceof Activity)) return;
+        final Activity activity = (Activity) context;
+        activity.runOnUiThread(() -> {
+            View view = activity.getWindow().getDecorView();
+            view.performHapticFeedback(Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.CONFIRM
+                                                                   : HapticFeedbackConstants.VIRTUAL_KEY);
+        });
+    }
+
+    // the animator duration scale: 0 when the phone's animations are removed (Accessibility, or Developer options)
+    public static float animationScale(Context context) {
+        return Settings.Global.getFloat(context.getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1f);
     }
 
     // Android 13 and newer show a service's notification only with this permission: asked once, at the first link

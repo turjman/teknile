@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QQuickWindow>
 #include <QSettings>
 #include <QStandardPaths>
@@ -71,6 +72,20 @@ PhoneSession::PhoneSession(QObject *parent)
 	deviceText_ = tr("Device ID not read yet");
 	list_ = new RegisterList(model_, this);
 	frames_ = new FrameLog(this);
+	/* the Monitor's sheet names the registers a frame covers: the map's (one device: the link's slave) */
+	frames_->setNamer([this](int slave, int addr, int count) {
+		QStringList names;
+		int more = 0;
+		for (const RegisterModel::Row &row : model_->rows()) {
+			const RegDef &def = row.def;
+			if (requestSlave(def.slave, uint8_t(map_.slave)) != slave || def.addr + def.size <= addr || def.addr >= addr + count)
+				continue;
+			if (names.size() < 3) names << def.name;
+			else ++more;
+		}
+		if (more > 0) names << tr("%n more", nullptr, more);
+		return names.join(QStringLiteral(", "));
+	});
 	connect(frames_, &FrameLog::pausedChanged, this, &PhoneSession::pushMonitor);
 	valuePacer_.setPerSecond(ValuePace::saved());
 	valueClock_.start();
@@ -95,6 +110,11 @@ PhoneSession::PhoneSession(QObject *parent)
 				.arg(std::lround(sampleRateHz())).arg(model_->plotLimit()).arg(names.join(QStringLiteral(", "))));
 	});
 
+	readMotion();
+	/* Remove animations may be switched while the app is in the background */
+	connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+		if (state == Qt::ApplicationActive) readMotion();
+	});
 	startEngine();
 	reconnectTimer_.setSingleShot(true);
 	connect(&reconnectTimer_, &QTimer::timeout, this, &PhoneSession::retryConnect);
@@ -130,6 +150,8 @@ void PhoneSession::startEngine() {
 	thread_ = new QThread(this);
 	thread_->setObjectName(QStringLiteral("evre-io"));
 	engine_ = new IoEngine;
+	/* a poll's samples timed at its requests: the answers through a port forward come in bunches (the chart's stairs) */
+	engine_->setSampleAtRequest(true);
 	engine_->moveToThread(thread_);
 	connect(thread_, &QThread::finished, engine_, &QObject::deleteLater);
 	thread_->start(QThread::HighPriority);
@@ -284,6 +306,13 @@ void PhoneSession::updateStaleAfter() {
 	const int perSecond = valuePacer_.perSecond();
 	const qint64 copyGapMs = perSecond > 0 ? 1000 / perSecond : 0;
 	model_->setStaleAfterMs(copyGapMs + std::max<qint64>(qint64(2 * intervalMs_), qint64(intervalMs_) + TIMEOUT_MS));
+	if (chart_) chart_->setGapSeconds(lineGapSeconds());
+}
+
+/* a polled line on the chart breaks where no sample came for as long as a value takes to go stale (without the copies'
+ * pace): two poll intervals, never less than one and a slow answer */
+double PhoneSession::lineGapSeconds() const {
+	return std::max(2.0 * intervalMs_, double(intervalMs_) + TIMEOUT_MS) / 1000.0;
 }
 
 /* ------------------------------------------------------------------ settings */
@@ -418,6 +447,18 @@ void PhoneSession::updateSystem() {
 	if (changed) emit systemChanged();
 }
 
+void PhoneSession::readMotion() {
+	SystemBridge *bridge = systemBridge();
+	const bool on = !bridge || bridge->animationScale() > 0;
+	if (on == motion_) return;
+	motion_ = on;
+	emit systemChanged();
+}
+
+void PhoneSession::buzz() {
+	if (SystemBridge *bridge = systemBridge()) bridge->haptic();
+}
+
 /* a back that finished the activity ended the process with it (Android 16): the link, the service and a recording
  * cut. While they run the task only goes to the background; without a system to ask (the desktop) Android's default */
 bool PhoneSession::backToBackground() {
@@ -546,6 +587,7 @@ void PhoneSession::onOpened(const QString &link) {
 	model_->setLinkUp(true);
 	syncTimer_.start();
 	addLog(LogModel::Info, tr("connected: %1").arg(link));
+	buzz();
 	setDevice(-1, tr("Device ID not read yet"));
 	setState(Connected, tr("Connected: %1").arg(link));
 	emit statsChanged(); /* the polls' line shows from now */
@@ -633,6 +675,10 @@ void PhoneSession::onReadDone(quint64 id, bool ok, const QByteArray &data, const
 
 /* the link went down: no value is new from here (RegisterModel greys them as time passes), no ID read is to come */
 void PhoneSession::linkDown() {
+	/* the chart's polled lines are not drawn across the time the link was away (a quick reconnect too): the samples
+	 * the engine still holds from before go on the chart first, the break after them */
+	syncChart();
+	if (chart_) chart_->breakLines();
 	idTimer_.stop();
 	idRead_ = 0;
 	syncTimer_.stop();
@@ -914,6 +960,7 @@ void PhoneSession::onWriteDone(quint64 id, bool ok, const QString &err) {
 		qint64 nowMs = 0;
 		engine_->table().snapshot(values, generation, nowMs);
 		readBackFrom_.insert(done.row, nowMs);
+		buzz();
 		emit writeAnswered(done.row, true, tr("%1 written").arg(done.name));
 	} else {
 		const QString line = tr("write refused: %1: %2").arg(done.what, err);
@@ -954,6 +1001,7 @@ void PhoneSession::setChart(ChartItem *chart) {
 	if (chart_) {
 		/* the samples' time base, as MainWindow gives ChartTab the engine's clock */
 		chart_->setClock([engine = engine_] { return engine->now(); });
+		chart_->setGapSeconds(lineGapSeconds());
 		for (int row = 0; row < model_->rows().size(); ++row)
 			if (model_->rows()[row].plot) onPlotChanged(row, true);
 	}

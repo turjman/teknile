@@ -17,6 +17,15 @@ Menu {
     readonly property real edge: 8
 
     margins: edge
+    // Material's grow and fade; none when Android's animations are removed
+    enter: Transition {
+        NumberAnimation { property: "scale"; from: 0.9; to: 1.0; easing.type: Easing.OutQuint; duration: PhoneSession.motion ? 220 : 0 }
+        NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; easing.type: Easing.OutCubic; duration: PhoneSession.motion ? 150 : 0 }
+    }
+    exit: Transition {
+        NumberAnimation { property: "scale"; from: 1.0; to: 0.9; easing.type: Easing.OutQuint; duration: PhoneSession.motion ? 220 : 0 }
+        NumberAnimation { property: "opacity"; from: 1.0; to: 0.0; easing.type: Easing.OutCubic; duration: PhoneSession.motion ? 150 : 0 }
+    }
 
     function openUnder(from) {
         const middle = from.mapToItem(null, from.width / 2, 0).x

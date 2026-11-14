@@ -30,11 +30,13 @@ QHash<int, QByteArray> LogModel::roleNames() const {
 void LogModel::add(Level level, const QString &text) {
 	if (lines_.size() >= MAX_LINES) {
 		beginRemoveRows(QModelIndex(), 0, 0);
+		--counts_[lines_.first().level];
 		lines_.removeFirst();
 		endRemoveRows();
 	}
 	beginInsertRows(QModelIndex(), int(lines_.size()), int(lines_.size()));
 	lines_.append({ level, QTime::currentTime(), text });
+	++counts_[level];
 	endInsertRows();
 	emit countChanged();
 }
@@ -43,18 +45,27 @@ void LogModel::clear() {
 	if (lines_.isEmpty()) return;
 	beginResetModel();
 	lines_.clear();
+	counts_[Info] = counts_[Warning] = counts_[Error] = 0;
 	endResetModel();
 	emit countChanged();
 }
 
-QString LogModel::text() const {
+/* the level as the desktop's log file writes it (event_log.cpp's levelTag), all as wide */
+static const char *levelTag(LogModel::Level level) {
+	return level == LogModel::Error ? "ERROR" : level == LogModel::Warning ? "WARN " : "INFO ";
+}
+
+QString LogModel::text(const QVariantList &levels) const {
 	QStringList all;
-	for (const Line &line : lines_) all << line.time.toString(QStringLiteral("HH:mm:ss")) + QStringLiteral("  ") + line.text;
+	for (const Line &line : lines_)
+		if (levels.isEmpty() || levels.contains(int(line.level)))
+			all << line.time.toString(QStringLiteral("HH:mm:ss")) + QStringLiteral("  ") + QLatin1String(levelTag(line.level))
+							+ QStringLiteral("  ") + line.text;
 	return all.join(QLatin1Char('\n'));
 }
 
-void LogModel::copy() const {
-	if (QClipboard *clipboard = QGuiApplication::clipboard()) clipboard->setText(text());
+void LogModel::copy(const QVariantList &levels) const {
+	if (QClipboard *clipboard = QGuiApplication::clipboard()) clipboard->setText(text(levels));
 }
 
 bool LogModel::contains(const QString &part) const {

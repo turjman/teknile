@@ -26,6 +26,13 @@ Popup {
     // back closes by steps (back()), not at once; a tap outside there is none: it covers the window
     closePolicy: Popup.NoAutoClose
     background: Rectangle { color: PhoneTheme.bg }
+    // in from the end edge as a page does, out the same way; none when Android's animations are removed
+    enter: Transition {
+        NumberAnimation { property: "x"; from: help.rtl ? -help.width : help.width; to: 0; duration: PhoneSession.motion ? 240 : 0; easing.type: Easing.OutCubic }
+    }
+    exit: Transition {
+        NumberAnimation { property: "x"; from: 0; to: help.rtl ? -help.width : help.width; duration: PhoneSession.motion ? 200 : 0; easing.type: Easing.InCubic }
+    }
 
     function back() {
         if (help.topic >= 0) help.topic = -1

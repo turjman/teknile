@@ -28,7 +28,8 @@
  * Fed from C++: addLine(id, colour, name, unit) with a colour of its own, or addThemedLine(id, index, ...) with the
  * theme's series colour `index` (colours, recoloured with the theme), a fast line with its stream's store and channel
  * (binned by ChartData::binFast through binViewSeries); appendSamples(id, times, values), removeLine(id), clear() (the
- * samples, the lines kept). A hidden line (setLineShown) is neither drawn nor counted in the Y range. Times in seconds
+ * samples, the lines kept). A polled line breaks where its samples lie further apart than gapSeconds and after a lost
+ * link (breakLines): nothing is drawn across the gap, as over a fast line's lost records. A hidden line (setLineShown) is neither drawn nor counted in the Y range. Times in seconds
  * of the chart's clock (setClock; without one the newest sample's time is now). Y: Auto spans the values in view
  * (growing at once, shrinking gently, as the desktop's), or a manual range (setYRange). A pinch zooms the time
  * (zoomTime), a drag pans it and holds (panPixels), a double tap goes live again (ChartScreen.qml). Time runs left to
@@ -231,6 +232,12 @@ public:
 	void storeChanged() { polish(); }
 	/* now, in seconds of the samples' times; not set: the newest sample's time */
 	void setClock(std::function<double()> clock);
+	/* a polled line is broken where two samples lie further apart than this, seconds (0: never), as a fast line is
+	 * over lost records: no segment across a stretch no poll filled. The session gives the time a value goes stale */
+	void setGapSeconds(double seconds);
+	double gapSeconds() const { return gapSeconds_; }
+	/* the link was lost: every polled line's next sample begins a new piece, however soon it comes */
+	void breakLines();
 	/* the samples kept per line, seconds (the longest window and a margin) */
 	void setMemorySeconds(double seconds) { memory_ = seconds; }
 	double memorySeconds() const { return memory_; }
@@ -281,11 +288,16 @@ private:
 		bool shown = true;
 		QString value;        /* the legend's text */
 		QVector<float> vertices; /* x, y pairs of this frame's triangles (updatePolish), read by updatePaintNode */
+		/* a polled line's pieces: the samples (counted since the line began) that start one, after a gap or a lost
+		 * link; breakNext: the next sample starts one */
+		QVector<qsizetype> pieceStarts;
+		bool breakNext = false;
 	};
 	Line *find(int id);
 	const Line *find(int id) const;
 	double now() const;
 	void trim(ChartData::Series &s);
+	void markPieces(Line &line);
 	void updateYRange();
 	void makeTicks(QVector<float> &grid);
 	void frameTick(); /* after each frame while live and shown: the next one polished */
@@ -297,7 +309,7 @@ private:
 
 	std::vector<std::unique_ptr<Line>> lines_;
 	std::function<double()> clock_;
-	double window_ = 60, viewEnd_ = 0, memory_ = MAX_WINDOW * 1.1 + 5;
+	double window_ = 60, viewEnd_ = 0, memory_ = MAX_WINDOW * 1.1 + 5, gapSeconds_ = 0;
 	bool live_ = true, yAuto_ = true;
 	double yLo_ = 0, yHi_ = 1;
 	bool yHeld_ = false; /* a range has been taken (yAuto) */
