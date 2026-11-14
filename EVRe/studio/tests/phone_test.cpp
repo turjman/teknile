@@ -723,6 +723,8 @@ void pinch(const Phone &phone, QQuickItem *on, double from, double middle, doubl
 		}
 	};
 	spreadTo(from, middle, 10);
+	/* the last move handled before the reading (a Windows runner read the window one step early: 48.3 s for 46.5) */
+	QTest::qWait(50);
 	atMiddle();
 	spreadTo(middle, to, 20);
 	QTest::touchEvent(phone.window, fingers).release(0, at(to, -1), phone.window.data()).release(1, at(to, 1), phone.window.data());
