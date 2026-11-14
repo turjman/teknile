@@ -36,7 +36,7 @@
   wanted, Android's foreground service keeps the app going with the screen off, its notification saying the link's
   state and the recording's time; the screen stays on while connected (a switch in the drawer). The drawer's Help
   shows the desktop's Help, every topic, in English and Arabic. The Chart and the Monitor turn the phone to
-  landscape, the Registers and the Log to portrait. Android's back closes the Help's page, the Help, the write sheet,
+  landscape; the Registers and the Log follow the way it is held. Android's back closes the Help's page, the Help, the write sheet,
   then the drawer; with nothing open the app goes to the background. A release now also ships
   `EVReStudio-<version>-arm64.apk`.
 - **The phone's Help fits the phone.** It starts with a topic of its own, *Using the phone app* (connecting, the
@@ -94,6 +94,17 @@
 - **The phone's Monitor in a fixed-pitch font.** On a Samsung phone the bytes were drawn in Roboto ("monospace" is
   not a family Qt finds on Android), the "1"s narrow and the rows' bytes out of line; now Droid Sans Mono or the
   platform's fixed font.
+- **The phone's chart keeps its plot in landscape.** On a Samsung phone across (384 dp high) the plot had about a
+  quarter of the height under the header, the buttons, the gesture line and the legend. Across, the header and the
+  tab bar are lower (48 dp), the buttons as narrow as their text (still 48 dp to the touch), the gesture line goes
+  (upright and in Help it stays), and the legend shares the buttons' row when about a chip fits after them: the plot
+  keeps half the height or more. A legend with more chips than room shows that it scrolls: a fade at its end, and at
+  its start once scrolled (the last chip was cut at the screen's edge). The menus (a card's "⋯", a chip's, Fast
+  lines) stay 8 dp inside the window, grow from their button toward the screen's middle (mirrored in Arabic), and
+  have an edge in both themes: a card's menu touched the screen's right edge, its dark face lost on the dark page.
+- **The phone's Registers and Log no longer turn the phone upright.** They asked Android for portrait, so a tap on
+  Registers while holding the phone across for the Chart flipped it; they follow the way the phone is held now. The
+  Chart and the Monitor still turn it to landscape.
 - **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every

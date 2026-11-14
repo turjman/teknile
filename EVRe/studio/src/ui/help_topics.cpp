@@ -883,9 +883,9 @@ const Topic PHONE_TOPICS[] = {
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Using the phone app"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Using the phone app</h2>
 <p>EVRe Studio on a phone: the desktop's engine and maps, four screens in the tab bar at the bottom: <b>Registers</b>,
-<b>Chart</b>, <b>Monitor</b> and <b>Log</b>. The Chart and the Monitor turn the screen across, the Registers and the Log
-upright. The other topics of this Help are the desktop's: where they speak of the sidebar, here it is the drawer; a click
-is a tap.</p>
+<b>Chart</b>, <b>Monitor</b> and <b>Log</b>. The Chart and the Monitor turn the screen across; the Registers and the Log
+follow the way the phone is held. The other topics of this Help are the desktop's: where they speak of the sidebar, here
+it is the drawer; a click is a tap.</p>
 <h3>Connecting</h3>
 <p>The menu button at the top, or the link's pill beside it, opens the <b>Connect</b> drawer.</p>
 <ul>

@@ -36,7 +36,7 @@ ApplicationWindow {
     readonly property var screenNames: [qsTr("Registers"), qsTr("Chart"), qsTr("Monitor"), qsTr("Log")]
     readonly property var screenKeys: ["Registers", "Chart", "Monitor", "Log"]
     readonly property var screenIcons: ["registers", "chart", "monitor", "log"]
-    // landscape: the tabs' icons beside their names, the bar lower
+    // landscape: the tabs' icons beside their names, the header and the tab bar lower
     readonly property bool wide: width > height
 
     // the soft keyboard's top in the window's logical pixels (the window's height while it is hidden). Qt 6.8 gives
@@ -71,7 +71,8 @@ ApplicationWindow {
         id: header
         objectName: "header"
         visible: !root.p9
-        implicitHeight: 56
+        // lower in landscape (Material's 48 dp there): the Chart's plot keeps the height
+        implicitHeight: root.wide ? 48 : 56
         LayoutMirroring.enabled: root.rtl
         LayoutMirroring.childrenInherit: true
         Material.foreground: PhoneTheme.text
@@ -147,7 +148,7 @@ ApplicationWindow {
         id: tabBar
         objectName: "tabBar"
         visible: !root.p9
-        implicitHeight: root.wide ? 52 : 68
+        implicitHeight: root.wide ? 48 : 68
         LayoutMirroring.enabled: root.rtl
         LayoutMirroring.childrenInherit: true
         // a line over the bar: the tabs apart from the screen
@@ -292,10 +293,11 @@ ApplicationWindow {
         return popup.visible && !(popup.exit && popup.exit.running)
     }
 
-    // each screen's orientation (A-16): the Chart and the Monitor across, the Registers and the Log upright; the proof
-    // either way. Android turns the activity (PhoneSession, SystemBridge)
-    readonly property string wantedOrientation: p9 ? "" : tabBar.currentIndex === 1 || tabBar.currentIndex === 2
-                                                         ? "landscape" : "portrait"
+    // each screen's orientation (A-16): the Chart and the Monitor across; the Registers, the Log and the proof as the
+    // phone is held ("": Android's unspecified), so going back from the Chart no longer turns the phone upright (the
+    // owner's phone: held across, a tap on Registers flipped it). Android turns the activity (PhoneSession, SystemBridge)
+    readonly property string wantedOrientation: !p9 && (tabBar.currentIndex === 1 || tabBar.currentIndex === 2)
+                                                ? "landscape" : ""
     Binding {
         target: PhoneSession
         property: "orientation"

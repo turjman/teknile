@@ -326,8 +326,8 @@ Item {
         function onNotice(text) { screen.showNotice(text) }
     }
 
-    // the "⋯" button's menu, one for every card
-    Menu {
+    // the "⋯" button's menu, one for every card (PhoneMenu: inside the window, an edge on the page)
+    PhoneMenu {
         id: moreMenu
         objectName: "moreMenu"
         property int source: -1
@@ -335,7 +335,7 @@ Item {
         function openFor(source, from) {
             moreMenu.source = source
             moreMenu.entry = screen.registers.entry(source)
-            moreMenu.popup(from, 0, from.height)
+            moreMenu.openUnder(from)
         }
         // a closed menu gives the focus back to what had it: the search field, whose keyboard came up again over the
         // list after a Plot. The list takes it instead (not when an item gave it elsewhere: Write…'s sheet)
