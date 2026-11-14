@@ -256,6 +256,8 @@ signals:
 	void message(int level, const QString &text);
 	/* a write's answer: ok, or why not (refused by the device, not a value, writes off) */
 	void writeAnswered(int row, bool ok, const QString &text);
+	/* after a write the device took, the register's first value read since: what it holds (the value column's text) */
+	void readBack(int row, const QString &text);
 	/* a short word for the screen (the plot's limit, Copy) */
 	void notice(const QString &text);
 	void chartChanged();
@@ -358,6 +360,9 @@ private:
 		QString name, what;
 	};
 	QHash<quint64, PendingWrite> writes_;
+	/* a row written: its value read at this table time or later is the read back (one polled before the write and
+	 * copied after its answer is not) */
+	QHash<int, qint64> readBackFrom_;
 	quint64 nextRequest_ = 1;
 
 	bool recording_ = false;

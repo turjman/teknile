@@ -33,9 +33,9 @@ Drawer {
     property string answer: ""
     property bool answerOk: false
     property bool waiting: false
-    // after a write the device answered: the next value read is what it holds
+    // after a write the device answered: the value it read back (PhoneSession.readBack)
     property bool readBackDue: false
-    property bool readBackSeen: false
+    property string readBack: ""
     // what Plot or Copy did, or why not
     property string done: ""
     property bool doneOk: true
@@ -83,7 +83,7 @@ Drawer {
         sheet.answer = ""
         sheet.waiting = false
         sheet.readBackDue = false
-        sheet.readBackSeen = false
+        sheet.readBack = ""
         sheet.done = ""
         flick.contentY = 0
         sheet.open()
@@ -99,7 +99,7 @@ Drawer {
         sheet.answer = qsTr("Writing…")
         sheet.waiting = true
         sheet.readBackDue = false
-        sheet.readBackSeen = false
+        sheet.readBack = ""
         PhoneSession.write(sheet.source, text)
     }
     function apply() {
@@ -142,18 +142,13 @@ Drawer {
     onKeyboardLiftChanged: Qt.callLater(revealField)
     onHeightChanged: Qt.callLater(revealField)
 
-    // the value now, as the device sends it; after a written value, the first one read is what the device holds
+    // the value now, as the device sends it
     Connections {
         target: PhoneSession.registerList
         enabled: sheet.visible
         function onDataChanged(topLeft, bottomRight, roles) {
             const at = PhoneSession.registerList.rowOf(sheet.source)
-            if (at < topLeft.row || at > bottomRight.row) return
-            sheet.refresh()
-            if (sheet.readBackDue && roles.indexOf(RegisterList.ValueRole) >= 0) {
-                sheet.readBackDue = false
-                sheet.readBackSeen = true
-            }
+            if (at >= topLeft.row && at <= bottomRight.row) sheet.refresh()
         }
     }
     Connections {
@@ -164,6 +159,12 @@ Drawer {
             sheet.answerOk = ok
             sheet.waiting = false
             sheet.readBackDue = ok
+        }
+        // what the device holds after the write, read back by the engine
+        function onReadBack(row, text) {
+            if (row !== sheet.source || !sheet.readBackDue) return
+            sheet.readBackDue = false
+            sheet.readBack = text
         }
         // the chart's limit of lines: why Plot did nothing
         function onNotice(text) {
@@ -823,8 +824,8 @@ Drawer {
                         objectName: "sheetReadBack"
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignLeft
-                        visible: sheet.answerOk && sheet.readBackSeen
-                        text: qsTr("Read back: %1").arg((sheet.entry.value || "") + (sheet.entry.unit ? " " + sheet.entry.unit : ""))
+                        visible: sheet.answerOk && sheet.readBack.length > 0
+                        text: qsTr("Read back: %1").arg(sheet.readBack + (sheet.entry.unit ? " " + sheet.entry.unit : ""))
                         color: PhoneTheme.text
                         font.pixelSize: 14
                         wrapMode: Text.Wrap

@@ -4266,7 +4266,7 @@ void checkWriteByEnter() {
 	QTest::keyClick(phone.window, Qt::Key_Return);
 	const bool written = QTest::qWaitFor([&] {
 		return modelValue(session, QStringLiteral("FAN_SPEED")) == wanted && phone.text("sheetAnswer") == QLatin1String("FAN_SPEED written")
-				&& phone.item("sheetReadBack")->isVisible();
+				&& phone.item("sheetReadBack")->isVisible() && phone.text("sheetReadBack") == QStringLiteral("Read back: %1 %").arg(wanted);
 	}, 3000);
 	const QString readBack = phone.text("sheetReadBack");
 	check(written && readBack == QStringLiteral("Read back: %1 %").arg(wanted)

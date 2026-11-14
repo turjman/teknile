@@ -53,7 +53,6 @@ public:
 		SourceRole,    /* the row in RegisterModel */
 		NumericRole    /* a number (not bytes): the sheet's field brings up the number pad */
 	};
-	Q_ENUM(Role) /* the sheet tells a change of the value (RegisterList.ValueRole) from one of the plot */
 	static constexpr int STALE_CHECK_MS = 250;
 	static constexpr int TREND_POINTS = 120;
 
