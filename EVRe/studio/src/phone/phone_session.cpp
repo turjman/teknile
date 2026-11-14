@@ -417,6 +417,16 @@ void PhoneSession::updateSystem() {
 	if (changed) emit systemChanged();
 }
 
+/* a back that finished the activity ended the process with it (Android 16): the link, the service and a recording
+ * cut. While they run the task only goes to the background; without a system to ask (the desktop) Android's default */
+bool PhoneSession::backToBackground() {
+	if (!(wantConnected_ || state_ == Connected || recording_)) return false;
+	SystemBridge *bridge = systemBridge();
+	if (!bridge) return false;
+	bridge->moveToBack();
+	return true;
+}
+
 void PhoneSession::refreshPorts() { ports_->refresh(usbBridge(), map_); }
 
 void PhoneSession::connectUsb(const QString &device, int baud) {

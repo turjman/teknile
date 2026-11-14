@@ -945,7 +945,8 @@ the link is up.</li>
 </ul>
 <h3>Back</h3>
 <p>Android's back gesture closes what is open, a step at a time: a Help page to the list, the Help, the write sheet,
-the drawer. With nothing open it leaves the app, whose link goes on in the background.</p>
+the drawer. With nothing open, while a link or a recording runs, the app goes to the background as with Home and
+both go on; with no link it closes the app.</p>
 <p>Only on the desktop: the Map editor, the Dump, Listen, the API, math lines, lanes, the trigger and notes.</p>
 )HTML") },
 };

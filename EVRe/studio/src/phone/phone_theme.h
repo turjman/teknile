@@ -5,7 +5,11 @@
  * The soft tones (accentSoft, goodSoft, warnSoft, badSoft) are the phone's own, made here from the table and nowhere
  * else: a state's colour laid over the surface at a small share, behind a chip, the link's pill, the chosen tab and the
  * write sheet's question. They are mixed, not see-through, so a text on them keeps a known contrast (the state's
- * colour, or the text colour, on them stays at 4.5:1 or more in both looks); the desktop has no such tone. */
+ * colour, or the text colour, on them stays at 4.5:1 or more in both looks); the desktop has no such tone.
+ * monoFamily: a fixed-pitch family the font database has (the Monitor's bytes in columns). Android's "monospace" is an
+ * alias of its fonts.xml that Qt does not read: asked by that name, a Samsung phone drew Roboto, its "1"s narrow and
+ * the bytes out of line. So the files' own names first (Droid Sans Mono, Cutive Mono, ...), then the platform's fixed
+ * font (QFontDatabase::FixedFont). */
 #pragma once
 
 #include <QColor>
@@ -39,6 +43,7 @@ class PhoneTheme : public QObject {
 	Q_PROPERTY(QColor bad READ bad NOTIFY changed)
 	Q_PROPERTY(QColor grid READ grid NOTIFY changed)
 	Q_PROPERTY(QVariantList series READ series NOTIFY changed)
+	Q_PROPERTY(QString monoFamily READ monoFamily CONSTANT)
 
 public:
 	explicit PhoneTheme(QObject *parent = nullptr);
@@ -64,6 +69,7 @@ public:
 	QColor bad() const { return colors_.bad; }
 	QColor grid() const { return colors_.grid; }
 	QVariantList series() const;
+	static QString monoFamily();
 
 signals:
 	void changed();

@@ -86,6 +86,14 @@
   missing value is an em dash, and each label stays with its value: in Arabic A, B and B - A read *B 5.11 V*, never
   *- B - A*. Android's back also closes the drawer or the Help while it is still sliding in (it went to Android, and
   the app went to the background with the drawer half open).
+- **The phone's back with nothing open no longer ends a link.** On Android 16 it finished the activity, and the
+  process with it: the link, the service and a recording were cut. While a link is wanted or a recording runs, the
+  back now moves the app to the background as Home does; with no link it closes the app as before. A back while the
+  soft keyboard is up only hides it (from the search field it quit the app), and a card's "⋯" menu no longer gives
+  the focus back to the search field, whose keyboard came up again after a Plot.
+- **The phone's Monitor in a fixed-pitch font.** On a Samsung phone the bytes were drawn in Roboto ("monospace" is
+  not a family Qt finds on Android), the "1"s narrow and the rows' bytes out of line; now Droid Sans Mono or the
+  platform's fixed font.
 - **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every

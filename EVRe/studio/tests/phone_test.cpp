@@ -43,6 +43,8 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFontInfo>
+#include <QFontMetricsF>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
@@ -88,6 +90,7 @@
 #include "phone/phone_app.h"
 #include "phone/phone_session.h"
 #include "phone/phone_system.h"
+#include "phone/phone_theme.h"
 #include "phone/register_list.h"
 #include "ui/chart_data.h"
 #include "ui/language.h"
@@ -2309,7 +2312,7 @@ void checkOwnSettings() {
 
 /* the system's stand-in: what the session asked of Android's (phone_system.h), noted */
 struct FakeSystem : SystemBridge {
-	int holds = 0, releases = 0;
+	int holds = 0, releases = 0, toBack = 0;
 	bool serviceUp = false, screenOn = false;
 	QString text;
 	QStringList orientations;
@@ -2323,6 +2326,7 @@ struct FakeSystem : SystemBridge {
 		serviceUp = false;
 	}
 	void keepScreenOn(bool on) override { screenOn = on; }
+	void moveToBack() override { ++toBack; }
 	void requestOrientation(Orientation orientation) override {
 		orientations << (orientation == Portrait ? QStringLiteral("portrait")
 						: orientation == Landscape ? QStringLiteral("landscape") : QStringLiteral("any"));
@@ -2533,6 +2537,100 @@ void checkBackOrder() {
 					"back is left to Android, which leaves the app (%9)")
 					.arg(toList).arg(helpClosed).arg(drawerWasOpen).arg(drawerBack).arg(drawerClosed).arg(sheetWasOpen)
 					.arg(sheetBack).arg(sheetClosed).arg(leftToAndroid));
+}
+
+/* the owner's phone (Android 16): connected, nothing open, one back finished the activity and the process with it, the
+ * link, the service and a recording. With a link (and with a recording) the back at the root moves the app to the
+ * background and is taken; with no link it is left to Android, which closes the app; the window stays meanwhile */
+void checkBackToBackground() {
+	FakeSystem system;
+	PhoneSession::setSystemBridgeForTests(&system);
+	bool connected = false, takenLinked = false, takenRecording = false, leftOff = false, windowStays = false;
+	int linked = 0, recorded = 0, off = 0;
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = connectFake(phone);
+		connected = session && session->state() == PhoneSession::Connected;
+		search(phone, QString());
+		takenLinked = pressBack(phone);
+		linked = system.toBack;
+		if (session) session->startRecord();
+		(void) QTest::qWaitFor([&] { return session && session->recording(); }, 3000);
+		takenRecording = pressBack(phone);
+		recorded = system.toBack;
+		if (session) {
+			session->stopRecord();
+			(void) QTest::qWaitFor([&] { return !session->recording(); }, 3000);
+			session->disconnectLink();
+			(void) QTest::qWaitFor([&] { return session->state() == PhoneSession::Off; }, 3000);
+		}
+		leftOff = !pressBack(phone);
+		off = system.toBack;
+		windowStays = phone.window && phone.window->isVisible();
+	}
+	PhoneSession::setSystemBridgeForTests(nullptr);
+	check(connected && takenLinked && linked == 1 && takenRecording && recorded == 2 && leftOff && off == 2 && windowStays,
+			QStringLiteral("phone, back: with nothing open a back moves the app to the background while connected (taken %1, "
+					"moved %2) and while recording (taken %3, moved %4), the window kept; with no link it is left to "
+					"Android, which closes the app (left %5, moved %6)")
+					.arg(takenLinked).arg(linked).arg(takenRecording).arg(recorded).arg(leftOff).arg(off));
+}
+
+/* the owner's phone: typed in the search field, its keyboard up, one back quit the app while connected. A back with the
+ * keyboard up (one stood for) only hides it and takes the focus off the field, the link kept and nothing moved to the
+ * background; the next back, the keyboard gone, is the root's (the app to the background) */
+void checkBackKeyboard() {
+	FakeSystem system;
+	PhoneSession::setSystemBridgeForTests(&system);
+	bool connected = false, focused = false, taken = false, unfocused = false, stayed = false, rootNext = false;
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = connectFake(phone);
+		connected = session && session->state() == PhoneSession::Connected;
+		QQuickItem *field = phone.item("registerSearch");
+		if (field) field->forceActiveFocus();
+		phone.type("registerSearch", QStringLiteral("SUP"));
+		fakeKeyboard(phone, 330);
+		focused = field && field->hasActiveFocus();
+		taken = pressBack(phone);
+		unfocused = field && !field->hasActiveFocus();
+		stayed = system.toBack == 0 && session && session->state() == PhoneSession::Connected;
+		fakeKeyboard(phone, 0); /* Android hid it */
+		rootNext = pressBack(phone) && system.toBack == 1;
+		search(phone, QString());
+	}
+	PhoneSession::setSystemBridgeForTests(nullptr);
+	check(connected && focused && taken && unfocused && stayed && rootNext,
+			QStringLiteral("phone, back: with the keyboard up over the search field a back only hides it and takes the "
+					"focus off the field (focused %1, taken %2, unfocused %3, still connected and not moved %4); the next "
+					"back is the root's, the app to the background (%5)")
+					.arg(focused).arg(taken).arg(unfocused).arg(stayed).arg(rootNext));
+}
+
+/* the owner's phone: typed in the search field, a card's "..." menu, Plot: the menu closed, the focus went back to the
+ * field and its keyboard came up again over the list. The list takes the focus instead */
+void checkMenuFocus() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	QQuickItem *field = phone.item("registerSearch"), *list = phone.item("registerList");
+	search(phone, QStringLiteral("SUPPLY_V"));
+	if (field) field->forceActiveFocus();
+	const bool focused = field && field->hasActiveFocus();
+	phone.tap(within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("moreButton")));
+	QObject *menu = phone.object("moreMenu");
+	const bool opened = menu && QTest::qWaitFor([&] { return menu->property("opened").toBool(); }, 3000);
+	phone.tap(phone.item("menuPlot"));
+	const bool closed = menu && QTest::qWaitFor([&] { return !menu->property("visible").toBool(); }, 3000);
+	phone.settle(200);
+	const bool fieldLetGo = field && !field->hasActiveFocus();
+	const bool listHas = list && list->hasActiveFocus();
+	const int row = modelRow(session, QStringLiteral("SUPPLY_V"));
+	if (session && row >= 0) session->setPlot(row, false);
+	search(phone, QString());
+	check(focused && opened && closed && fieldLetGo && listHas,
+			QStringLiteral("phone, Registers: after a card's menu (Plot) the focus goes to the list, not back to the search "
+					"field and its keyboard (field focused before %1, menu opened %2 and closed %3, field let go %4, the list "
+					"has it %5)").arg(focused).arg(opened).arg(closed).arg(fieldLetGo).arg(listHas));
 }
 
 /* a back while a popup is still sliding in (its `opened` not yet true) closes it, as one fully open: it went to
@@ -3520,6 +3618,36 @@ void checkMonitorFrames() {
 	if (session) session->disconnectLink();
 }
 
+/* the owner's phone: the Monitor's bytes in Roboto ("monospace" is not a family Qt finds on Android), the "1"s narrow
+ * and the bytes of the rows out of line. The bytes, the time and the direction in a fixed-pitch family the font
+ * database has (PhoneTheme.monoFamily): QFontInfo says fixed pitch, "1111" as wide as "WWWW" */
+void checkMonitorMono() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	phone.tap(phone.item("tabMonitor"));
+	(void) QTest::qWaitFor([&] { return session && session->frames()->count() >= 3; }, 4000);
+	phone.settle(300);
+	QStringList seen;
+	bool ok = true;
+	for (const char *name : { "frameBytes", "frameTime", "frameDirection" }) {
+		QQuickItem *text = nullptr;
+		forEachItem(phone.item("monitorList"), [&](QQuickItem *item) {
+			if (!text && item->objectName() == QLatin1String(name) && item->isVisible()) text = item;
+		});
+		const QFont font = text ? text->property("font").value<QFont>() : QFont();
+		const QFontInfo info(font);
+		const QFontMetricsF metrics(font);
+		const double ones = metrics.horizontalAdvance(QStringLiteral("1111")), ws = metrics.horizontalAdvance(QStringLiteral("WWWW"));
+		const bool good = text && info.fixedPitch() && std::fabs(ones - ws) < 0.5;
+		seen << QStringLiteral("%1: %2, fixed %3, 1111 %4 px, WWWW %5 px").arg(QLatin1String(name), info.family())
+						.arg(info.fixedPitch()).arg(ones, 0, 'f', 1).arg(ws, 0, 'f', 1);
+		ok = ok && good;
+	}
+	if (session) session->disconnectLink();
+	check(ok, QStringLiteral("phone, Monitor: the frames in a fixed-pitch font the phone has (%1; %2)")
+			.arg(PhoneTheme::monoFamily(), seen.join(QStringLiteral("; "))));
+}
+
 /* not connected: the Monitor says so and offers the drawer */
 void checkMonitorEmpty() {
 	Phone phone(PORTRAIT);
@@ -3917,6 +4045,7 @@ int main(int argc, char **argv) {
 	RUN(checkCursorPairs);
 	RUN(checkMonitorFrames);
 	RUN(checkMonitorEmpty);
+	RUN(checkMonitorMono);
 	RUN(checkToolsTexts);
 	RUN(checkChartInfinite);
 	RUN(checkFastPlotLimit);
@@ -3960,6 +4089,9 @@ int main(int argc, char **argv) {
 	RUN(checkHelpPhoneList);
 	RUN(checkBackOrder);
 	RUN(checkBackWhileOpening);
+	RUN(checkBackToBackground);
+	RUN(checkBackKeyboard);
+	RUN(checkMenuFocus);
 	RUN(checkUsbBack);
 	RUN(checkDeviceLineAfterDisconnect);
 	RUN(checkTypedNumbers);

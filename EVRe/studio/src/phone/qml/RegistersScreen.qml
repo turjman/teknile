@@ -337,6 +337,9 @@ Item {
             moreMenu.entry = screen.registers.entry(source)
             moreMenu.popup(from, 0, from.height)
         }
+        // a closed menu gives the focus back to what had it: the search field, whose keyboard came up again over the
+        // list after a Plot. The list takes it instead (not when an item gave it elsewhere: Write…'s sheet)
+        onClosed: if (searchField.activeFocus) list.forceActiveFocus()
         MenuItem {
             objectName: "menuPlot"
             text: moreMenu.entry.plotted ? qsTr("Take off the chart") : qsTr("Plot")
