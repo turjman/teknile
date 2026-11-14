@@ -29,7 +29,11 @@ Menu {
 
     function openUnder(from) {
         const middle = from.mapToItem(null, from.width / 2, 0).x
-        menu.popup(from, middle > from.Window.width / 2 ? from.width - menu.width : 0, from.height)
+        const x = middle > from.Window.width / 2 ? from.width - menu.width : 0
+        // on whole pixels of the window: a button at a fraction of one (the Chart's row, its widths from text) left the
+        // menu's 1 px edge blurred over two
+        const at = from.mapToItem(null, x, from.height)
+        menu.popup(from, x + Math.round(at.x) - at.x, from.height + Math.round(at.y) - at.y)
     }
 
     background: Rectangle {
