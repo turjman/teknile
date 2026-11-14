@@ -654,14 +654,6 @@ Double-click to edit</source>
         <translation>المزيد: إخفاء، إزالة من المخطط</translation>
     </message>
     <message>
-        <source>Plot a register from its ... menu on the Registers screen.</source>
-        <translation>يُرسم المسجّل من قائمة ... في بطاقته على شاشة المسجّلات.</translation>
-    </message>
-    <message>
-        <source>Or choose a stream&apos;s channel under Fast lines.</source>
-        <translation>أو تُختار قناة تدفق من الخطوط السريعة.</translation>
-    </message>
-    <message>
         <source>Go to Registers</source>
         <translation>الانتقال إلى المسجّلات</translation>
     </message>
@@ -728,6 +720,18 @@ Double-click to edit</source>
     <message>
         <source>mean</source>
         <translation>المتوسط</translation>
+    </message>
+    <message>
+        <source>No lines yet</source>
+        <translation>لا خطوط بعد</translation>
+    </message>
+    <message>
+        <source>Tap a register on the Registers screen, then Plot. Or choose a stream&apos;s channel under Fast lines.</source>
+        <translation>يُرسم المسجّل من صفحته: لمسة عليه في شاشة المسجّلات، ثم «رسم». أو تُختار قناة تدفق من الخطوط السريعة.</translation>
+    </message>
+    <message>
+        <source>Tap a register on the Registers screen, then Plot.</source>
+        <translation>يُرسم المسجّل من صفحته: لمسة عليه في شاشة المسجّلات، ثم «رسم».</translation>
     </message>
 </context>
 <context>
@@ -4682,28 +4686,30 @@ whether EVRe Studio may use it: the pill reads &lt;i&gt;Waiting for permission�
 board ignores the baud rate.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;TCP&lt;/b&gt;: the &lt;b&gt;host&lt;/b&gt; and &lt;b&gt;port&lt;/b&gt; of the device or its gateway, and the &lt;b&gt;token&lt;/b&gt; when the device asks
 for one (it is not stored).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Connect&lt;/b&gt;: the pill turns green and the device&apos;s ID shows. &lt;b&gt;Reconnect by itself&lt;/b&gt; brings a lost link back,
-also to a board that was reset or plugged in again.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Connect&lt;/b&gt;: the pill turns green and the device&apos;s ID shows; while polling, the pill has the polls a second
+(&lt;i&gt;Connected · 48 Hz&lt;/i&gt;). &lt;b&gt;Reconnect by itself&lt;/b&gt; brings a lost link back, also to a board that was reset or plugged
+in again.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Device&lt;/b&gt;: the map (&lt;b&gt;Open…&lt;/b&gt; chooses another &lt;code&gt;.json&lt;/code&gt;) and &lt;b&gt;Allow writes&lt;/b&gt;. &lt;b&gt;Polling&lt;/b&gt;: on
 or off, and its interval (0 ms: as fast as the device answers).&lt;/li&gt;
 &lt;li&gt;At the drawer&apos;s foot: the dark theme, the language (applied when the app is opened again) and &lt;b&gt;Help&lt;/b&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;Registers&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;A card per register, in its group: the name and address, the value large with its unit, decoded under it. A
-changed value glows; one not read for a while says &lt;i&gt;not refreshed&lt;/i&gt;; an error shows in red.&lt;/li&gt;
+&lt;li&gt;A row per register, in its group, as the desktop&apos;s table: the name and address, the value at the end lined up
+with the others, and its unit. A second line only when there is more to say: the decoded fields, &lt;i&gt;not
+refreshed&lt;/i&gt; (a value not read for a while), &lt;i&gt;on the chart&lt;/i&gt;, or an error in red. A changed value glows.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Search&lt;/b&gt; at the top: a name, a unit or an address.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Write&lt;/b&gt; on a writable card, or a tap on the card, opens the write sheet.
-The &lt;b&gt;...&lt;/b&gt; button, or a long press: &lt;b&gt;Plot&lt;/b&gt;
-(&lt;b&gt;Take off the chart&lt;/b&gt; once plotted), &lt;b&gt;Write…&lt;/b&gt; and &lt;b&gt;Copy&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;The write sheet: the value now and the map&apos;s limits, a field for the new value (an enum: its list), &lt;b&gt;Apply&lt;/b&gt;. A
-value past the limits, or a register that moves something, is asked first: &lt;b&gt;Write anyway&lt;/b&gt; or &lt;b&gt;Cancel&lt;/b&gt;. The
-answer shows under it, and the card then shows what the device holds. Writing needs &lt;b&gt;Allow writes&lt;/b&gt; on.&lt;/li&gt;
+&lt;li&gt;A tap on a row opens its sheet: the value large, the decoded fields, a small line of its last values, &lt;b&gt;Plot&lt;/b&gt;
+(&lt;b&gt;Take off the chart&lt;/b&gt; once plotted) and &lt;b&gt;Copy&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;A writable register&apos;s sheet writes as the desktop&apos;s quick write: type the value (a number brings up the number pad;
+an enum: its list) and &lt;b&gt;Write&lt;/b&gt;, or &lt;b&gt;Enter&lt;/b&gt;. A value past the map&apos;s limits, or a register that moves something,
+is asked first: &lt;b&gt;Write anyway&lt;/b&gt; or &lt;b&gt;Cancel&lt;/b&gt;. The answer shows under it, then the value read back from the
+device. Writing needs &lt;b&gt;Allow writes&lt;/b&gt; on.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;Chart&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;The lines: registers plotted from their &lt;b&gt;...&lt;/b&gt; button, and with &lt;b&gt;Fast lines&lt;/b&gt; (a map with streams) a stream&apos;s
-channels.&lt;/li&gt;
+&lt;li&gt;The lines: registers plotted from their sheet (a tap on a row, &lt;b&gt;Plot&lt;/b&gt;), and with &lt;b&gt;Fast lines&lt;/b&gt; (a map with
+streams) a stream&apos;s channels.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Live&lt;/b&gt; follows the newest samples, &lt;b&gt;Hold&lt;/b&gt; keeps the view still; the window &lt;b&gt;10 s&lt;/b&gt;, &lt;b&gt;1 min&lt;/b&gt; or
 &lt;b&gt;5 min&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;A &lt;b&gt;pinch&lt;/b&gt; zooms the time, a &lt;b&gt;drag&lt;/b&gt; looks back (and holds), a &lt;b&gt;double tap&lt;/b&gt; goes live again.&lt;/li&gt;
@@ -4732,7 +4738,7 @@ takes it away.&lt;/li&gt;
 the link is up.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;Back&lt;/h3&gt;
-&lt;p&gt;Android&apos;s back gesture closes what is open, a step at a time: a Help page to the list, the Help, the write sheet,
+&lt;p&gt;Android&apos;s back gesture closes what is open, a step at a time: a Help page to the list, the Help, a register&apos;s sheet,
 the drawer. With nothing open, while a link or a recording runs, the app goes to the background as with Home and
 both go on; with no link it closes the app.&lt;/p&gt;
 &lt;p&gt;Only on the desktop: the Map editor, the Dump, Listen, the API, math lines, lanes, the trigger and notes.&lt;/p&gt;
@@ -4748,7 +4754,8 @@ both go on; with no link it closes the app.&lt;/p&gt;
 &lt;li&gt;&lt;b&gt;USB&lt;/b&gt;: صِل اللوحة (عبر محوّل USB OTG) واخترها تحت &lt;i&gt;جهاز USB&lt;/i&gt;. يسأل أندرويد هل يُسمح لـ EVRe Studio
 باستخدامها: تقول الشارة &lt;i&gt;بانتظار الإذن…&lt;/i&gt; حتى تجيب عن نافذة الحوار. لوحة USB CDC تتجاهل معدّل البود.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;TCP&lt;/b&gt;: &lt;b&gt;المضيف&lt;/b&gt; و&lt;b&gt;المنفذ&lt;/b&gt; للجهاز أو لبوابته، و&lt;b&gt;رمز الدخول&lt;/b&gt; حين يطلبه الجهاز (لا يُحفظ).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;اتصال&lt;/b&gt;: تخضرّ الشارة ويظهر معرّف الجهاز. &lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt; تعيد الوصلة المفقودة، وتعيدها أيضًا
+&lt;li&gt;&lt;b&gt;اتصال&lt;/b&gt;: تخضرّ الشارة ويظهر معرّف الجهاز؛ وفي أثناء الاستطلاع تعرض الشارة عدد الاستطلاعات في الثانية
+(&lt;i&gt;متصل · ⁦48 Hz⁩&lt;/i&gt;). &lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt; تعيد الوصلة المفقودة، وتعيدها أيضًا
 إلى لوحة أُعيد تشغيلها أو وُصلت من جديد.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;الجهاز&lt;/b&gt;: الخريطة (&lt;b&gt;فتح…&lt;/b&gt; يختار ملف &lt;code&gt;.json&lt;/code&gt; آخر) و&lt;b&gt;السماح بالكتابة&lt;/b&gt;. &lt;b&gt;الاستطلاع&lt;/b&gt;: تشغيله
 أو إيقافه، وفاصله (القيمة ⁦0&#xa0;ms⁩: بأسرع ما يجيب الجهاز).&lt;/li&gt;
@@ -4756,18 +4763,20 @@ both go on; with no link it closes the app.&lt;/p&gt;
 &lt;/ul&gt;
 &lt;h3&gt;المسجّلات&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;بطاقة لكل مسجّل، في مجموعته: الاسم والعنوان، والقيمة كبيرةً بوحدتها، مفكوكةً تحتها. القيمة التي تتغيّر تتوهّج؛
-والتي لم تُقرأ منذ مدة تقول &lt;i&gt;غير محدّث&lt;/i&gt;؛ والخطأ يظهر بالأحمر.&lt;/li&gt;
+&lt;li&gt;صف لكل مسجّل، في مجموعته، كجدول سطح المكتب: الاسم والعنوان، والقيمة في آخر الصف مصطفّةً مع غيرها، ووحدتها.
+وسطر ثانٍ حين يكون هناك ما يُقال فقط: الحقول المفكوكة، أو &lt;i&gt;غير محدّث&lt;/i&gt; (قيمة لم تُقرأ منذ مدة)، أو &lt;i&gt;على
+المخطط&lt;/i&gt;، أو خطأ بالأحمر. القيمة التي تتغيّر تتوهّج.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;البحث&lt;/b&gt; في الأعلى: اسم أو وحدة أو عنوان.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;كتابة&lt;/b&gt; على بطاقة قابلة للكتابة، أو لمسة على البطاقة، تفتح ورقة الكتابة. زر &lt;b&gt;...&lt;/b&gt;، أو ضغطة مطوّلة: &lt;b&gt;رسم&lt;/b&gt;
-(&lt;b&gt;إزالة من المخطط&lt;/b&gt; بعد رسمه)، و&lt;b&gt;كتابة…&lt;/b&gt;، و&lt;b&gt;نسخ&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;ورقة الكتابة: القيمة الحالية وحدود الخريطة، وحقل للقيمة الجديدة (لقيمة ذات أسماء: قائمتها)، و&lt;b&gt;تطبيق&lt;/b&gt;. القيمة
-التي تتجاوز الحدود، أو المسجّل الذي يحرّك شيئًا، يُسأل عنها أولًا: &lt;b&gt;اكتب مع ذلك&lt;/b&gt; أو &lt;b&gt;إلغاء&lt;/b&gt;. يظهر الرد تحتها،
-ثم تعرض البطاقة ما يحمله الجهاز. الكتابة تحتاج &lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّلًا.&lt;/li&gt;
+&lt;li&gt;لمسة على صف تفتح ورقته: القيمة كبيرةً، والحقول المفكوكة، وخط صغير لآخر قيمه، و&lt;b&gt;رسم&lt;/b&gt; (&lt;b&gt;إزالة من المخطط&lt;/b&gt;
+بعد رسمه)، و&lt;b&gt;نسخ&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;ورقة المسجّل القابل للكتابة تكتب ككتابة سطح المكتب السريعة: تُكتب القيمة (الرقم يُظهر لوحة الأرقام؛ والقيمة ذات
+الأسماء: قائمتها) ثم &lt;b&gt;كتابة&lt;/b&gt;، أو &lt;b&gt;Enter&lt;/b&gt;. القيمة التي تتجاوز حدود الخريطة، أو المسجّل الذي يحرّك شيئًا،
+يُسأل عنها أولًا: &lt;b&gt;اكتب مع ذلك&lt;/b&gt; أو &lt;b&gt;إلغاء&lt;/b&gt;. يظهر الرد تحتها، ثم القيمة المقروءة من الجهاز للتحقق. الكتابة
+تحتاج &lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّلًا.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;المخطط&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;الخطوط: المسجّلات المرسومة من زر &lt;b&gt;...&lt;/b&gt; الخاص بها، ومع &lt;b&gt;الخطوط السريعة&lt;/b&gt; (خريطة فيها تدفقات) قنوات تدفق
+&lt;li&gt;الخطوط: المسجّلات المرسومة من ورقتها (لمسة على صف، ثم &lt;b&gt;رسم&lt;/b&gt;)، ومع &lt;b&gt;الخطوط السريعة&lt;/b&gt; (خريطة فيها تدفقات) قنوات تدفق
 سريع.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;مباشر&lt;/b&gt; يتابع أحدث العينات، و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي العرض ساكنًا؛ والنافذة &lt;b&gt;⁦10&#xa0;s⁩&lt;/b&gt; أو &lt;b&gt;⁦1&#xa0;min⁩&lt;/b&gt;
 أو &lt;b&gt;⁦5&#xa0;min⁩&lt;/b&gt;.&lt;/li&gt;
@@ -4796,7 +4805,7 @@ both go on; with no link it closes the app.&lt;/p&gt;
 قائمة.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;الرجوع&lt;/h3&gt;
-&lt;p&gt;إيماءة الرجوع في أندرويد تغلق ما هو مفتوح، خطوةً خطوة: صفحة المساعدة إلى القائمة، ثم المساعدة، ثم ورقة الكتابة، ثم
+&lt;p&gt;إيماءة الرجوع في أندرويد تغلق ما هو مفتوح، خطوةً خطوة: صفحة المساعدة إلى القائمة، ثم المساعدة، ثم ورقة المسجّل، ثم
 لوحة الاتصال. وإن لم يكن شيء مفتوحًا والوصلة أو التسجيل قائمان، ينتقل التطبيق إلى الخلفية كما بزر الرئيسية ويستمر
 كلاهما؛ وبلا وصلة تُغلق التطبيق.&lt;/p&gt;
 &lt;p&gt;على سطح المكتب فقط: محرر الخريطة، وعرض الذاكرة، والاستماع، وواجهة API، والخطوط الرياضية، والمسارات، والقدح،
@@ -4989,8 +4998,16 @@ both go on; with no link it closes the app.&lt;/p&gt;
         <translation>مسح</translation>
     </message>
     <message>
-        <source>Nothing yet: the map, the link and the recordings are told here.</source>
-        <translation>لا شيء بعد: هنا يُذكر ما يجري للخريطة والوصلة والتسجيلات.</translation>
+        <source>Nothing logged yet</source>
+        <translation>لم يُسجَّل شيء بعد</translation>
+    </message>
+    <message>
+        <source>The map, the link and the recordings are told here.</source>
+        <translation>هنا يُذكر ما يجري للخريطة والوصلة والتسجيلات.</translation>
+    </message>
+    <message>
+        <source>Open the Connect drawer</source>
+        <translation>فتح لوحة الاتصال</translation>
     </message>
 </context>
 <context>
@@ -5018,6 +5035,10 @@ both go on; with no link it closes the app.&lt;/p&gt;
     <message>
         <source>Connect and settings</source>
         <translation>الاتصال والإعدادات</translation>
+    </message>
+    <message>
+        <source>%1 · %2 Hz</source>
+        <translation>%1 · ⁦%2 Hz⁩</translation>
     </message>
 </context>
 <context>
@@ -8278,25 +8299,6 @@ Keep the last part: about the last %5 of %6?</source>
     </message>
 </context>
 <context>
-    <name>RegisterCard</name>
-    <message>
-        <source>Write</source>
-        <translation>كتابة</translation>
-    </message>
-    <message>
-        <source>More: Plot, Copy</source>
-        <translation>المزيد: رسم، نسخ</translation>
-    </message>
-    <message>
-        <source>not refreshed</source>
-        <translation>غير محدّث</translation>
-    </message>
-    <message>
-        <source>on the chart</source>
-        <translation>على المخطط</translation>
-    </message>
-</context>
-<context>
     <name>RegisterEditor</name>
     <message>
         <source>(several)</source>
@@ -8656,6 +8658,104 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     </message>
 </context>
 <context>
+    <name>RegisterRow</name>
+    <message>
+        <source>not refreshed</source>
+        <translation>غير محدّث</translation>
+    </message>
+    <message>
+        <source>on the chart</source>
+        <translation>على المخطط</translation>
+    </message>
+</context>
+<context>
+    <name>RegisterSheet</name>
+    <message>
+        <source>Writing…</source>
+        <translation>جارٍ الكتابة…</translation>
+    </message>
+    <message>
+        <source>%1 on the chart</source>
+        <translation>⁦%1⁩ على المخطط</translation>
+    </message>
+    <message>
+        <source>%1 off the chart</source>
+        <translation>أُزيل ⁦%1⁩ من المخطط</translation>
+    </message>
+    <message>
+        <source>Copied: %1</source>
+        <translation>نُسخ: ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>إغلاق</translation>
+    </message>
+    <message>
+        <source>not refreshed</source>
+        <translation>غير محدّث</translation>
+    </message>
+    <message>
+        <source>on the chart</source>
+        <translation>على المخطط</translation>
+    </message>
+    <message>
+        <source>last %1 s</source>
+        <translation>آخر ⁦%1 s⁩</translation>
+    </message>
+    <message>
+        <source>Take off the chart</source>
+        <translation>إزالة من المخطط</translation>
+    </message>
+    <message>
+        <source>Plot</source>
+        <translation>رسم</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>نسخ</translation>
+    </message>
+    <message>
+        <source>Write</source>
+        <translation>كتابة</translation>
+    </message>
+    <message>
+        <source>The map&apos;s limits: %1</source>
+        <translation>حدود الخريطة: %1</translation>
+    </message>
+    <message>
+        <source>Not connected: connect in the Connect drawer first.</source>
+        <translation>غير متصل: اتصل من لوحة الاتصال أولًا.</translation>
+    </message>
+    <message>
+        <source>Writes are off: turn on Allow writes in the Connect drawer.</source>
+        <translation>الكتابة متوقفة: فعّل «السماح بالكتابة» في لوحة الاتصال.</translation>
+    </message>
+    <message>
+        <source>Open the Connect drawer</source>
+        <translation>فتح لوحة الاتصال</translation>
+    </message>
+    <message>
+        <source>Check before writing</source>
+        <translation>التحقّق قبل الكتابة</translation>
+    </message>
+    <message>
+        <source>Write anyway</source>
+        <translation>اكتب مع ذلك</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>إلغاء</translation>
+    </message>
+    <message>
+        <source>Not written</source>
+        <translation>لم يُكتب</translation>
+    </message>
+    <message>
+        <source>Read back: %1</source>
+        <translation>قراءة التحقق: ⁦%1⁩</translation>
+    </message>
+</context>
+<context>
     <name>RegistersScreen</name>
     <message>
         <source>Search: name, unit, address</source>
@@ -8678,52 +8778,36 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
         <translation>اتصال…</translation>
     </message>
     <message>
-        <source>No registers: choose a map in the Connect drawer.</source>
-        <translation>لا مسجّلات: اختر خريطة في لوحة الاتصال.</translation>
-    </message>
-    <message>
         <source>No register matches &quot;%1&quot;.</source>
         <translation>لا مسجّل يطابق «%1».</translation>
-    </message>
-    <message>
-        <source>Take off the chart</source>
-        <translation>إزالة من المخطط</translation>
-    </message>
-    <message>
-        <source>Plot</source>
-        <translation>رسم</translation>
-    </message>
-    <message>
-        <source>%1 on the chart</source>
-        <translation>⁦%1⁩ على المخطط</translation>
-    </message>
-    <message>
-        <source>%1 off the chart</source>
-        <translation>أُزيل ⁦%1⁩ من المخطط</translation>
-    </message>
-    <message>
-        <source>Write…</source>
-        <translation>كتابة…</translation>
-    </message>
-    <message>
-        <source>Copy</source>
-        <translation>نسخ</translation>
-    </message>
-    <message>
-        <source>Copied: %1</source>
-        <translation>نُسخ: ⁦%1⁩</translation>
     </message>
     <message>
         <source>Not connected</source>
         <translation>غير متصل</translation>
     </message>
     <message>
-        <source>Connect over USB or TCP in the Connect drawer: the values show once the link is up.</source>
-        <translation>الاتصال عبر USB أو TCP من لوحة الاتصال: تظهر القيم حين تقوم الوصلة.</translation>
-    </message>
-    <message>
         <source>Open the Connect drawer</source>
         <translation>فتح لوحة الاتصال</translation>
+    </message>
+    <message>
+        <source>The values show once the link is up.</source>
+        <translation>تظهر القيم حين تقوم الوصلة.</translation>
+    </message>
+    <message>
+        <source>No registers</source>
+        <translation>لا مسجّلات</translation>
+    </message>
+    <message>
+        <source>No match</source>
+        <translation>لا تطابق</translation>
+    </message>
+    <message>
+        <source>Choose a map in the Connect drawer.</source>
+        <translation>تُختار الخريطة في لوحة الاتصال.</translation>
+    </message>
+    <message>
+        <source>Clear the search</source>
+        <translation>مسح البحث</translation>
     </message>
 </context>
 <context>
@@ -10047,57 +10131,6 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>%1 is gone: unplugged or reset?</source>
         <translation>⁦%1⁩ اختفى: فُصل أو أُعيد تشغيله؟</translation>
-    </message>
-</context>
-<context>
-    <name>WriteSheet</name>
-    <message>
-        <source>Writing…</source>
-        <translation>جارٍ الكتابة…</translation>
-    </message>
-    <message>
-        <source>Now</source>
-        <translation>الآن</translation>
-    </message>
-    <message>
-        <source>The map&apos;s limits: %1</source>
-        <translation>حدود الخريطة: %1</translation>
-    </message>
-    <message>
-        <source>Not connected: connect in the Connect drawer first.</source>
-        <translation>غير متصل: اتصل من لوحة الاتصال أولًا.</translation>
-    </message>
-    <message>
-        <source>Writes are off: turn on Allow writes in the Connect drawer.</source>
-        <translation>الكتابة متوقفة: فعّل «السماح بالكتابة» في لوحة الاتصال.</translation>
-    </message>
-    <message>
-        <source>Open the Connect drawer</source>
-        <translation>فتح لوحة الاتصال</translation>
-    </message>
-    <message>
-        <source>Write anyway</source>
-        <translation>اكتب مع ذلك</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>إلغاء</translation>
-    </message>
-    <message>
-        <source>Not written</source>
-        <translation>لم يُكتب</translation>
-    </message>
-    <message>
-        <source>Apply</source>
-        <translation>تطبيق</translation>
-    </message>
-    <message>
-        <source>Close</source>
-        <translation>إغلاق</translation>
-    </message>
-    <message>
-        <source>Check before writing</source>
-        <translation>التحقّق قبل الكتابة</translation>
     </message>
 </context>
 <context>

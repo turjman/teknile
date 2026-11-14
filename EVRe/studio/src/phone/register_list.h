@@ -10,6 +10,9 @@
  *             (every 50 ms while a value fades) only when a new glow begins: the screen fades it by itself
  *   stale     a value not refreshed for a while (RegisterModel::setStaleAfterMs) is looked at every STALE_CHECK_MS, as
  *             time passes without a change
+ *   trend     the last TREND_POINTS values a plottable plain number was read with (no enum, bit fields or hex: their
+ *             line says nothing; PhoneSession::sync gives them, at the values' pace), for the sheet's small line; a ring per register, made at its first value, so the
+ *             memory stays TREND_POINTS x 16 bytes a register at most; cleared with another map
  *
  * The rows QML gets are this list's; `source` is the row in RegisterModel, which PhoneSession's write and plot take. */
 #pragma once
@@ -47,9 +50,11 @@ public:
 		StaleRole,     /* the value was not refreshed for a while */
 		PlottableRole, /* a number the map lets plot */
 		DangerRole,    /* a write moves, powers or changes something: asked first */
-		SourceRole     /* the row in RegisterModel */
+		SourceRole,    /* the row in RegisterModel */
+		NumericRole    /* a number (not bytes): the sheet's field brings up the number pad */
 	};
 	static constexpr int STALE_CHECK_MS = 250;
+	static constexpr int TREND_POINTS = 120;
 
 	explicit RegisterList(RegisterModel *model, QObject *parent = nullptr);
 
@@ -62,12 +67,18 @@ public:
 	int count() const { return int(shown_.size()); }
 	int total() const { return int(model_->rows().size()); }
 	int sourceRow(int row) const { return row >= 0 && row < shown_.size() ? shown_[row] : -1; }
-	int rowOf(int source) const { return source >= 0 && source < listRow_.size() ? listRow_[source] : -1; }
+	Q_INVOKABLE int rowOf(int source) const { return source >= 0 && source < listRow_.size() ? listRow_[source] : -1; }
 	int glowMs() const { return int(RegisterModel::GLOW_MS); } /* a glow's fade, the desktop's */
 	/* one register's roles by its source row, as a map of the role names (the write sheet's) */
 	Q_INVOKABLE QVariantMap entry(int source) const;
-	/* "SETPOINT = 25.0 °C" on the clipboard (the ⋯ button's Copy); the text, or empty */
+	/* "SETPOINT = 25.0 °C" on the clipboard (the detail sheet's Copy); the text, or empty */
 	Q_INVOKABLE QString copy(int source) const;
+	/* a value read at `ms` (the engine's clock) into the register's trend; only a plottable plain number keeps one */
+	void sample(int source, qint64 ms, double value);
+	/* the trend for the sheet: { points: [Qt.point(seconds before the newest, value)], min, max (numbers), minText,
+	 * maxText (as the value column writes them), seconds (the span) }; empty under two points */
+	Q_INVOKABLE QVariantMap trend(int source) const;
+	int trendSize(int source) const { return source >= 0 && source < trends_.size() ? trends_[source].size : 0; }
 
 signals:
 	void searchChanged();
@@ -88,4 +99,11 @@ private:
 	QVector<qint64> lit_;   /* each source row's glow start last signalled */
 	QVector<bool> stale_;   /* each source row's stale state last signalled */
 	QTimer staleTimer_;
+	/* a register's last values, oldest first from `head` round; empty until its first value */
+	struct Trend {
+		QVector<qint64> ms;
+		QVector<double> values;
+		int head = 0, size = 0;
+	};
+	QVector<Trend> trends_;
 };

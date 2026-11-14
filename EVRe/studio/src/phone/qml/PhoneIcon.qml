@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // The phone's small icons, drawn from rectangles on a grid of 24 (scaled to `size`): no icon font and no symbol
 // character, which a phone's font may not have ("☰" showed as a box on a Samsung phone). The tab bar's four
-// (registers, chart, monitor, log), the search field's magnifier and its clear cross, the write sheet's warning, and
-// the Help's chevrons (back, next).
+// (registers, chart, monitor, log), the search field's magnifier and its clear cross, the register sheet's warning
+// and Copy (copy: two sheets), the chevrons (back and next: the Help and a register's row; down: the link's pill).
 // The strokes are 2 units wide with round ends; a stroke at an angle is a turned rectangle, smoothed.
 import QtQuick
 
@@ -132,6 +132,21 @@ Item {
         rotation: icon.kind === "next" ? 180 : 0
         Stroke { x1: 15; y1: 5.5; x2: 8.5; y2: 12 }
         Stroke { x1: 8.5; y1: 12; x2: 15; y2: 18.5 }
+    }
+    // down: a chevron pointing down
+    Item {
+        anchors.fill: parent
+        visible: icon.kind === "down"
+        Stroke { x1: 6; y1: 9.5; x2: 12; y2: 15.5 }
+        Stroke { x1: 12; y1: 15.5; x2: 18; y2: 9.5 }
+    }
+    // copy: a sheet over another
+    Item {
+        anchors.fill: parent
+        visible: icon.kind === "copy"
+        Box { x1: 8.5; y1: 8.5; x2: 20.5; y2: 20.5 }
+        Stroke { x1: 4.5; y1: 4.5; x2: 4.5; y2: 15 }
+        Stroke { x1: 4.5; y1: 4.5; x2: 14; y2: 4.5 }
     }
     // warning: a filled circle with an exclamation mark
     Item {

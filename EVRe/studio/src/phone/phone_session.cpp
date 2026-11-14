@@ -194,6 +194,7 @@ void PhoneSession::findMaps() {
 }
 
 bool PhoneSession::loadMap(const QString &file) {
+	readBackFrom_.clear(); /* another map's rows */
 	const QUrl url(file);
 	const QString path = url.isLocalFile() ? url.toLocalFile() : file;
 	DeviceMap loaded;
@@ -796,6 +797,15 @@ void PhoneSession::sync() {
 		copiedVersions_[row] = value.version;
 		model_->applyValue(row, value.raw, value.valid, value.error, value.unavailable,
 				value.valid ? nowMs - value.updatedMs : 0);
+		const auto due = readBackFrom_.constFind(row);
+		if (due != readBackFrom_.constEnd() && value.valid && value.updatedMs >= *due) {
+			readBackFrom_.erase(due);
+			emit readBack(row, model_->data(model_->index(row, RegisterModel::ColValue), Qt::DisplayRole).toString());
+		}
+		/* the detail sheet's small line: what was read, when */
+		const RegDef &def = model_->rows()[row].def;
+		if (value.valid && def.canPlot() && value.raw.size() == def.size)
+			list_->sample(row, value.updatedMs, decodeNumber(def, value.raw));
 	}
 }
 
@@ -898,6 +908,12 @@ void PhoneSession::onWriteDone(quint64 id, bool ok, const QString &err) {
 	writes_.erase(it);
 	if (ok) {
 		addLog(LogModel::Info, tr("written: %1").arg(done.what));
+		/* the engine reads it back after the acknowledge: from the table's time now on */
+		QVector<RegValue> values;
+		quint64 generation = 0;
+		qint64 nowMs = 0;
+		engine_->table().snapshot(values, generation, nowMs);
+		readBackFrom_.insert(done.row, nowMs);
 		emit writeAnswered(done.row, true, tr("%1 written").arg(done.name));
 	} else {
 		const QString line = tr("write refused: %1: %2").arg(done.what, err);

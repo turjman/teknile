@@ -588,7 +588,8 @@ Item {
                 }
             }
 
-            // no line: how to plot one, and a button to the Registers screen
+            // no line: the chart's icon, how to plot one, and a button to the Registers screen; on a panel inside the
+            // plot, so no text lies over the grid and the axes' labels stay whole
             Rectangle {
                 id: empty
                 objectName: "chartEmpty"
@@ -596,46 +597,30 @@ Item {
                 // the text reads in the screen's language (the plot under it does not mirror)
                 LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
                 LayoutMirroring.childrenInherit: true
-                anchors.centerIn: parent
-                width: Math.min(parent.width - 32, 360)
-                height: emptyColumn.implicitHeight + 32
+                width: Math.min(chart.plotRect.width - 24, 340)
+                // across, the plot is low: less padding and a smaller icon
+                readonly property real pad: chart.plotRect.height >= 300 ? 20 : 12
+                height: Math.min(emptyState.implicitHeight + 2 * pad, chart.plotRect.height - 16)
+                x: chart.plotRect.x + (chart.plotRect.width - width) / 2
+                y: chart.plotRect.y + (chart.plotRect.height - height) / 2
                 radius: 12
                 color: PhoneTheme.surface
                 border.color: PhoneTheme.border
-
-                ColumnLayout {
-                    id: emptyColumn
+                EmptyState {
+                    id: emptyState
+                    prefix: "chartEmpty"
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 16
-                    spacing: 8
-                    Label {
-                        objectName: "chartEmptyText"
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.WordWrap
-                        text: qsTr("Plot a register from its ... menu on the Registers screen.")
-                        color: PhoneTheme.text
-                        font.pixelSize: 15
-                    }
-                    Label {
-                        objectName: "chartEmptyFast"
-                        Layout.fillWidth: true
-                        visible: PhoneSession.fastChannels.length > 0
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.WordWrap
-                        text: qsTr("Or choose a stream's channel under Fast lines.")
-                        color: PhoneTheme.muted
-                        font.pixelSize: 13
-                    }
-                    Button {
-                        objectName: "chartToRegisters"
-                        Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("Go to Registers")
-                        highlighted: true
-                        onClicked: screen.registersAsked()
-                    }
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: empty.pad
+                    icon: "chart"
+                    iconSize: chart.plotRect.height >= 300 ? 48 : 32
+                    title: qsTr("No lines yet")
+                    text: PhoneSession.fastChannels.length > 0
+                          ? qsTr("Tap a register on the Registers screen, then Plot. Or choose a stream's channel under Fast lines.")
+                          : qsTr("Tap a register on the Registers screen, then Plot.")
+                    action: qsTr("Go to Registers")
+                    onActed: screen.registersAsked()
                 }
             }
         }

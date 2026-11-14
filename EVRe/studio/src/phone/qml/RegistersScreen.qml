@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// The Registers screen: every register of the map as a card (RegisterCard), in sections by group (the group's header
-// stays at the top while its cards scroll under it), the values live while the link is up (PhoneSession.registerList,
-// RegisterModel's values copied once a frame). A search field at the top (the desktop's search: name, description,
-// group, unit or address), its magnifier and its clear cross drawn; how many registers show, quietly at the list's
-// foot. While no link is up a card at the top says how to connect, with a button to the Connect drawer; with no map,
-// the screen says so with the same button. The "⋯" button's menu: Plot (or Take off the chart) and Copy; what they
-// did, or why not (the chart's limit of lines), shows a moment at the bottom.
+// The Registers screen: every register of the map as a row of the desktop's table (RegisterRow: the name and address,
+// the value lined up with the others, its unit), in sections by group (each group's header in the list over its rows;
+// none is kept over the rows: on a phone it covered the row under it, its value cut), the values live while the link is up (PhoneSession.registerList, RegisterModel's values copied
+// once a frame). A tap on a row opens the register's sheet (Main.qml: its value, trend, Plot, Copy and Write). A search
+// field at the top (the desktop's search: name, description, group, unit or address), its magnifier and its clear cross
+// drawn; how many registers show, quietly at the list's foot. While no link is up a slim strip at the top says so, with
+// a button to the Connect drawer; with no map, or a search that finds nothing, the screen says so with one button (the
+// drawer, or clearing the search). What a sheet's Plot or Copy did shows a moment at the bottom too.
 // With perf (phone_app.h) a bar runs at the top, so the window draws every frame and the speed line times frames.
 import QtQuick
 import QtQuick.Controls
@@ -21,7 +22,7 @@ Item {
     readonly property real columnWidth: 640
 
     signal connectAsked()
-    signal writeAsked(int source)
+    signal sheetAsked(int source)
 
     function showNotice(text) {
         noticeText.text = text
@@ -136,6 +137,82 @@ Item {
             }
         }
 
+        // no link: a slim strip over the list saying so, and the way to the drawer
+        Rectangle {
+            id: offline
+            objectName: "registersOffline"
+            Layout.fillWidth: true
+            Layout.maximumWidth: screen.columnWidth
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: 4
+            implicitHeight: Math.max(56, offlineRow.implicitHeight + 12)
+            visible: !PhoneSession.connected && screen.registers.total > 0
+            color: PhoneTheme.surface
+            // apart from the rows under it: a line at its top and its foot
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 1
+                color: PhoneTheme.border
+            }
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: PhoneTheme.border
+            }
+            RowLayout {
+                id: offlineRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 16
+                anchors.rightMargin: 8
+                spacing: 12
+                Rectangle {
+                    objectName: "offlineDot"
+                    Layout.alignment: Qt.AlignVCenter
+                    implicitWidth: 8
+                    implicitHeight: 8
+                    radius: 4
+                    color: PhoneTheme.muted
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 0
+                    Label {
+                        objectName: "offlineTitle"
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignLeft
+                        text: qsTr("Not connected")
+                        color: PhoneTheme.text
+                        font.pixelSize: 14
+                        font.weight: Font.Medium
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        objectName: "offlineText"
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignLeft
+                        text: qsTr("The values show once the link is up.")
+                        color: PhoneTheme.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                    }
+                }
+                Button {
+                    objectName: "registersConnect"
+                    Layout.preferredHeight: 48
+                    text: qsTr("Connect…")
+                    highlighted: true
+                    Material.accent: PhoneTheme.accentFill
+                    onClicked: screen.connectAsked()
+                }
+            }
+        }
+
         ListView {
             id: list
             objectName: "registerList"
@@ -148,74 +225,17 @@ Item {
             reuseItems: true
             boundsBehavior: Flickable.DragOverBounds
             ScrollIndicator.vertical: ScrollIndicator {}
-            // at the top until a finger moves it: the card over the list comes and goes with the link, and the list
-            // keeps showing it whole (ListView leaves its view where it was when the header's height changes)
-            property bool keepTop: true
-            onMovementEnded: keepTop = atYBeginning
-
-            // no link: how to connect, and the way to the drawer
-            header: Item {
-                width: ListView.view.width
-                height: offline.visible ? offline.height + 12 : 0
-                onHeightChanged: if (list.keepTop) Qt.callLater(list.positionViewAtBeginning)
-                Rectangle {
-                    id: offline
-                    objectName: "registersOffline"
-                    x: 12
-                    y: 8
-                    width: parent.width - 24
-                    height: offlineColumn.implicitHeight + 32
-                    visible: !PhoneSession.connected && screen.registers.total > 0
-                    radius: 12
-                    color: PhoneTheme.surface
-                    border.color: PhoneTheme.border
-                    ColumnLayout {
-                        id: offlineColumn
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.margins: 16
-                        spacing: 4
-                        Label {
-                            objectName: "offlineTitle"
-                            Layout.fillWidth: true
-                            horizontalAlignment: Text.AlignLeft
-                            text: qsTr("Not connected")
-                            color: PhoneTheme.text
-                            font.pixelSize: 16
-                            font.weight: Font.Medium
-                            elide: Text.ElideRight
-                        }
-                        Label {
-                            objectName: "offlineText"
-                            Layout.fillWidth: true
-                            horizontalAlignment: Text.AlignLeft
-                            text: qsTr("Connect over USB or TCP in the Connect drawer: the values show once the link is up.")
-                            color: PhoneTheme.muted
-                            font.pixelSize: 14
-                            wrapMode: Text.Wrap
-                        }
-                        Button {
-                            objectName: "registersConnect"
-                            Layout.alignment: Qt.AlignRight
-                            Layout.topMargin: 4
-                            text: qsTr("Connect…")
-                            highlighted: true
-                            Material.accent: PhoneTheme.accentFill
-                            onClicked: screen.connectAsked()
-                        }
-                    }
-                }
-            }
 
             section.property: "group"
             section.criteria: ViewSection.FullString
-            // the group's name stays at the top while its cards pass under it: on the window's background
-            section.labelPositioning: ViewSection.InlineLabels | ViewSection.CurrentLabelAtStart
+            // the group's name over its rows, on the window's background, the rows on the surface, so each group reads
+            // as a panel of its own. In the list only, not kept at the view's top: a header kept there lay over the
+            // rows passing under it and cut their values (the owner's phone)
+            section.labelPositioning: ViewSection.InlineLabels
             section.delegate: Rectangle {
                 required property string section
                 width: ListView.view.width
-                height: section.length > 0 ? 40 : 4
+                height: section.length > 0 ? 34 : 4
                 color: PhoneTheme.bg
                 Label {
                     objectName: "regGroup"
@@ -235,10 +255,14 @@ Item {
                 }
             }
 
-            delegate: RegisterCard {
+            delegate: RegisterRow {
                 width: ListView.view.width
-                onWriteAsked: source => screen.writeAsked(source)
-                onMoreAsked: (source, from) => moreMenu.openFor(source, from)
+                // the list takes the focus from the search field first: a closed sheet gives it back to what had it,
+                // and the field's keyboard came up again over the list
+                onOpened: source => {
+                    if (searchField.activeFocus) list.forceActiveFocus()
+                    screen.sheetAsked(source)
+                }
             }
 
             // how many registers show, quietly at the list's foot
@@ -261,34 +285,25 @@ Item {
         }
     }
 
-    // nothing to show: no map, or a search that matches nothing
-    ColumnLayout {
+    // nothing to show: no map (the way to the drawer), or a search that matches nothing (the way back to all)
+    EmptyState {
+        objectName: "registersEmptyState"
+        prefix: "registersEmpty"
         anchors.centerIn: parent
-        width: Math.min(parent.width - 48, 360)
+        width: Math.min(parent.width - 48, 320)
         visible: screen.registers.count === 0
-        spacing: 16
-        Label {
-            objectName: "registersEmpty"
-            Layout.fillWidth: true
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: screen.registers.total === 0 ? qsTr("No registers: choose a map in the Connect drawer.")
-                                               : qsTr("No register matches \"%1\".").arg(screen.registers.search)
-            color: PhoneTheme.muted
-            font.pixelSize: 16
-        }
-        Button {
-            objectName: "registersEmptyConnect"
-            Layout.alignment: Qt.AlignHCenter
-            visible: screen.registers.total === 0
-            text: qsTr("Open the Connect drawer")
-            highlighted: true
-            Material.accent: PhoneTheme.accentFill
-            onClicked: screen.connectAsked()
+        icon: screen.registers.total === 0 ? "registers" : "search"
+        title: screen.registers.total === 0 ? qsTr("No registers") : qsTr("No match")
+        text: screen.registers.total === 0 ? qsTr("Choose a map in the Connect drawer.")
+                                           : qsTr("No register matches \"%1\".").arg(screen.registers.search)
+        action: screen.registers.total === 0 ? qsTr("Open the Connect drawer") : qsTr("Clear the search")
+        onActed: {
+            if (screen.registers.total === 0) screen.connectAsked()
+            else searchField.text = ""
         }
     }
 
-    // what Plot or Copy did, a moment over the list's foot (a snackbar: the text colour's panel, the surface's text)
+    // what a sheet's Plot or Copy did, a moment over the list's foot (a snackbar: the text colour's panel, the surface's text)
     Rectangle {
         id: notice
         objectName: "registerNotice"
@@ -324,46 +339,5 @@ Item {
     Connections {
         target: PhoneSession
         function onNotice(text) { screen.showNotice(text) }
-    }
-
-    // the "⋯" button's menu, one for every card (PhoneMenu: inside the window, an edge on the page)
-    PhoneMenu {
-        id: moreMenu
-        objectName: "moreMenu"
-        property int source: -1
-        property var entry: ({})
-        function openFor(source, from) {
-            moreMenu.source = source
-            moreMenu.entry = screen.registers.entry(source)
-            moreMenu.openUnder(from)
-        }
-        // a closed menu gives the focus back to what had it: the search field, whose keyboard came up again over the
-        // list after a Plot. The list takes it instead (not when an item gave it elsewhere: Write…'s sheet)
-        onClosed: if (searchField.activeFocus) list.forceActiveFocus()
-        MenuItem {
-            objectName: "menuPlot"
-            text: moreMenu.entry.plotted ? qsTr("Take off the chart") : qsTr("Plot")
-            enabled: moreMenu.entry.plottable === true
-            onTriggered: {
-                const on = !moreMenu.entry.plotted
-                if (PhoneSession.setPlot(moreMenu.source, on))
-                    screen.showNotice(on ? qsTr("%1 on the chart").arg(moreMenu.entry.name)
-                                         : qsTr("%1 off the chart").arg(moreMenu.entry.name))
-            }
-        }
-        MenuItem {
-            objectName: "menuWrite"
-            text: qsTr("Write…")
-            enabled: moreMenu.entry.writable === true
-            onTriggered: screen.writeAsked(moreMenu.source)
-        }
-        MenuItem {
-            objectName: "menuCopy"
-            text: qsTr("Copy")
-            onTriggered: {
-                const copied = screen.registers.copy(moreMenu.source)
-                if (copied.length > 0) screen.showNotice(qsTr("Copied: %1").arg(copied))
-            }
-        }
     }
 }
