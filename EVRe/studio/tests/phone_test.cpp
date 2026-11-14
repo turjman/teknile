@@ -32,7 +32,7 @@
  * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
  * The cursors and the Monitor (B.4): placed by the Cursors button, A dragged by its handle, the readouts against
  * statsOf; the fake device's frames, Pause, Clear, the empty state; texts in both languages and themes. Their pictures:
- * <prefix>_<en|ar>_<dark|light>_<cursors|monitor|paused>_<portrait|landscape>.png.
+ * <prefix>_<en|ar>_<dark|light>_<cursors|cursors6|cursors6end|monitor|paused>_<portrait|landscape>.png.
  * The Chart screen's pictures too: <prefix>_<en|ar>_<dark|light>_chart_<empty|two|hidden|manual|ysheet|chipmenu>_
  * <portrait|landscape>.png. EVRE_PHONE_ONLY=<text> (other than shots): only the checks whose function's name holds it,
  * and with a prefix only the chart's pictures.
@@ -67,6 +67,7 @@
 #include <QTimer>
 #include <QtQml/qqmlextensionplugin.h>
 #include <atomic>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -219,9 +220,12 @@ struct Phone {
 		return image.rect().contains(p) ? image.pixelColor(p) : QColor();
 	}
 
+	/* open and its slide ended (`opened`): a position over 0.99 alone came about a fifth of the slide early, and on a
+	 * busy PC what the step did next (a back, a tap) met a drawer still coming in */
 	bool drawerOpen() const {
 		const QObject *drawer = object("connectDrawer");
-		return drawer && drawer->property("visible").toBool() && drawer->property("position").toReal() > 0.99;
+		return drawer && drawer->property("visible").toBool() && drawer->property("position").toReal() > 0.99
+				&& drawer->property("opened").toBool();
 	}
 	bool drawerClosed() const {
 		const QObject *drawer = object("connectDrawer");
@@ -2456,22 +2460,57 @@ void checkBackOrder() {
 	pressBack(phone);
 	const bool toList = helpOpen(phone) && phone.item("helpList")->isVisible();
 	pressBack(phone);
-	const bool helpClosed = !helpOpen(phone);
+	/* each popup's slide waited for by its state, not by a time: the Help gone before the menu button is tapped (while
+	 * it fades it still covers the window), the drawer fully open before its back (drawerOpen: `opened`) */
+	const QObject *help = phone.object("helpScreen");
+	const bool helpClosed = !helpOpen(phone)
+			&& QTest::qWaitFor([&] { return help && !help->property("visible").toBool(); }, 3000);
 	phone.openDrawer();
-	pressBack(phone);
-	(void) QTest::qWaitFor([&] { return phone.drawerClosed(); }, 2000);
-	const bool drawerClosed = phone.drawerClosed();
+	const bool drawerWasOpen = phone.drawerOpen();
+	const bool drawerBack = pressBack(phone);
+	const bool drawerClosed = QTest::qWaitFor([&] { return phone.drawerClosed(); }, 3000);
 	openSheet(phone, QStringLiteral("FAN_SPEED"));
 	const bool sheetWasOpen = sheetOpen(phone);
-	pressBack(phone);
-	(void) QTest::qWaitFor([&] { return !phone.object("writeSheet")->property("visible").toBool(); }, 2000);
-	const bool sheetClosed = !phone.object("writeSheet")->property("visible").toBool();
+	const bool sheetBack = pressBack(phone);
+	const bool sheetClosed
+			= QTest::qWaitFor([&] { return !phone.object("writeSheet")->property("visible").toBool(); }, 3000);
 	search(phone, QString());
 	const bool leftToAndroid = !pressBack(phone);
-	check(toList && helpClosed && drawerClosed && sheetWasOpen && sheetClosed && leftToAndroid,
-			QStringLiteral("phone, back: a Help page to the list (%1), the Help closed (%2), the drawer closed (%3), the write sheet "
-					"closed (%4); with nothing open the back is left to Android, which leaves the app (%5)")
-					.arg(toList).arg(helpClosed).arg(drawerClosed).arg(sheetClosed).arg(leftToAndroid));
+	check(toList && helpClosed && drawerWasOpen && drawerBack && drawerClosed && sheetWasOpen && sheetBack && sheetClosed
+					&& leftToAndroid,
+			QStringLiteral("phone, back: a Help page to the list (%1), the Help closed (%2), the drawer closed (open %3, "
+					"taken %4, closed %5), the write sheet closed (open %6, taken %7, closed %8); with nothing open the "
+					"back is left to Android, which leaves the app (%9)")
+					.arg(toList).arg(helpClosed).arg(drawerWasOpen).arg(drawerBack).arg(drawerClosed).arg(sheetWasOpen)
+					.arg(sheetBack).arg(sheetClosed).arg(leftToAndroid));
+}
+
+/* a back while a popup is still sliding in (its `opened` not yet true) closes it, as one fully open: it went to
+ * Android before, and the app went to the background with the drawer half open. The drawer and the Help, each caught
+ * in its slide */
+void checkBackWhileOpening() {
+	Phone phone(PORTRAIT);
+	QStringList seen;
+	bool ok = true;
+	for (const char *name : { "connectDrawer", "helpScreen" }) {
+		QObject *popup = phone.object(name);
+		if (!popup) {
+			ok = false;
+			seen << QLatin1String(name) + QStringLiteral(": not found");
+			continue;
+		}
+		QMetaObject::invokeMethod(popup, "open");
+		const bool caught = QTest::qWaitFor([&] {
+			return popup->property("visible").toBool() && !popup->property("opened").toBool();
+		}, 2000) && !popup->property("opened").toBool();
+		const bool taken = pressBack(phone);
+		const bool closed = QTest::qWaitFor([&] { return !popup->property("visible").toBool(); }, 3000);
+		seen << QStringLiteral("%1: in its slide %2, back taken %3, closed %4").arg(QLatin1String(name)).arg(caught)
+						.arg(taken).arg(closed);
+		ok = ok && caught && taken && closed;
+	}
+	check(ok, QStringLiteral("phone, back: a popup still sliding in is closed by a back, not left to Android (%1)")
+			.arg(seen.join(QStringLiteral("; "))));
 }
 
 /* ---- fixes from the review of the phone's line */
@@ -3122,20 +3161,34 @@ QString readoutText(const Phone &phone, const QString &line, const char *part) {
 	return item ? item->property("text").toString() : QString();
 }
 
-/* the Cursors button: A at a third of the view, B at two thirds, the view held; both drawn there with their handles,
- * 48 dp; a second tap takes them off */
+/* the samples of a line (times rising) in [t0, t1]: the first and the last there */
+bool spanIn(const QVector<double> &times, double t0, double t1, double &first, double &last) {
+	const qsizetype k0 = std::lower_bound(times.begin(), times.end(), t0) - times.begin();
+	const qsizetype k1 = std::upper_bound(times.begin(), times.end(), t1) - times.begin() - 1;
+	if (k0 > k1) return false;
+	first = times[k0];
+	last = times[k1];
+	return true;
+}
+
+/* the Cursors button: A at a quarter and B at three quarters of the samples in view (here the whole view), the view
+ * held; both drawn there with their handles, 48 dp; a second tap takes them off */
 void checkCursorButtons() {
 	Phone phone(LANDSCAPE);
 	QVector<double> times, values;
 	ChartItem *chart = chartWithCursors(phone, times, values);
-	const double t0 = chart ? chart->viewStart() : 0, span = chart ? chart->viewEnd() - chart->viewStart() : 0;
-	const bool placed = chart && chart->cursorsOn() && std::fabs(chart->cursorA() - (t0 + span / 3)) < 1e-9
-			&& std::fabs(chart->cursorB() - (t0 + span * 2 / 3)) < 1e-9 && !chart->live();
+	const double t0 = chart ? chart->viewStart() : 0, t1 = chart ? chart->viewEnd() : 0;
+	double first = 0, last = 0;
+	const bool inView = spanIn(times, t0, t1, first, last);
+	const double wantA = first + (last - first) / 4, wantB = first + (last - first) * 3 / 4;
+	const bool placed = chart && inView && chart->cursorsOn() && std::fabs(chart->cursorA() - wantA) < 1e-9
+			&& std::fabs(chart->cursorB() - wantB) < 1e-9 && !chart->live();
 	QQuickItem *lineA = phone.item("cursorA"), *handleA = phone.item("cursorHandleA"), *handleB = phone.item("cursorHandleB");
 	const double plotLeft = chart ? chart->mapToScene(chart->plotRect().topLeft()).x() : 0;
 	const double plotWidth = chart ? chart->plotRect().width() : 0;
 	const double drawnA = lineA ? lineA->mapToScene(QPointF(lineA->width() / 2, 0)).x() : -1;
-	const bool drawn = lineA && lineA->isVisible() && std::fabs(drawnA - (plotLeft + plotWidth / 3)) <= 1;
+	const double wantX = t1 > t0 ? plotLeft + plotWidth * (wantA - t0) / (t1 - t0) : 0;
+	const bool drawn = lineA && lineA->isVisible() && std::fabs(drawnA - wantX) <= 1;
 	const bool handles = handleA && handleB && handleA->width() >= 47.5 && handleA->height() >= 47.5
 			&& handleB->width() >= 47.5 && handleB->isVisible()
 			&& handleA->mapToScene(QPointF(0, 0)).y() < handleB->mapToScene(QPointF(0, 0)).y();
@@ -3144,11 +3197,184 @@ void checkCursorButtons() {
 	phone.tap(phone.item("cursorsButton"));
 	const bool off = chart && !chart->cursorsOn() && !phone.item("readoutPanel")->isVisible();
 	check(placed && drawn && handles && panel && off,
-			QStringLiteral("phone, cursors: the Cursors button puts A at a third of the view and B at two thirds (%1 s, %2 s "
-					"in %3 .. %4 s) and holds it; A drawn there (x %5, want %6), the handles 48 dp, A's over B's; the "
-					"readouts shown; a second tap takes them off")
-					.arg(a, 0, 'f', 3).arg(b, 0, 'f', 3)
-					.arg(t0, 0, 'f', 2).arg(t0 + span, 0, 'f', 2).arg(drawnA, 0, 'f', 1).arg(plotLeft + plotWidth / 3, 0, 'f', 1));
+			QStringLiteral("phone, cursors: the Cursors button puts A at a quarter and B at three quarters of the samples "
+					"in view (%1 s, %2 s; samples %3 .. %4 s) and holds it; A drawn there (x %5, want %6), the handles "
+					"48 dp, A's over B's; the readouts shown; a second tap takes them off")
+					.arg(a, 0, 'f', 3).arg(b, 0, 'f', 3).arg(first, 0, 'f', 2).arg(last, 0, 'f', 2)
+					.arg(drawnA, 0, 'f', 1).arg(wantX, 0, 'f', 1));
+}
+
+/* lines fed from the test: `count` sines (each its name, unit and colour) at 1 kHz from `from[i]` to `to[i]` s, in a
+ * 10 s view, the cursors placed by their button */
+ChartItem *chartWithLines(const Phone &phone, int count, const QVector<double> &from, const QVector<double> &to) {
+	ChartItem *chart = showFedChart(phone);
+	if (!chart) return nullptr;
+	static const char *const names[] = { "SINE", "DOUBLE", "THIRD", "FOURTH", "FIFTH", "SIXTH" };
+	static const char *const units[] = { "V", "A", "W", "°C", "Hz", "%" };
+	static const QColor colours[] = { SINE_COLOUR, Qt::cyan, Qt::magenta, Qt::yellow, Qt::green, Qt::red };
+	chart->setWindowSeconds(10);
+	for (int i = 0; i < count && i < 6; ++i) {
+		QVector<double> times, values;
+		for (int k = int(from[i] * 1000); k <= int(to[i] * 1000); ++k) {
+			times << k / 1000.0;
+			values << (i + 1) * (2.0 + 1.5 * std::sin(2 * M_PI * 0.5 * k / 1000.0));
+		}
+		chart->addLine(i + 1, colours[i], QString::fromLatin1(names[i]), QString::fromUtf8(units[i]));
+		chart->appendSamples(i + 1, times, values);
+	}
+	chartFrame(phone, chart, 3);
+	phone.tap(phone.item("cursorsButton"));
+	chartFrame(phone, chart, 2);
+	return chart;
+}
+
+/* the owner's picture: the data started at 1.3 s of a view from -2.5 s, A sat before it and every A, B - A and the
+ * span's min, max and mean read a dash. Two lines that start late in the view (6 s and 7 s of 0 .. 10 s): A and B
+ * inside the span both have samples in, and every readout of both lines has a value */
+void checkCursorLateData() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = chartWithLines(phone, 2, { 6, 7 }, { 10, 10 });
+	QStringList empty;
+	for (const QString &name : { QStringLiteral("SINE"), QStringLiteral("DOUBLE") })
+		for (const char *part : { "readoutA", "readoutB", "readoutDelta", "readoutMin", "readoutMax", "readoutMean" }) {
+			const QString text = readoutText(phone, name, part);
+			if (text.isEmpty() || text == QStringLiteral("\u2014")) empty << name + QLatin1Char(' ') + QLatin1String(part);
+		}
+	const double a = chart ? chart->cursorA() : 0, b = chart ? chart->cursorB() : 0;
+	const bool inside = chart && chart->cursorsOn() && std::fabs(a - 7.75) < 1e-6 && std::fabs(b - 9.25) < 1e-6
+			&& chart->viewStart() < 6;
+	check(inside && empty.isEmpty(),
+			QStringLiteral("phone, cursors: with the data starting late in the view (%1 .. %2 s; the lines from 6 s and 7 s) "
+					"A and B are put where both have samples (A %3 s, B %4 s: a quarter and three quarters of 7 .. 10 s), and "
+					"every readout of both lines has a value (without one: %5)")
+					.arg(chart ? chart->viewStart() : 0, 0, 'f', 2).arg(chart ? chart->viewEnd() : 0, 0, 'f', 2)
+					.arg(a, 0, 'f', 3).arg(b, 0, 'f', 3).arg(empty.isEmpty() ? QStringLiteral("none") : empty.join(QStringLiteral(", "))));
+}
+
+/* a finger dragging an item's middle by dy, then still until the flick stops */
+void dragUp(const Phone &phone, QQuickItem *on, double dy) {
+	static QPointingDevice *finger = QTest::createTouchDevice();
+	if (!on) return;
+	const QPointF c = on->mapToScene(QPointF(on->width() / 2, on->height() / 2));
+	QTest::touchEvent(phone.window, finger).press(0, c.toPoint(), phone.window.data());
+	QTest::qWait(20);
+	const int steps = 15;
+	for (int i = 1; i <= steps; ++i) {
+		QTest::touchEvent(phone.window, finger).move(0, (c - QPointF(0, dy * i / steps)).toPoint(), phone.window.data());
+		QTest::qWait(16);
+	}
+	QTest::qWait(120); /* still before the finger lifts: no fling */
+	QTest::touchEvent(phone.window, finger).release(0, (c - QPointF(0, dy)).toPoint(), phone.window.data());
+	(void) QTest::qWaitFor([on] { return !on->property("moving").toBool(); }, 3000);
+}
+
+/* the readouts never cut (the owner's landscape picture: the panel's last row cut through its letters at the foot): with
+ * six lines, in landscape and in portrait, the readouts scroll: the content holds every row, a scroll bar stays shown,
+ * a fade at the edge with more; each row is inside the visible part or reached by scrolling, and a finger scrolls the
+ * last row fully into view */
+void checkCursorPanelScroll() {
+	QStringList seen;
+	bool ok = true;
+	for (QSize size : { LANDSCAPE, PORTRAIT }) {
+		Phone phone(size);
+		const QVector<double> from(6, 0.0), to(6, 10.0);
+		ChartItem *chart = chartWithLines(phone, 6, from, to);
+		phone.settle(300);
+		QQuickItem *flick = phone.item("readoutFlick"), *bar = phone.item("readoutBar");
+		QQuickItem *content = flick ? flick->property("contentItem").value<QQuickItem *>() : nullptr;
+		QList<QQuickItem *> rows;
+		forEachItem(phone.item("readoutPanel"), [&](QQuickItem *item) {
+			if (item->objectName() == QLatin1String("readoutRow") && item->isVisible()) rows << item;
+		});
+		std::sort(rows.begin(), rows.end(), [content](QQuickItem *x, QQuickItem *y) {
+			return x->mapToItem(content, QPointF(0, 0)).y() < y->mapToItem(content, QPointF(0, 0)).y();
+		});
+		const double height = flick ? flick->height() : 0, contentHeight = flick ? flick->property("contentHeight").toDouble() : 0;
+		double rowsHeight = 0;
+		int reachable = 0;
+		for (QQuickItem *row : rows) {
+			rowsHeight += row->height();
+			const double bottom = row->mapToItem(content, QPointF(0, row->height())).y();
+			if (bottom <= contentHeight + 0.5) ++reachable;
+		}
+		const bool overflows = contentHeight > height + 0.5;
+		const bool barShown = bar && bar->isVisible() && bar->property("policy").toInt() == Qt::ScrollBarAlwaysOn
+				&& bar->property("size").toDouble() < 1;
+		const bool footFade = phone.item("readoutFadeFoot") && phone.item("readoutFadeFoot")->isVisible();
+		for (int i = 0; i < 12 && flick && !flick->property("atYEnd").toBool(); ++i) dragUp(phone, flick, height * 0.6);
+		phone.settle(200);
+		const double contentY = flick ? flick->property("contentY").toDouble() : 0;
+		const double lastTop = rows.isEmpty() ? -1 : rows.last()->mapToItem(content, QPointF(0, 0)).y();
+		const double lastBottom = rows.isEmpty() ? -1 : lastTop + rows.last()->height();
+		const bool lastShown = !rows.isEmpty() && lastTop >= contentY - 0.5 && lastBottom <= contentY + height + 0.5;
+		const bool topFade = phone.item("readoutFadeTop") && phone.item("readoutFadeTop")->isVisible()
+				&& !phone.item("readoutFadeFoot")->isVisible();
+		const bool good = chart && rows.size() == 6 && contentHeight >= rowsHeight && reachable == rows.size() && overflows
+				&& barShown && footFade && lastShown && topFade;
+		seen << QStringLiteral("%1: %2 rows (%3 reachable), content %4 >= rows %5, room %6, bar %7, fade at the foot %8; "
+							   "scrolled to %9: the last row %10 .. %11 inside, the fade at the top %12")
+						.arg(size == LANDSCAPE ? "landscape" : "portrait").arg(rows.size()).arg(reachable)
+						.arg(contentHeight, 0, 'f', 0).arg(rowsHeight, 0, 'f', 0).arg(height, 0, 'f', 0).arg(barShown)
+						.arg(footFade).arg(contentY, 0, 'f', 0).arg(lastTop, 0, 'f', 0).arg(lastBottom, 0, 'f', 0).arg(topFade);
+		ok = ok && good;
+	}
+	check(ok, QStringLiteral("phone, cursors: six lines' readouts scroll, never cut: the content holds every row, a scroll "
+			"bar stays shown, a fade at the edge with more, the last row scrolled fully into view (%1)")
+			.arg(seen.join(QStringLiteral("; "))));
+}
+
+/* the pairs in both languages: each label beside its value as one piece, its own gap to the next pair; a symbol's pair
+ * (A, B, B - A) left to right in Arabic too ("B 5.11 V", not "5.11 V B"), a word's (min) in the language's direction;
+ * in Arabic the pairs run from the right (A's right of B's). A line with no value at B: an em dash, never an en dash
+ * (beside "B - A" it read as one more minus) */
+void checkCursorPairs() {
+	QStringList bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		const bool rtl = code == QLatin1String("ar");
+		Phone phone(PORTRAIT);
+		/* SINE 1 .. 4 s, DOUBLE 6 .. 9 s: they share no span, so A and B are put over 1 .. 9 s, SINE has no value at B */
+		ChartItem *chart = chartWithLines(phone, 2, { 1, 6 }, { 4, 9 });
+		phone.settle(300);
+		QQuickItem *row = readoutRow(phone, QStringLiteral("SINE"));
+		const auto x = [&](const char *name) {
+			const QQuickItem *item = within(row, QLatin1String(name));
+			return item ? item->mapToScene(QPointF(0, 0)).x() : -1.0;
+		};
+		const auto labelX = [&](const char *value) {
+			const QQuickItem *v = within(row, QLatin1String(value));
+			const QQuickItem *pairRow = v ? v->parentItem() : nullptr;
+			const QQuickItem *label = pairRow && !pairRow->childItems().isEmpty() ? pairRow->childItems().first() : nullptr;
+			return label ? label->mapToScene(QPointF(0, 0)).x() : -1.0;
+		};
+		if (!chart || !row) {
+			bad << code + QStringLiteral(": no readouts");
+			continue;
+		}
+		for (const char *symbol : { "readoutA", "readoutB", "readoutDelta" })
+			if (!(labelX(symbol) < x(symbol))) bad << code + QStringLiteral(": ") + QLatin1String(symbol) + QStringLiteral(" not label first, left to right");
+		if (rtl ? !(labelX("readoutMin") > x("readoutMin")) : !(labelX("readoutMin") < x("readoutMin")))
+			bad << code + QStringLiteral(": min's label not at the language's start");
+		if (rtl ? !(x("readoutA") > x("readoutB")) : !(x("readoutA") < x("readoutB")))
+			bad << code + QStringLiteral(": the pairs not from the start edge");
+		const QString atB = readoutText(phone, QStringLiteral("SINE"), "readoutB");
+		const QString delta = readoutText(phone, QStringLiteral("SINE"), "readoutDelta");
+		if (atB != QStringLiteral("\u2014") || delta != QStringLiteral("\u2014"))
+			bad << code + QStringLiteral(": no value reads \"%1\", \"%2\"").arg(atB, delta);
+		/* the gap between two pairs wider than a label's to its value */
+		const QQuickItem *bValue = within(row, QStringLiteral("readoutB"));
+		const QQuickItem *deltaValue = within(row, QStringLiteral("readoutDelta"));
+		if (bValue && deltaValue && bValue->parentItem() && deltaValue->parentItem()) {
+			const QRectF b = bValue->parentItem()->mapRectToScene(bValue->parentItem()->childrenRect());
+			const QRectF d = deltaValue->parentItem()->mapRectToScene(deltaValue->parentItem()->childrenRect());
+			const double gap = rtl ? b.left() - d.right() : d.left() - b.right();
+			if (std::fabs(b.top() - d.top()) < 1 && gap < 10) bad << code + QStringLiteral(": pairs %1 apart").arg(gap);
+		}
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, cursors: each readout's label and value one piece, A, B and B - A left to "
+			"right in Arabic too, a word's label at the language's start, the pairs from the start edge, 10 dp and more "
+			"apart; no value an em dash (%1)").arg(bad.isEmpty() ? QStringLiteral("so in English and Arabic") : bad.join(QStringLiteral("; "))));
 }
 
 /* a drag on A's handle moves A by the finger's time (its pixels in the view's seconds), B stays, the view stays */
@@ -3313,8 +3539,9 @@ void checkToolsTexts() {
 					colours.join(QStringLiteral(" | "))));
 }
 
-/* the pictures for the eye: the Chart screen with the cursors (two registers), the Monitor live and paused; both
- * languages and themes, portrait and landscape: <prefix>_<en|ar>_<dark|light>_<cursors|monitor|paused>_<orientation>.png */
+/* the pictures for the eye: the Chart screen with the cursors (two registers; six, and six scrolled to the readouts'
+ * end), the Monitor live and paused; both languages and themes, portrait and landscape:
+ * <prefix>_<en|ar>_<dark|light>_<cursors|cursors6|cursors6end|monitor|paused>_<orientation>.png */
 void saveToolsPictures(const QString &prefix) {
 	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 		language::apply(*qApp, code);
@@ -3335,6 +3562,26 @@ void saveToolsPictures(const QString &prefix) {
 				phone.tap(phone.item("cursorsButton"));
 				phone.settle(800);
 				phone.grab().save(name + QStringLiteral("cursors") + orient);
+				/* six lines: the readouts scroll (the fade at the foot), then scrolled to their end */
+				for (const char *reg : { "SUPPLY_I", "PRESSURE", "SETPOINT", "MOTOR_SPEED" }) {
+					const int row = modelRow(session, QLatin1String(reg));
+					if (session && row >= 0) session->setPlot(row, true);
+				}
+				phone.tap(phone.item("cursorsButton")); /* off; live again, so the new lines' samples come into view */
+				if (chart) chart->setLive(true);
+				QTest::qWait(4000);
+				phone.tap(phone.item("cursorsButton"));
+				phone.settle(800);
+				phone.grab().save(name + QStringLiteral("cursors6") + orient);
+				if (QQuickItem *flick = phone.item("readoutFlick")) {
+					flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->height()));
+					phone.settle(500);
+				}
+				phone.grab().save(name + QStringLiteral("cursors6end") + orient);
+				for (const char *reg : { "SUPPLY_I", "PRESSURE", "SETPOINT", "MOTOR_SPEED" }) {
+					const int row = modelRow(session, QLatin1String(reg));
+					if (session && row >= 0) session->setPlot(row, false);
+				}
 				phone.tap(phone.item("tabMonitor"));
 				QTest::qWait(1500);
 				phone.grab().save(name + QStringLiteral("monitor") + orient);
@@ -3606,6 +3853,9 @@ int main(int argc, char **argv) {
 	RUN(checkCursorButtons);
 	RUN(checkCursorDrag);
 	RUN(checkCursorReadouts);
+	RUN(checkCursorLateData);
+	RUN(checkCursorPanelScroll);
+	RUN(checkCursorPairs);
 	RUN(checkMonitorFrames);
 	RUN(checkMonitorEmpty);
 	RUN(checkToolsTexts);
@@ -3649,6 +3899,7 @@ int main(int argc, char **argv) {
 	RUN(checkOrientation);
 	RUN(checkHelpTopics);
 	RUN(checkBackOrder);
+	RUN(checkBackWhileOpening);
 	RUN(checkUsbBack);
 	RUN(checkDeviceLineAfterDisconnect);
 	RUN(checkTypedNumbers);

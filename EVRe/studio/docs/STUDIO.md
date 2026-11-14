@@ -7081,7 +7081,7 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   | **Clear** | every line's samples go; the lines stay |
   | **Fast&nbsp;lines** | with a map that has streams (Fast EVRe, 23.11): their channels (*ADC.I_LOAD (A)*), each on the chart or not. The first channel of a stream on the chart switches the stream on, the last one off switches it off; the blocks go into the stream's store, kept 5 min, and the line is binned by the desktop's `binFast` |
   | **No&nbsp;line** | the plot says *Plot a register from its ... menu on the Registers screen.* (and, with streams, *Or choose a stream's channel under Fast lines.*), with **Go to Registers** |
-  | **Cursors** | (part B.4) puts A at a third of the view and B at two thirds, and holds the view so the readouts stay; a second tap takes them off. Each cursor is a line over the plot with a round handle, 48 dp to the touch (A's at the plot's top, B's at its foot): a drag moves it along the time, inside the plot; the view does not move. The readouts sit beside the plot in landscape and under it in portrait (at most 40 % of the height, scrolled): A's and B's times and B - A, then per shown line its values at A and B, B - A, and **min**, **max** and **mean** over A..B, as the desktop's measurements (`statsOf`; `statsOfFast` for a fast line, whose mean needs its records: a dash over summaries), written as the legend writes a value. The labels are translated; the numbers, units and A, B stay as they are |
+  | **Cursors** | (part B.4) puts A and B where the lines have samples in view, at a quarter and three quarters of the span every shown line has samples in (of the span any has when they share none, of the view when there are none), and holds the view so the readouts stay: a view whose data starts late no longer puts A before the first sample; a second tap takes them off. Each cursor is a line over the plot with a round handle, 48 dp to the touch (A's at the plot's top, B's at its foot): a drag moves it along the time, inside the plot; the view does not move. The readouts sit beside the plot in landscape and under it in portrait (at most 40 % of the height); when they do not fit they scroll, with a scroll bar that stays shown and a fade over the edge that has more, so no row is left cut through its letters: A's and B's times and B - A, then per shown line its values at A and B, B - A, and **min**, **max** and **mean** over A..B, as the desktop's measurements (`statsOf`; `statsOfFast` for a fast line, whose mean needs its records: an em dash over summaries), written as the legend writes a value; where a line has no value, an em dash (an en dash beside *B - A* read as one more minus). The labels are translated; the numbers, units and A, B stay as they are. Each label and its value are one piece, apart from the next pair: A, B and B - A read left to right in Arabic too (*B 5.11 V*), a translated word at the language's start, and in Arabic the pairs run from the right |
 
   ```
   +--------------------------------------------+
@@ -8226,7 +8226,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 84 (26.11), 1198. The
+the phone test's 88 (26.11), 1202. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8710,9 +8710,12 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | fast&nbsp;lines | `maps/example_fast.json` against `evre_fake_fast`: Fast lines lists ADC.I_LOAD (A) and ADC.V_BUS (V); one chosen switches the stream on, its bins equal `binFast`'s, drawn in its colour inside the plot |
 | empty&nbsp;chart | no line: the plot says how to plot one; Go to Registers shows the Registers screen |
 | chart&nbsp;themes | a line in the theme's first series colour, its chip on the surface with its name in the text colour, dark and light |
-| cursors | the Cursors button puts A at a third of the view and B at two thirds and holds it; A drawn there, the handles 48 dp, A's over B's; the readouts shown; a second tap takes them off |
+| cursors | the Cursors button puts A at a quarter and B at three quarters of the samples in view and holds it; A drawn there, the handles 48 dp, A's over B's; the readouts shown; a second tap takes them off |
 | cursor&nbsp;drag | a drag of A's handle by 120 px moves A by the view's seconds of 120 px; B and the view stay |
 | readouts | each line's values at A and B, B - A, min, max and mean equal `statsOf` over A..B, written as the legend writes a value; the times and B - A |
+| late&nbsp;data | two lines starting at 6 s and 7 s of a 0 to 10 s view: A and B at 7.75 s and 9.25 s, every readout of both lines a value |
+| readouts&nbsp;scroll | six lines, landscape and portrait: the content holds every row, the scroll bar stays shown, a fade at the edge with more; a finger scrolls the last row fully into view |
+| readout&nbsp;pairs | English and Arabic: A, B and B - A label first, left to right; *min*'s label at the language's start; the pairs from the start edge, 10 dp and more apart; no value an em dash |
 | Monitor&nbsp;frames | the fake device's frames arrive while the screen shows (time, TX or RX, hex bytes); Pause holds them (none in 1.2 s, the engine writes none), Resume goes on, Clear empties, another screen stops them |
 | Monitor&nbsp;empty | not connected: it says so, and Connect… opens the drawer |
 | infinite&nbsp;values | a fast line's float channel with +inf, -inf and NaN among its values: the frame is made (the ticks' loop ends), Y stays finite, the value labels there |
@@ -8762,13 +8765,14 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | service | through a stand-in for Android (`setSystemBridgeForTests`): the service up while a link is wanted with the link's state, the recording's time in it once a second, back to the link's state when it stops, gone after Disconnect; the screen kept on while connected, let go with the setting off (saved) |
 | orientation | each tab asks for its own: the Chart and the Monitor landscape, the Registers and the Log portrait |
 | Help | the drawer's Help: every topic of the desktop's Help, each page in English and in Arabic with the topic's title; back goes to the list; the list's texts inside their rows |
-| back | Android's back closes a Help page to its list, the Help, the drawer, the write sheet; with nothing open it is not taken (Android leaves the app) |
+| back | Android's back closes a Help page to its list, the Help, the drawer, the write sheet, each waited for by its state (`opened`, `visible`), not a time; with nothing open it is not taken (Android leaves the app) |
+| back&nbsp;in&nbsp;a&nbsp;slide | a back while the drawer or the Help is still sliding in (not yet `opened`) closes it, not left to Android |
 | USB&nbsp;back | the board reset comes back under another name: the retry opens it by its USB IDs, connected again, the new name saved and in the Log |
 | device&nbsp;line | a device that never answers DEVICE_ID, then Disconnect: the drawer says *Device ID not read yet*, the cancelled read no error in the Log |
 | typed&nbsp;numbers | the write sheet: *1,5* writes 1.5, Arabic digits (*١٢*, *۴۵*) 12 and 45, *0x1A* as typed (26) |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (84 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (88 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `help` (its topics), `helppage` (a page), `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,
@@ -8776,8 +8780,8 @@ It ends with "N passed, 0 failed" (84 checks); the exit code is 0 when all pass,
 `enum`; at 915 x 412 `land_registers`, `land_sheet`, `land_drawer`, `land_log` and `landscape`; and the chart's test
 feed 12 s in, `chartdemo` (landscape) and `chartdemo_portrait`; and the Chart screen at both sizes,
 `chart_<case>_<portrait|landscape>`: `empty`, `two` (SUPPLY_V and TEMPERATURE plotted, live), `hidden` (TEMPERATURE
-hidden), `manual` (Y 0 to 30), `ysheet` and `chipmenu`; then `cursors` (two registers, the cursors on), `monitor` and
-`paused` at both sizes. With `EVRE_PHONE_ONLY=shots` it saves them without running the checks; with another text only
+hidden), `manual` (Y 0 to 30), `ysheet` and `chipmenu`; then `cursors` (two registers, the cursors on), `cursors6`
+(six, the readouts scrolling), `cursors6end` (scrolled to their end), `monitor` and `paused` at both sizes. With `EVRE_PHONE_ONLY=shots` it saves them without running the checks; with another text only
 the checks whose function's name holds it (and only the pictures of the chart, or of the cursors and the Monitor).
 
 ## 27. Design decisions and pitfalls

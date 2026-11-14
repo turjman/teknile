@@ -7,10 +7,11 @@
 // time, a drag looks back (and holds), a double tap goes live again. Time runs left to right in Arabic too: the plot,
 // its labels and the legend are never mirrored. The lines come from PhoneSession (the registers plotted on the
 // Registers screen, the fast channels chosen here); with none, the plot says how to plot one, with a button to the
-// Registers screen. Cursors (B.4): the Cursors button puts A and B on the view (a third and two thirds of it) and holds
-// it; each is dragged by its round handle (48 dp; A's at the plot's top, B's at its foot); the readouts beside the plot
-// (under it in portrait) give A's and B's times and B - A, and per line its values at A and B, B - A, and min, max and
-// mean over A..B (ChartItem's readouts: the desktop's statsOf). With demo (Main.qml's chartDemo) the chart's test feed draws 8 lines at 1,000 Hz (chart_demo.h).
+// Registers screen. Cursors (B.4): the Cursors button puts A and B where the lines have samples in view (a quarter and
+// three quarters of that span) and holds the view; each is dragged by its round handle (48 dp; A's at the plot's top,
+// B's at its foot); the readouts beside the plot (under it in portrait; scrolled, with a scroll bar and a fade at an
+// edge with more) give A's and B's times and B - A, and per line its values at A and B, B - A, and min, max and mean
+// over A..B (ChartItem's readouts: the desktop's statsOf; an em dash where a line has no value). With demo (Main.qml's chartDemo) the chart's test feed draws 8 lines at 1,000 Hz (chart_demo.h).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -41,26 +42,41 @@ Item {
         noticeTimer.restart()
     }
 
-    // a readout: its label (translated, muted) and its value (a number and unit, left to right)
-    component Pair: Row {
+    // a readout: its label (translated, muted) and its value (a number and unit, left to right), one piece read as its
+    // text would be: a symbol's (A, B, B - A) left to right in every language ("B 5.11 V"), a word's in the
+    // language's direction (in Arabic the word at the right). The gap to the next pair (12) is on the side the pairs
+    // run to and far wider than the label's to its value (4), so a value is never read with the next pair's label.
+    component Pair: Item {
+        id: pair
         property string label
         property string value
         property string valueName: "readoutValue"
         property string labelName: "readoutLabel"
-        spacing: 4
-        Text {
-            objectName: parent.labelName
-            text: parent.label
-            color: PhoneTheme.muted
-            font.pixelSize: 12
-            anchors.baseline: valueText.baseline
-        }
-        Text {
-            id: valueText
-            objectName: parent.valueName
-            text: parent.value
-            color: PhoneTheme.text
-            font.pixelSize: 13
+        property bool symbol: false
+        readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
+        objectName: "readoutPair"
+        implicitWidth: pairRow.implicitWidth + 12
+        implicitHeight: pairRow.implicitHeight
+        Row {
+            id: pairRow
+            objectName: "readoutPairRow"
+            x: pair.rtl ? 12 : 0
+            spacing: 4
+            LayoutMirroring.enabled: pair.rtl && !pair.symbol
+            Text {
+                objectName: pair.labelName
+                text: pair.label
+                color: PhoneTheme.muted
+                font.pixelSize: 12
+                anchors.baseline: valueText.baseline
+            }
+            Text {
+                id: valueText
+                objectName: pair.valueName
+                text: pair.value
+                color: PhoneTheme.text
+                font.pixelSize: 13
+            }
         }
     }
 
@@ -576,7 +592,10 @@ Item {
                 clip: true
                 contentHeight: readoutColumn.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
-                ScrollIndicator.vertical: ScrollIndicator {}
+                // more rows than room: a scroll bar that stays (not only while moving), and a fade over each edge
+                // that has more, so a row cut by the edge reads as more to scroll, not as a cut text
+                readonly property bool overflows: contentHeight > height + 0.5
+                ScrollBar.vertical: readoutBar
                 ColumnLayout {
                     id: readoutColumn
                     width: readoutFlick.width
@@ -584,10 +603,10 @@ Item {
                     Flow {
                         objectName: "readoutTimes"
                         Layout.fillWidth: true
-                        spacing: 14
-                        Pair { label: "A"; labelName: "cursorName"; valueName: "readoutTimeA"; value: chart.cursorAText }
-                        Pair { label: "B"; labelName: "cursorName"; valueName: "readoutTimeB"; value: chart.cursorBText }
-                        Pair { label: "B \u2212 A"; labelName: "cursorName"; valueName: "readoutSpan"; value: chart.cursorSpanText }
+                        spacing: 2
+                        Pair { label: "A"; symbol: true; labelName: "cursorName"; valueName: "readoutTimeA"; value: chart.cursorAText }
+                        Pair { label: "B"; symbol: true; labelName: "cursorName"; valueName: "readoutTimeB"; value: chart.cursorBText }
+                        Pair { label: "B \u2212 A"; symbol: true; labelName: "cursorName"; valueName: "readoutSpan"; value: chart.cursorSpanText }
                     }
                     Repeater {
                         model: chart.readouts
@@ -631,15 +650,44 @@ Item {
                             }
                             Flow {
                                 Layout.fillWidth: true
-                                spacing: 14
-                                Pair { label: "A"; labelName: "cursorName"; valueName: "readoutA"; value: readout.atA }
-                                Pair { label: "B"; labelName: "cursorName"; valueName: "readoutB"; value: readout.atB }
-                                Pair { label: "B \u2212 A"; labelName: "cursorName"; valueName: "readoutDelta"; value: readout.delta }
+                                spacing: 2
+                                Pair { label: "A"; symbol: true; labelName: "cursorName"; valueName: "readoutA"; value: readout.atA }
+                                Pair { label: "B"; symbol: true; labelName: "cursorName"; valueName: "readoutB"; value: readout.atB }
+                                Pair { label: "B \u2212 A"; symbol: true; labelName: "cursorName"; valueName: "readoutDelta"; value: readout.delta }
                                 Pair { label: qsTr("min"); valueName: "readoutMin"; value: readout.min }
                                 Pair { label: qsTr("max"); valueName: "readoutMax"; value: readout.max }
                                 Pair { label: qsTr("mean"); valueName: "readoutMean"; value: readout.mean }
                             }
                         }
+                    }
+                }
+            }
+            ScrollBar {
+                id: readoutBar
+                objectName: "readoutBar"
+                anchors.top: readoutFlick.top
+                anchors.bottom: readoutFlick.bottom
+                anchors.right: parent.right
+                anchors.rightMargin: 2
+                policy: readoutFlick.overflows ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+            }
+            Repeater {
+                model: 2 // the top's fade (more above) and the foot's (more below)
+                Rectangle {
+                    id: fade
+                    required property int index
+                    readonly property bool foot: index === 1
+                    readonly property color clear: Qt.rgba(PhoneTheme.surface.r, PhoneTheme.surface.g,
+                                                           PhoneTheme.surface.b, 0)
+                    objectName: foot ? "readoutFadeFoot" : "readoutFadeTop"
+                    anchors.left: readoutFlick.left
+                    anchors.right: readoutFlick.right
+                    y: foot ? readoutFlick.y + readoutFlick.height - height : readoutFlick.y
+                    height: 22
+                    visible: readoutFlick.overflows && (foot ? !readoutFlick.atYEnd : !readoutFlick.atYBeginning)
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: fade.foot ? fade.clear : PhoneTheme.surface }
+                        GradientStop { position: 1; color: fade.foot ? PhoneTheme.surface : fade.clear }
                     }
                 }
             }

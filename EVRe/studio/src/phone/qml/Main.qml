@@ -260,19 +260,25 @@ ApplicationWindow {
     // Android's back (phone_app.cpp hands it here first): what is open closes, the topmost first; false: nothing was,
     // and Android has the back (the app goes to the background)
     function back() {
-        if (helpScreen.opened) {
+        if (showing(helpScreen)) {
             helpScreen.back()
             return true
         }
-        if (writeSheet.opened) {
+        if (showing(writeSheet)) {
             writeSheet.close()
             return true
         }
-        if (drawer.opened) {
+        if (showing(drawer)) {
             drawer.close()
             return true
         }
         return false
+    }
+    // a popup on the screen and not on its way out: also while it is still coming in (`opened` is true only once its
+    // transition has ended, so a back in the drawer's slide, or a finger's drag of it, went to Android and the app
+    // went to the background with the drawer half open)
+    function showing(popup) {
+        return popup.visible && !(popup.exit && popup.exit.running)
     }
 
     // each screen's orientation (A-16): the Chart and the Monitor across, the Registers and the Log upright; the proof
