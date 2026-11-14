@@ -4844,6 +4844,12 @@ void checkMonitorKinds() {
 	}
 	if (!named.contains(QStringLiteral("READ")) || !named.contains(QStringLiteral("READ_RESP")))
 		bad << QStringLiteral("labels: %1").arg(QStringList(named.begin(), named.end()).join(QLatin1Char(',')));
+	/* a long frame's bytes wrap before the chevron, never under it */
+	for (QQuickItem *row : visibleNamed(list, QStringLiteral("frameRow"))) {
+		const QQuickItem *bytes = within(row, QStringLiteral("frameBytes")), *chevron = within(row, QStringLiteral("frameChevron"));
+		if (bytes && chevron && chevron->isVisible() && sceneRect(bytes).right() > sceneRect(chevron).left() + 0.5)
+			bad << QStringLiteral("bytes to %1 under the chevron at %2").arg(sceneRect(bytes).right()).arg(sceneRect(chevron).left());
+	}
 	QQuickItem *tx = phone.item("monitorTx"), *rx = phone.item("monitorRx");
 	const int sent = frames ? frames->sentCount() : 0, received = frames ? frames->receivedCount() : 0;
 	if (!tx || !rx || tx->property("count").toInt() != sent || rx->property("count").toInt() != received || sent == 0)
@@ -4863,8 +4869,8 @@ void checkMonitorKinds() {
 	phone.tap(rx);
 	if (session) session->disconnectLink();
 	QSettings().remove(QStringLiteral("phone/monitorSides"));
-	check(bad.isEmpty(), QStringLiteral("phone, Monitor: each frame's function a label in its kind's colour (%1), TX and "
-			"RX chips with their counts filter the frames and are kept, both off it says so %2")
+	check(bad.isEmpty(), QStringLiteral("phone, Monitor: each frame's function a label in its kind's colour (%1), the bytes "
+			"clear of the chevron, TX and RX chips with their counts filter the frames and are kept, both off it says so %2")
 			.arg(QStringList(named.begin(), named.end()).join(QStringLiteral(", ")), bad.join(QStringLiteral(" | "))));
 }
 
@@ -5132,7 +5138,9 @@ void savePartBPictures(const QString &prefix) {
 				QQuickItem *request = nullptr;
 				for (QQuickItem *row : visibleNamed(phone.item("monitorList"), QStringLiteral("frameRow"))) {
 					const QQuickItem *type = within(row, QStringLiteral("frameType"));
-					if (!request && type && type->property("text").toString() == QLatin1String("READ")) request = row;
+					if (!request && type && type->property("text").toString() == QLatin1String("READ") && sceneRect(row).top() > 120
+							&& sceneRect(row).bottom() < phone.window->height() - 80)
+						request = row;
 				}
 				phone.tap(request);
 				phone.settle(700);

@@ -156,7 +156,8 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.leftMargin: 16
-                    anchors.rightMargin: 16
+                    // the chevron's room at the end: the bytes never run under it
+                    anchors.rightMargin: 28
                     anchors.topMargin: 6
                     spacing: 2
                     Row {
@@ -222,6 +223,7 @@ Item {
                 }
                 // a frame opens: a chevron at its end says so
                 PhoneIcon {
+                    objectName: "frameChevron"
                     anchors.right: parent.right
                     anchors.rightMargin: 4
                     anchors.verticalCenter: parent.verticalCenter

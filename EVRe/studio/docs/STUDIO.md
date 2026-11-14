@@ -8924,7 +8924,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | empty&nbsp;search | *No match* with **Clear the search**, which shows every register again |
 | headers&nbsp;over&nbsp;rows | the list scrolled down a step at a time, connected: no group header lies over a row in view (a header kept at the top cut a row's value on a phone) |
 | Log&nbsp;levels | (part B) a line of each level: its icon (info, warn, error) and text in the level's colours, the time in the fixed-pitch family beside the text; the chips' counts; Info off hides its lines (struck through, kept, back in a new window); Copy the lines shown with WARN and ERROR; every level off says so, Show all levels |
-| Monitor&nbsp;kinds | READ labelled in the accent, READ_RESP in green; the TX and RX chips' counts the model's; TX off leaves the RX frames alone and is kept; both off says so |
+| Monitor&nbsp;kinds | READ labelled in the accent, READ_RESP in green; the bytes wrap before the chevron; the TX and RX chips' counts the model's; TX off leaves the RX frames alone and is kept; both off says so |
 | frame&nbsp;sheet | a tap on a READ_RESP opens its sheet: START to END in order, FUNCTION READ_RESP, OFFSET with a register's name, CRC OK, the Dump's words under each; back closes it; an ERROR_RESP's *ERROR 4 offset out of range*, a READ's *0xD000 · UPTIME* and computed CRC, a wrong CRC not spelled out |
 | motion | a tab's screen fades and slides in (under way 40 ms after, done after), the register sheet slides up; with the animator scale 0 (a stand-in for Android) `motion` off, both there at once |
 | haptics | through the stand-in: one buzz when the link comes up, one when the device takes a write, none for a write not sent (writes off) |
