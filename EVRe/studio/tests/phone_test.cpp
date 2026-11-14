@@ -34,9 +34,10 @@
  * The cursors and the Monitor (B.4): placed by the Cursors button, A dragged by its handle, the readouts against
  * statsOf; the fake device's frames, Pause, Clear, the empty state; texts in both languages and themes. Their pictures:
  * <prefix>_<en|ar>_<dark|light>_<cursors|cursors6|cursors6end|monitor|paused>_<portrait|landscape>.png.
- * The Chart screen's pictures too: <prefix>_<en|ar>_<dark|light>_chart_<empty|two|hidden|manual|ysheet|chipmenu>_
- * <portrait|landscape>.png. EVRE_PHONE_ONLY=<text> (other than shots): only the checks whose function's name holds it,
- * and with a prefix only the chart's pictures.
+ * The Chart screen's pictures too: <prefix>_<en|ar>_<dark|light>_chart_<empty|two|hidden|manual|ysheet|chipmenu|six|
+ * sixend|cardmenu>_<portrait|landscape>.png (six: six lines, the legend scrolling; sixend: scrolled to its end;
+ * cardmenu: a card's "..." menu on the Registers screen). EVRE_PHONE_ONLY=<text> (other than shots): only the checks
+ * whose function's name holds it, and with a prefix only the chart's pictures.
  *
  * Exit code: 0 all passed, 1 a check failed. */
 #include <QClipboard>
@@ -722,6 +723,8 @@ void pinch(const Phone &phone, QQuickItem *on, double from, double middle, doubl
 		}
 	};
 	spreadTo(from, middle, 10);
+	/* the last move handled before the reading (a Windows runner read the window one step early: 48.3 s for 46.5) */
+	QTest::qWait(50);
 	atMiddle();
 	spreadTo(middle, to, 20);
 	QTest::touchEvent(phone.window, fingers).release(0, at(to, -1), phone.window.data()).release(1, at(to, 1), phone.window.data());
@@ -2374,7 +2377,9 @@ void checkService() {
 	PhoneSession::setSystemBridgeForTests(nullptr);
 }
 
-/* each tab's orientation (A-16): the Chart and the Monitor across, the Registers and the Log upright */
+/* each tab's orientation (A-16): the Chart and the Monitor across, the Registers and the Log as the phone is held
+ * (Android's unspecified: "any" here, the session's orientation ""), so going back from the Chart does not turn the
+ * phone upright */
 void checkOrientation() {
 	FakeSystem system;
 	PhoneSession::setSystemBridgeForTests(&system);
@@ -2384,17 +2389,18 @@ void checkOrientation() {
 		Phone phone(PORTRAIT);
 		PhoneSession *session = phone.session();
 		const char *tabs[] = { "tabChart", "tabRegisters", "tabMonitor", "tabLog" };
-		const char *wanted[] = { "landscape", "portrait", "landscape", "portrait" };
+		const char *wanted[] = { "landscape", "any", "landscape", "any" };
 		for (int i = 0; i < 4; ++i) {
 			phone.tap(phone.item(tabs[i]));
 			const QString asked = system.orientations.isEmpty() ? QString() : system.orientations.constLast();
+			const QLatin1String held(i % 2 == 0 ? "landscape" : "");
 			seen << QStringLiteral("%1 %2").arg(QLatin1String(tabs[i]).mid(3), asked);
-			ok = ok && asked == QLatin1String(wanted[i]) && session && session->orientation() == QLatin1String(wanted[i]);
+			ok = ok && asked == QLatin1String(wanted[i]) && session && session->orientation() == held;
 		}
 	}
 	PhoneSession::setSystemBridgeForTests(nullptr);
 	check(ok, QStringLiteral("phone, orientation: each tab asks Android for its own: the Chart and the Monitor landscape, the "
-			"Registers and the Log portrait (%1)").arg(seen.join(QStringLiteral(", "))));
+			"Registers and the Log any, as the phone is held (%1)").arg(seen.join(QStringLiteral(", "))));
 }
 
 bool helpOpen(const Phone &phone) {
@@ -3209,8 +3215,9 @@ void checkChartLegendThemes() {
 			"surface with its name in the text colour, dark and light (%1)").arg(seen.join(QStringLiteral("; "))));
 }
 
-/* the chart's pictures for the eye: two plotted registers, a hidden line, Manual Y, the empty state; both themes and
- * languages, portrait and landscape: <prefix>_<en|ar>_<dark|light>_chart_<case>_<portrait|landscape>.png */
+/* the chart's pictures for the eye: two plotted registers, a hidden line, Manual Y, the empty state, a chip's menu, six
+ * lines (the legend at its start and at its end), a card's menu; both themes and languages, portrait and landscape:
+ * <prefix>_<en|ar>_<dark|light>_chart_<case>_<portrait|landscape>.png */
 void saveChartPictures(const QString &prefix) {
 	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 		language::apply(*qApp, code);
@@ -3255,6 +3262,28 @@ void saveChartPictures(const QString &prefix) {
 				(void) QTest::qWaitFor([&] { return menu && menu->property("opened").toBool(); }, 3000);
 				phone.settle(300);
 				phone.grab().save(name + QStringLiteral("chipmenu") + orient);
+				if (menu) QMetaObject::invokeMethod(menu, "close");
+				(void) QTest::qWaitFor([&] { return menu && !menu->property("visible").toBool(); }, 3000);
+				/* six lines: the legend scrolls (the fade at its end), then scrolled to its end */
+				if (chart) chart->setProperty("yAuto", true);
+				for (const char *reg : { "SUPPLY_I", "PRESSURE", "SETPOINT", "MOTOR_SPEED" }) {
+					const int more = modelRow(session, QLatin1String(reg));
+					if (session && more >= 0) session->setPlot(more, true);
+				}
+				QTest::qWait(4000);
+				phone.grab().save(name + QStringLiteral("six") + orient);
+				if (QObject *legend = phone.object("legendView")) QMetaObject::invokeMethod(legend, "positionViewAtEnd");
+				phone.settle(500);
+				phone.grab().save(name + QStringLiteral("sixend") + orient);
+				/* a card's "..." menu on the Registers screen */
+				phone.tap(phone.item("tabRegisters"));
+				search(phone, QStringLiteral("SUPPLY_V"));
+				phone.tap(within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("moreButton")));
+				QObject *cardMenu = phone.object("moreMenu");
+				(void) QTest::qWaitFor([&] { return cardMenu && cardMenu->property("opened").toBool(); }, 3000);
+				phone.settle(300);
+				phone.grab().save(name + QStringLiteral("cardmenu") + orient);
+				if (cardMenu) QMetaObject::invokeMethod(cardMenu, "close");
 				if (session) session->disconnectLink();
 			}
 		}
@@ -3867,6 +3896,209 @@ void checkChartButtonsStay() {
 					"chosen one went unmarked)"));
 }
 
+/* ---- B.6: the plot's room in landscape, the legend's scroll, the menus inside the window */
+
+/* `count` lines fed from the test (sines at 1 kHz over 0 .. 10 s, named as chartWithLines names them) in a 10 s view,
+ * without the cursors */
+ChartItem *chartWithFedLines(const Phone &phone, int count) {
+	ChartItem *chart = showFedChart(phone);
+	if (!chart) return nullptr;
+	static const char *const names[] = { "SINE", "DOUBLE", "THIRD", "FOURTH", "FIFTH", "SIXTH" };
+	static const char *const units[] = { "V", "A", "W", "°C", "Hz", "%" };
+	static const QColor colours[] = { SINE_COLOUR, Qt::cyan, Qt::magenta, Qt::yellow, Qt::green, Qt::red };
+	chart->setWindowSeconds(10);
+	for (int i = 0; i < count && i < 6; ++i) {
+		QVector<double> times, values;
+		for (int k = 0; k <= 10000; ++k) {
+			times << k / 1000.0;
+			values << (i + 1) * (2.0 + 1.5 * std::sin(2 * M_PI * 0.5 * k / 1000.0));
+		}
+		chart->addLine(i + 1, colours[i], QString::fromLatin1(names[i]), QString::fromUtf8(units[i]));
+		chart->appendSamples(i + 1, times, values);
+	}
+	chartFrame(phone, chart, 3);
+	phone.settle(300);
+	return chart;
+}
+
+/* an item's rect in the window's logical pixels */
+QRectF sceneRect(const QQuickItem *item) {
+	return item ? QRectF(item->mapToScene(QPointF(0, 0)), QSizeF(item->width(), item->height())) : QRectF();
+}
+
+/* the owner's phone across (2340 x 1080 px at 450 dpi: 832 x 384 dp, 354 under the status bar): the plot had 260 of
+ * 1080 px. At 832 x 384, under the status bar and at the test's landscape size, in English and Arabic, with two lines:
+ * the chart's area (the plot and its labels) is at least 45 % of the window's height; every button of the controls
+ * shows, inside the window, at least 48 x 48 dp, its text whole, none over another or over the legend; the gesture line
+ * hidden. Upright, the gesture line still shows */
+void checkChartLandscapeRoom() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		for (QSize size : { QSize(832, 384), QSize(755, 354), LANDSCAPE }) {
+			Phone phone(size);
+			ChartItem *chart = chartWithFedLines(phone, 2);
+			const QQuickItem *area = phone.item("chartArea");
+			const double share = area && phone.window ? area->height() / phone.window->height() : 0;
+			const QString where = QStringLiteral("%1 %2").arg(code, sizeText(size));
+			if (!chart || share < 0.45)
+				bad << QStringLiteral("%1: the plot %2 % of the height").arg(where).arg(share * 100, 0, 'f', 1);
+			QList<QRectF> taken;
+			QStringList widths;
+			for (const char *name : { "liveButton", "holdButton", "window10", "window60", "window300", "yAutoSwitch",
+						 "cursorsButton", "chartClear" }) {
+				const QQuickItem *button = phone.item(name);
+				const QRectF r = sceneRect(button);
+				const bool whole = button && button->property("implicitContentWidth").toDouble()
+						+ button->property("leftPadding").toDouble() + button->property("rightPadding").toDouble()
+						<= button->width() + 0.5;
+				bool over = false;
+				for (const QRectF &other : taken) over = over || other.intersected(r).width() > 0.5;
+				taken << r;
+				widths << QString::number(r.width(), 'f', 0);
+				if (!button || !button->isVisible() || r.width() < 47.5 || r.height() < 47.5 || r.left() < -0.5
+						|| r.right() > size.width() + 0.5 || !whole || over)
+					bad << QStringLiteral("%1: %2 %3 x %4 at %5 (text whole %6, over another %7)").arg(where, QLatin1String(name))
+							.arg(r.width()).arg(r.height()).arg(r.left()).arg(whole).arg(over);
+			}
+			const QRectF legend = sceneRect(phone.item("legendView"));
+			for (const QRectF &r : taken)
+				if (r.intersected(legend).width() > 0.5) bad << QStringLiteral("%1: a button over the legend").arg(where);
+			const QQuickItem *hint = phone.item("chartHint");
+			if (hint && hint->isVisible()) bad << QStringLiteral("%1: the gesture line shows").arg(where);
+			const QQuickItem *top = phone.item("chartTop");
+			seen << QStringLiteral("%1: plot %2 of %3 (%4 %), buttons %6, legend %5, rows above %7").arg(where)
+							.arg(area ? area->height() : 0)
+							.arg(size.height()).arg(share * 100, 0, 'f', 0)
+							.arg(top && top->property("columns").toInt() == 2 ? QStringLiteral("beside the controls")
+																			   : QStringLiteral("on its own row"))
+							.arg(widths.join(QLatin1Char('+'))).arg(top ? top->height() : 0);
+		}
+		Phone upright(PORTRAIT);
+		chartWithFedLines(upright, 2);
+		const QQuickItem *hint = upright.item("chartHint");
+		if (!hint || !hint->isVisible()) bad << code + QStringLiteral(" portrait: the gesture line hidden");
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, chart across: the plot at least 45 % of the window's height, every button "
+			"of the controls shown whole and 48 dp to the touch, none over another or the legend, the gesture line upright "
+			"only (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* the owner's phone: with many lines the last chip was cut at the screen's edge ("SETPOIN") and nothing said the row
+ * scrolls. Six lines, across and upright, English and Arabic: the row's content is wider than its view, a fade at its
+ * end (none at its start); a finger scrolls it to the end: the last chip whole inside the view, the end's fade gone,
+ * the start's shown, no line hidden by the drags */
+void checkChartLegendScroll() {
+	QStringList seen;
+	bool ok = true;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		for (QSize size : { LANDSCAPE, PORTRAIT }) {
+			Phone phone(size);
+			ChartItem *chart = chartWithFedLines(phone, 6);
+			QQuickItem *legend = phone.item("legendView");
+			QQuickItem *endFade = phone.item("legendFadeEnd"), *startFade = phone.item("legendFadeStart");
+			const double contentWidth = legend ? legend->property("contentWidth").toDouble() : 0;
+			const double width = legend ? legend->width() : 0;
+			const QRectF view = sceneRect(legend);
+			const bool endShown = endFade && endFade->isVisible() && sceneRect(endFade).right() >= view.right() - 0.5;
+			const bool startHidden = startFade && !startFade->isVisible();
+			for (int i = 0; i < 10 && legend && !legend->property("atXEnd").toBool(); ++i)
+				dragItem(phone, legend, -width * 0.6);
+			phone.settle(300);
+			const QRectF last = sceneRect(chip(phone, QStringLiteral("SIXTH")));
+			const bool lastWhole = !last.isEmpty() && last.left() >= view.left() - 0.5 && last.right() <= view.right() + 0.5;
+			const bool endGone = endFade && !endFade->isVisible();
+			const bool startShown = startFade && startFade->isVisible() && sceneRect(startFade).left() <= view.left() + 0.5;
+			int hidden = 0;
+			forEachItem(legend, [&](QQuickItem *item) {
+				if (item->objectName() == QLatin1String("legendChip")) hidden += !item->property("shown").toBool();
+			});
+			const bool good = chart && contentWidth > width + 0.5 && endShown && startHidden && lastWhole && endGone
+					&& startShown && hidden == 0;
+			seen << QStringLiteral("%1 %2: content %3 in %4, fade at the end %5 (start %6); scrolled: the last chip %7 .. %8 "
+								   "in %9 .. %10, end's fade gone %11, start's shown %12, hidden %13")
+							.arg(code, size == LANDSCAPE ? QStringLiteral("landscape") : QStringLiteral("portrait"))
+							.arg(contentWidth, 0, 'f', 0).arg(width, 0, 'f', 0).arg(endShown).arg(!startHidden)
+							.arg(last.left(), 0, 'f', 0).arg(last.right(), 0, 'f', 0).arg(view.left(), 0, 'f', 0)
+							.arg(view.right(), 0, 'f', 0).arg(endGone).arg(startShown).arg(hidden);
+			ok = ok && good;
+		}
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(ok, QStringLiteral("phone, legend: six lines' chips scroll sideways and show it: a fade at the end with more, at "
+			"the start once scrolled, the last chip reached whole (%1)").arg(seen.join(QStringLiteral("; "))));
+}
+
+/* the owner's phone: a card's "..." menu touched the screen's right edge, and its dark face had no edge on the dark
+ * page. English and Arabic, dark and light: a card's menu (upright) and a legend chip's (the second of two, across)
+ * lie inside the window less 8 dp, under their button; a card's grows toward the middle (its end at the button's end
+ * in English, its start at the button's start in Arabic); the face has an edge in the control colour, 3:1 or more to
+ * the page, seen in the picture */
+void checkMenuInside() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		const bool rtl = code == QLatin1String("ar");
+		for (bool dark : { true, false }) {
+			QSettings().setValue(QStringLiteral("ui/dark"), dark);
+			const ThemeColors colors = Theme::colorsFor(dark);
+			const QString where = QStringLiteral("%1 %2").arg(code, dark ? "dark" : "light");
+			auto inspect = [&](const Phone &phone, const char *menuName, const QQuickItem *button, const QString &what,
+								  bool alignEnds) {
+				QObject *menu = phone.object(menuName);
+				const bool opened = menu && QTest::qWaitFor([&] { return menu->property("opened").toBool(); }, 3000);
+				phone.settle(200);
+				const QQuickItem *face = menu ? menu->property("background").value<QQuickItem *>() : nullptr;
+				const QObject *border = face ? face->property("border").value<QObject *>() : nullptr;
+				const QRectF r = sceneRect(face), b = sceneRect(button);
+				const QRectF room(8, 8, phone.window->width() - 16, phone.window->height() - 16);
+				const bool inside = !r.isEmpty() && room.adjusted(-0.5, -0.5, 0.5, 0.5).contains(r);
+				const bool under = r.top() >= b.bottom() - 0.5 || r.bottom() <= b.top() + 0.5;
+				const bool side = !alignEnds
+						|| (rtl ? std::fabs(r.left() - b.left()) <= 1 : std::fabs(r.right() - b.right()) <= 1);
+				const QColor edge = border ? border->property("color").value<QColor>() : QColor();
+				const double edgeWidth = border ? border->property("width").toDouble() : 0;
+				const QColor drawn = Phone::pixel(phone.grab(), QPointF(r.left() + 0.5, r.center().y()));
+				const bool edged = edgeWidth >= 1 && edge == colors.control && contrast(edge, colors.bg) >= 3.0
+						&& near(drawn, colors.control, 12);
+				seen << QStringLiteral("%1 %2: %3,%4 %5 x %6 (button %7 .. %8), edge %9 drawn %10")
+								.arg(where, what).arg(r.left()).arg(r.top()).arg(r.width()).arg(r.height()).arg(b.left())
+								.arg(b.right()).arg(edge.name(), drawn.name());
+				if (!opened || !inside || !under || !side || !edged)
+					bad << QStringLiteral("%1 %2: opened %3, inside %4, under %5, toward the middle %6, edge %7")
+								   .arg(where, what).arg(opened).arg(inside).arg(under).arg(side).arg(edged);
+				if (menu) QMetaObject::invokeMethod(menu, "close");
+				(void) QTest::qWaitFor([&] { return menu && !menu->property("visible").toBool(); }, 3000);
+			};
+			{
+				Phone phone(PORTRAIT);
+				search(phone, QStringLiteral("SUPPLY_V"));
+				QQuickItem *more = within(card(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("moreButton"));
+				phone.tap(more);
+				inspect(phone, "moreMenu", more, QStringLiteral("card"), true);
+				search(phone, QString());
+			}
+			{
+				Phone phone(LANDSCAPE);
+				chartWithFedLines(phone, 2);
+				/* the last chip's, at the legend's end (beside the controls it may start out of view) */
+				if (QObject *legend = phone.object("legendView")) QMetaObject::invokeMethod(legend, "positionViewAtEnd");
+				phone.settle(200);
+				QQuickItem *more = within(chip(phone, QStringLiteral("DOUBLE")), QStringLiteral("chipMore"));
+				phone.tap(more);
+				inspect(phone, "chipMenu", more, QStringLiteral("chip"), false);
+			}
+		}
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, menus: a card's and a chip's \"...\" menu inside the window less 8 dp, under "
+			"the button, a card's grown toward the middle (mirrored in Arabic), an edge in the control colour drawn on the "
+			"page, dark and light (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
 /* EVRE_PHONE_SHOT: both languages and themes. Portrait: the start (not connected) and its drawer, connected (the
  * drawer, the Log, the Registers screen, a search, the write sheet after a write, asking first, an enum's list, the
  * sheet and the drawer over a keyboard stood for, drawn grey); landscape: the Registers screen, the drawer, the sheet,
@@ -4057,6 +4289,9 @@ int main(int argc, char **argv) {
 	RUN(checkChartInfinite);
 	RUN(checkFastPlotLimit);
 	RUN(checkChartButtonsStay);
+	RUN(checkChartLandscapeRoom);
+	RUN(checkChartLegendScroll);
+	RUN(checkMenuInside);
 	RUN(checkLogScreen);
 	RUN(checkTcpLink);
 	RUN(checkRefusedLink);

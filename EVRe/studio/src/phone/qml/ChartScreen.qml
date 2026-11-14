@@ -36,6 +36,27 @@ Item {
     // a cursor's handle is being dragged: the view stays where it is
     property bool cursorDragging: false
 
+    // landscape: the plot keeps about half the height (the owner's phone, 384 dp across: it had 260 of 1080 px under
+    // the controls, the gesture line and the legend). The gesture line goes (it stays upright and in Help), the
+    // buttons are as narrow as their text (48 dp or more), and the legend shares the controls' row when about a chip
+    // fits after them (legendBesideWidth), else it has a row of its own
+    readonly property bool wide: width > height
+    readonly property real legendBesideWidth: 180
+    readonly property real controlsWidth: viewGroup.width + linesGroup.width + toolsGroup.width
+    readonly property bool legendBeside: wide && chart.lineCount > 0
+                                         && width - 16 - controlsWidth - legendGap.width >= legendBesideWidth
+
+    // a button of the controls: flat, in its row's middle; across, as narrow as its text allows (Material's are 64 dp
+    // at least) and 48 dp high (Material's 52: its face 40 and 6 above and under), 48 dp to the touch either way
+    component BarButton: Button {
+        flat: true
+        anchors.verticalCenter: parent.verticalCenter
+        topInset: screen.wide ? 4 : 6
+        bottomInset: screen.wide ? 4 : 6
+        implicitWidth: Math.max(screen.wide ? 48 : implicitBackgroundWidth + leftInset + rightInset,
+                                implicitContentWidth + leftPadding + rightPadding)
+    }
+
     function showNotice(text) {
         noticeText.text = text
         notice.opacity = 1
@@ -87,262 +108,320 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // the controls: one row in landscape; in portrait the view's (Live / Hold, the window) over the lines' (Y, Clear,
-        // Fast lines), each group whole
-        Flow {
-            id: controls
-            objectName: "chartControls"
+        // the controls, the gesture line and the legend: one under the other, or in landscape with room the controls
+        // and the legend side by side on one row (mirrored in Arabic: the controls at the right)
+        GridLayout {
+            id: topRows
+            objectName: "chartTop"
             Layout.fillWidth: true
-            Layout.leftMargin: 8
-            Layout.rightMargin: 8
-            spacing: 0
+            columns: screen.legendBeside ? 2 : 1
+            rowSpacing: 0
+            columnSpacing: 0
 
-            Row {
-                id: viewGroup
-                spacing: 2
-                // the buttons show what is chosen (checked, highlighted) and are no toggles: a tap on the one chosen
-                // keeps it chosen
-                // Live / Hold: the view follows now, or stays where it is
-                Button {
-                    objectName: "liveButton"
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Live")
-                    flat: true
-                    checked: chart.live
-                    highlighted: chart.live
-                    onClicked: chart.live = true
-                }
-                Button {
-                    objectName: "holdButton"
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Hold")
-                    flat: true
-                    checked: !chart.live
-                    highlighted: !chart.live
-                    onClicked: chart.live = false
-                }
-                // the groups apart
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 9
-                    height: 24
-                    color: "transparent"
+            // the controls: one row in landscape; in portrait the view's (Live / Hold, the window) over the lines'
+            // (Y, Clear, Fast lines), each group whole
+            Flow {
+                id: controls
+                objectName: "chartControls"
+                Layout.fillWidth: !screen.legendBeside
+                Layout.preferredWidth: screen.legendBeside ? screen.controlsWidth : -1
+                Layout.leftMargin: 8
+                Layout.rightMargin: screen.legendBeside ? 0 : 8
+                spacing: 0
+
+                Row {
+                    id: viewGroup
+                    spacing: 2
+                    // the buttons show what is chosen (checked, highlighted) and are no toggles: a tap on the one
+                    // chosen keeps it chosen
+                    // Live / Hold: the view follows now, or stays where it is
+                    BarButton {
+                        objectName: "liveButton"
+                        text: qsTr("Live")
+                        checked: chart.live
+                        highlighted: chart.live
+                        onClicked: chart.live = true
+                    }
+                    BarButton {
+                        objectName: "holdButton"
+                        text: qsTr("Hold")
+                        checked: !chart.live
+                        highlighted: !chart.live
+                        onClicked: chart.live = false
+                    }
+                    // the groups apart
                     Rectangle {
-                        anchors.centerIn: parent
-                        width: 1
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 9
                         height: 24
-                        color: PhoneTheme.border
+                        color: "transparent"
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 1
+                            height: 24
+                            color: PhoneTheme.border
+                        }
+                    }
+                    Repeater {
+                        model: screen.windows.length
+                        BarButton {
+                            required property int index
+                            objectName: "window" + screen.windows[index]
+                            text: screen.windowNames[index]
+                            checked: Math.abs(chart.windowSeconds - screen.windows[index]) < 1e-6
+                            highlighted: checked
+                            onClicked: chart.windowSeconds = screen.windows[index]
+                        }
                     }
                 }
-                Repeater {
-                    model: screen.windows.length
-                    Button {
-                        required property int index
-                        objectName: "window" + screen.windows[index]
+                Row {
+                    id: linesGroup
+                    spacing: 2
+                    height: viewGroup.height
+                    // apart from the view's group when beside it (on a row of its own, nothing to set apart)
+                    Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: screen.windowNames[index]
-                        flat: true
-                        checked: Math.abs(chart.windowSeconds - screen.windows[index]) < 1e-6
-                        highlighted: checked
-                        onClicked: chart.windowSeconds = screen.windows[index]
+                        width: 13
+                        height: 24
+                        color: "transparent"
+                        opacity: linesGroup.y === viewGroup.y ? 1 : 0
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 1
+                            height: 24
+                            color: PhoneTheme.border
+                        }
+                    }
+                    // Y: Auto spans the values in view; off asks for a manual range first
+                    Switch {
+                        id: yAutoSwitch
+                        objectName: "yAutoSwitch"
+                        anchors.verticalCenter: parent.verticalCenter
+                        // 48 dp to the touch, as the buttons (Material's switch is lower)
+                        implicitHeight: 48
+                        text: qsTr("Y auto")
+                        checked: chart.yAuto
+                        onToggled: {
+                            if (checked)
+                                chart.yAuto = true
+                            else
+                                ySheet.openFor()
+                            checked = Qt.binding(() => chart.yAuto)
+                        }
+                    }
+                    // the manual range, shown and changed here while Auto is off
+                    BarButton {
+                        objectName: "yRangeButton"
+                        visible: !chart.yAuto
+                        text: qsTr("Y %1 to %2").arg(screen.shortNumber(chart.yLow))
+                                                .arg(screen.shortNumber(chart.yHigh))
+                        onClicked: ySheet.openFor()
+                    }
+                }
+                Row {
+                    id: toolsGroup
+                    spacing: 2
+                    height: viewGroup.height
+                    // A and B on the view, or off it
+                    BarButton {
+                        objectName: "cursorsButton"
+                        text: qsTr("Cursors")
+                        checked: chart.cursorsOn
+                        highlighted: chart.cursorsOn
+                        onClicked: chart.cursorsOn ? chart.clearCursors() : chart.placeCursors()
+                    }
+                    BarButton {
+                        objectName: "chartClear"
+                        text: qsTr("Clear")
+                        visible: chart.lineCount > 0
+                        onClicked: chart.clear()
+                    }
+                    BarButton {
+                        id: fastButton
+                        objectName: "fastLinesButton"
+                        visible: PhoneSession.fastChannels.length > 0 && !screen.demo
+                        text: qsTr("Fast lines")
+                        onClicked: fastMenu.openUnder(fastButton)
                     }
                 }
             }
-            Row {
-                id: linesGroup
-                spacing: 2
-                height: viewGroup.height
-                // apart from the view's group when beside it (on a row of its own, nothing to set apart)
-                Rectangle {
+            // what a finger does on the plot (no hover on a phone: said where it is seen); upright only, the
+            // plot's height goes first across (Help says it too)
+            Label {
+                objectName: "chartHint"
+                visible: !screen.wide
+                Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                text: qsTr("Pinch: zoom the time · Drag: look back · Double tap: live")
+                color: PhoneTheme.muted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+
+            // the legend: a chip per line, scrolled sideways when they do not fit; left to right in every
+            // language. Beside the controls a line sets it apart from them, as between their groups
+            Item {
+                id: legendBox
+                objectName: "legendBox"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 48
+                Layout.topMargin: screen.wide ? 0 : 4
+                Layout.leftMargin: screen.legendBeside ? 0 : 8
+                Layout.rightMargin: 8
+                Layout.alignment: Qt.AlignVCenter
+                visible: chart.lineCount > 0
+
+                Item {
+                    id: legendGap
+                    anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     width: 13
                     height: 24
-                    color: "transparent"
-                    opacity: linesGroup.y === viewGroup.y ? 1 : 0
+                    visible: screen.legendBeside
                     Rectangle {
+                        objectName: "legendGap"
                         anchors.centerIn: parent
                         width: 1
                         height: 24
                         color: PhoneTheme.border
                     }
                 }
-                // Y: Auto spans the values in view; off asks for a manual range first
-                Switch {
-                    id: yAutoSwitch
-                    objectName: "yAutoSwitch"
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Y auto")
-                    checked: chart.yAuto
-                    onToggled: {
-                        if (checked)
-                            chart.yAuto = true
-                        else
-                            ySheet.openFor()
-                        checked = Qt.binding(() => chart.yAuto)
-                    }
-                }
-                // the manual range, shown and changed here while Auto is off
-                Button {
-                    objectName: "yRangeButton"
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: !chart.yAuto
-                    flat: true
-                    text: qsTr("Y %1 to %2").arg(screen.shortNumber(chart.yLow)).arg(screen.shortNumber(chart.yHigh))
-                    onClicked: ySheet.openFor()
-                }
-            }
-            Row {
-                id: toolsGroup
-                spacing: 2
-                height: viewGroup.height
-                // A and B on the view, or off it
-                Button {
-                    objectName: "cursorsButton"
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Cursors")
-                    flat: true
-                    checked: chart.cursorsOn
-                    highlighted: chart.cursorsOn
-                    onClicked: chart.cursorsOn ? chart.clearCursors() : chart.placeCursors()
-                }
-                Button {
-                    objectName: "chartClear"
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Clear")
-                    flat: true
-                    visible: chart.lineCount > 0
-                    onClicked: chart.clear()
-                }
-                Button {
-                    id: fastButton
-                    objectName: "fastLinesButton"
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: PhoneSession.fastChannels.length > 0 && !screen.demo
-                    text: qsTr("Fast lines")
-                    flat: true
-                    onClicked: fastMenu.popup(fastButton, 0, fastButton.height)
-                }
-            }
-        }
-        // what a finger does on the plot (no hover on a phone: said where it is seen)
-        Label {
-            objectName: "chartHint"
-            Layout.fillWidth: true
-            Layout.leftMargin: 16
-            Layout.rightMargin: 16
-            text: qsTr("Pinch: zoom the time · Drag: look back · Double tap: live")
-            color: PhoneTheme.muted
-            font.pixelSize: 12
-            wrapMode: Text.WordWrap
-        }
-
-        // the legend: a chip per line, scrolled sideways when they do not fit; left to right in every language
-        ListView {
-            id: legend
-            objectName: "legendView"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 48
-            Layout.topMargin: 4
-            Layout.leftMargin: 8
-            Layout.rightMargin: 8
-            visible: chart.lineCount > 0
-            orientation: ListView.Horizontal
-            spacing: 6
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            LayoutMirroring.enabled: false
-            LayoutMirroring.childrenInherit: true
-            model: chart.legend
-
-            // a chip: 40 dp drawn, its touch 48 dp high (the "..." button 48 x 48)
-            delegate: Item {
-                id: chip
-                required property int lineId
-                required property string name
-                required property string value
-                required property color colour
-                required property bool shown
-                objectName: "legendChip"
-                width: chipRow.x + chipRow.implicitWidth + 2
-                height: 48
-
-                Rectangle {
-                    objectName: "chipFace"
+                // the chips' room (it mirrors with the screen; the list in it does not)
+                Item {
+                    id: legendRoom
                     anchors.fill: parent
-                    anchors.topMargin: 4
-                    anchors.bottomMargin: 4
-                    radius: 20
-                    color: PhoneTheme.surface
-                    border.width: 1
-                    // a hidden line's chip: its border and text muted, its dot hollow
-                    border.color: chip.shown ? chip.colour : PhoneTheme.border
-                }
+                    anchors.leftMargin: screen.legendBeside ? legendGap.width : 0
+                    ListView {
+                        id: legend
+                        objectName: "legendView"
+                        anchors.fill: parent
+                        orientation: ListView.Horizontal
+                        spacing: 6
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        LayoutMirroring.enabled: false
+                        LayoutMirroring.childrenInherit: true
+                        model: chart.legend
+                        readonly property bool overflows: contentWidth > width + 0.5
 
-                // a tap on the chip (its "..." button apart, over it) hides or shows its line: a button, so every tap
-                // counts (two quick taps are two, not a double tap)
-                AbstractButton {
-                    objectName: "chipToggle"
-                    anchors.fill: parent
-                    Accessible.name: chip.shown ? qsTr("Hide %1").arg(chip.name) : qsTr("Show %1").arg(chip.name)
-                    onClicked: chart.setLineShown(chip.lineId, !chip.shown)
-                }
+                        // a chip: 40 dp drawn, its touch 48 dp high (the "..." button 48 x 48)
+                        delegate: Item {
+                            id: chip
+                            required property int lineId
+                            required property string name
+                            required property string value
+                            required property color colour
+                            required property bool shown
+                            objectName: "legendChip"
+                            width: chipRow.x + chipRow.implicitWidth + 2
+                            height: 48
 
-                Row {
-                    id: chipRow
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: 12
-                    spacing: 6
-                    // the line's colour: filled while drawn, a ring while hidden
-                    Rectangle {
-                        objectName: "chipDot"
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 12
-                        height: 12
-                        radius: 6
-                        color: chip.shown ? chip.colour : "transparent"
-                        border.width: 2
-                        border.color: chip.colour
-                    }
-                    Text {
-                        objectName: "chipName"
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: chip.name
-                        color: chip.shown ? PhoneTheme.text : PhoneTheme.muted
-                        font.pixelSize: 13
-                        font.strikeout: !chip.shown
-                    }
-                    Text {
-                        objectName: "chipValue"
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: chip.value
-                        visible: text.length > 0
-                        color: chip.shown ? PhoneTheme.text : PhoneTheme.muted
-                        font.pixelSize: 13
-                        font.bold: true
-                    }
-                    // three dots drawn, not a character: a phone's font may have no "⋯"
-                    ToolButton {
-                        id: chipMore
-                        objectName: "chipMore"
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 48
-                        height: 48
-                        Accessible.name: qsTr("More: Hide, Take off the chart")
-                        onClicked: chipMenu.openFor(chip.lineId, chip.name, chip.shown, chipMore)
-                        contentItem: Item {
+                            Rectangle {
+                                objectName: "chipFace"
+                                anchors.fill: parent
+                                anchors.topMargin: 4
+                                anchors.bottomMargin: 4
+                                radius: 20
+                                color: PhoneTheme.surface
+                                border.width: 1
+                                // a hidden line's chip: its border and text muted, its dot hollow
+                                border.color: chip.shown ? chip.colour : PhoneTheme.border
+                            }
+
+                            // a tap on the chip (its "..." button apart, over it) hides or shows its line: a
+                            // button, so every tap counts (two quick taps are two, not a double tap)
+                            AbstractButton {
+                                objectName: "chipToggle"
+                                anchors.fill: parent
+                                Accessible.name: chip.shown ? qsTr("Hide %1").arg(chip.name)
+                                                            : qsTr("Show %1").arg(chip.name)
+                                onClicked: chart.setLineShown(chip.lineId, !chip.shown)
+                            }
+
                             Row {
-                                anchors.centerIn: parent
-                                spacing: 3
-                                Repeater {
-                                    model: 3
-                                    Rectangle {
-                                        objectName: "chipMoreDot"
-                                        width: 4
-                                        height: 4
-                                        radius: 2
-                                        color: PhoneTheme.text
+                                id: chipRow
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: 12
+                                spacing: 6
+                                // the line's colour: filled while drawn, a ring while hidden
+                                Rectangle {
+                                    objectName: "chipDot"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 12
+                                    height: 12
+                                    radius: 6
+                                    color: chip.shown ? chip.colour : "transparent"
+                                    border.width: 2
+                                    border.color: chip.colour
+                                }
+                                Text {
+                                    objectName: "chipName"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: chip.name
+                                    color: chip.shown ? PhoneTheme.text : PhoneTheme.muted
+                                    font.pixelSize: 13
+                                    font.strikeout: !chip.shown
+                                }
+                                Text {
+                                    objectName: "chipValue"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: chip.value
+                                    visible: text.length > 0
+                                    color: chip.shown ? PhoneTheme.text : PhoneTheme.muted
+                                    font.pixelSize: 13
+                                    font.bold: true
+                                }
+                                // three dots drawn, not a character: a phone's font may have no "⋯"
+                                ToolButton {
+                                    id: chipMore
+                                    objectName: "chipMore"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 48
+                                    height: 48
+                                    Accessible.name: qsTr("More: Hide, Take off the chart")
+                                    onClicked: chipMenu.openFor(chip.lineId, chip.name, chip.shown, chipMore)
+                                    contentItem: Item {
+                                        Row {
+                                            anchors.centerIn: parent
+                                            spacing: 3
+                                            Repeater {
+                                                model: 3
+                                                Rectangle {
+                                                    objectName: "chipMoreDot"
+                                                    width: 4
+                                                    height: 4
+                                                    radius: 2
+                                                    color: PhoneTheme.text
+                                                }
+                                            }
+                                        }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    // more chips than room: a fade over each edge with more, so a chip cut by the edge reads as
+                    // more to scroll, not as a cut name (the owner's phone: "SETPOIN" at the screen's edge). The
+                    // list runs left to right in every language, so its end is at the right; set from its
+                    // direction all the same
+                    Repeater {
+                        model: 2 // the start's fade (scrolled on) and the end's (more to come)
+                        Rectangle {
+                            id: chipFade
+                            required property int index
+                            readonly property bool end: index === 1
+                            readonly property bool onRight: end !== (legend.effectiveLayoutDirection === Qt.RightToLeft)
+                            readonly property color clear: Qt.rgba(PhoneTheme.bg.r, PhoneTheme.bg.g, PhoneTheme.bg.b, 0)
+                            objectName: end ? "legendFadeEnd" : "legendFadeStart"
+                            x: onRight ? legendRoom.width - width : 0
+                            width: 32
+                            height: legendRoom.height
+                            visible: legend.overflows && (end ? !legend.atXEnd : !legend.atXBeginning)
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: chipFade.onRight ? chipFade.clear : PhoneTheme.bg }
+                                GradientStop { position: 1; color: chipFade.onRight ? PhoneTheme.bg : chipFade.clear }
                             }
                         }
                     }
@@ -696,10 +775,9 @@ Item {
     }
 
     // a chip's "..." menu (opened from the legend, which is never mirrored: its items read in the screen's language)
-    Menu {
+    PhoneMenu {
         id: chipMenu
         objectName: "chipMenu"
-        readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
         property int lineId: -1
         property string name: ""
         property bool shown: true
@@ -707,7 +785,7 @@ Item {
             chipMenu.lineId = id
             chipMenu.name = name
             chipMenu.shown = shown
-            chipMenu.popup(from, 0, from.height)
+            chipMenu.openUnder(from)
         }
         MenuItem {
             objectName: "chipMenuShow"
@@ -727,7 +805,7 @@ Item {
     }
 
     // the map's streams' channels, each on the chart or not (its stream switched on with its first channel)
-    Menu {
+    PhoneMenu {
         id: fastMenu
         objectName: "fastMenu"
         Instantiator {

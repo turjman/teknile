@@ -256,7 +256,7 @@ endif() # NOT ANDROID
 if(EVRE_PHONE)
     # the screens at the module's root (qrc:/qt/qml/EVRe/Phone/Main.qml), where they find each other by name
     foreach(screen Main ConnectDrawer LinkPill LogScreen MonitorScreen PhoneIcon HelpScreen PlaceholderScreen P9Screen RegistersScreen RegisterCard WriteSheet
-            ChartScreen)
+            ChartScreen PhoneMenu)
         set_source_files_properties(src/phone/qml/${screen}.qml PROPERTIES QT_RESOURCE_ALIAS ${screen}.qml)
     endforeach()
     qt_add_library(evre_phone_qml STATIC)
@@ -281,6 +281,7 @@ if(EVRE_PHONE)
             src/phone/qml/WriteSheet.qml
             src/phone/qml/ChartScreen.qml
             src/phone/qml/MonitorScreen.qml
+            src/phone/qml/PhoneMenu.qml
         SOURCES
             src/phone/phone_theme.h     src/phone/phone_theme.cpp
             src/phone/phone_language.h  src/phone/phone_language.cpp

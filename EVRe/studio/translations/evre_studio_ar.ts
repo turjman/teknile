@@ -4671,9 +4671,9 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
         <source>
 &lt;h2&gt;Using the phone app&lt;/h2&gt;
 &lt;p&gt;EVRe Studio on a phone: the desktop&apos;s engine and maps, four screens in the tab bar at the bottom: &lt;b&gt;Registers&lt;/b&gt;,
-&lt;b&gt;Chart&lt;/b&gt;, &lt;b&gt;Monitor&lt;/b&gt; and &lt;b&gt;Log&lt;/b&gt;. The Chart and the Monitor turn the screen across, the Registers and the Log
-upright. The other topics of this Help are the desktop&apos;s: where they speak of the sidebar, here it is the drawer; a click
-is a tap.&lt;/p&gt;
+&lt;b&gt;Chart&lt;/b&gt;, &lt;b&gt;Monitor&lt;/b&gt; and &lt;b&gt;Log&lt;/b&gt;. The Chart and the Monitor turn the screen across; the Registers and the Log
+follow the way the phone is held. The other topics of this Help are the desktop&apos;s: where they speak of the sidebar, here
+it is the drawer; a click is a tap.&lt;/p&gt;
 &lt;h3&gt;Connecting&lt;/h3&gt;
 &lt;p&gt;The menu button at the top, or the link&apos;s pill beside it, opens the &lt;b&gt;Connect&lt;/b&gt; drawer.&lt;/p&gt;
 &lt;ul&gt;
@@ -4740,7 +4740,7 @@ both go on; with no link it closes the app.&lt;/p&gt;
         <translation>
 &lt;h2&gt;استخدام تطبيق الهاتف&lt;/h2&gt;
 &lt;p&gt;EVRe Studio على الهاتف: محرّك سطح المكتب وخرائطه، وأربع شاشات في شريط الألسنة أسفل الشاشة: &lt;b&gt;المسجّلات&lt;/b&gt;،
-و&lt;b&gt;المخطط&lt;/b&gt;، و&lt;b&gt;المراقبة&lt;/b&gt;، و&lt;b&gt;السجل&lt;/b&gt;. يدير المخطط والمراقبة الشاشة بالعرض، والمسجّلات والسجل بالطول.
+و&lt;b&gt;المخطط&lt;/b&gt;، و&lt;b&gt;المراقبة&lt;/b&gt;، و&lt;b&gt;السجل&lt;/b&gt;. يدير المخطط والمراقبة الشاشة بالعرض، وتتبع المسجّلات والسجل اتجاه الهاتف كما تمسكه.
 المواضيع الأخرى في هذه المساعدة مواضيع سطح المكتب: حيث تذكر الشريط الجانبي فهو هنا لوحة الاتصال، والنقرة لمسة.&lt;/p&gt;
 &lt;h3&gt;الاتصال&lt;/h3&gt;
 &lt;p&gt;زر القائمة في الأعلى، أو شارة الوصلة بجانبه، يفتح &lt;b&gt;لوحة الاتصال&lt;/b&gt;.&lt;/p&gt;
