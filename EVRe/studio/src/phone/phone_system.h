@@ -10,6 +10,10 @@
  *   to the background Android's back with nothing open while a link is wanted or a recording runs: the task moved
  *                     to the background as Home does (Activity.moveTaskToBack), not finished, so the link, the service
  *                     and the recording go on
+ *   a short buzz      a write the device took, a link that came up: the view's haptic feedback (CONFIRM), which
+ *                     follows the phone's own touch feedback setting and needs no permission
+ *   the animations    Android's animator scale (Settings, Developer options, or Remove animations in Accessibility,
+ *                     which sets it to 0): 0 turns the app's own motion off (the tabs, the sheets)
  *
  * On Android Java does it (system()); elsewhere nothing does, and the test sets a stand-in that notes what it was
  * asked (PhoneSession::setSystemBridgeForTests). Called on the window's thread. */
@@ -29,6 +33,9 @@ public:
 	virtual void keepScreenOn(bool on) = 0;
 	virtual void requestOrientation(Orientation orientation) = 0;
 	virtual void moveToBack() = 0;
+	virtual void haptic() = 0;
+	/* the system's animator duration scale: 1 normal, 0 animations removed */
+	virtual double animationScale() = 0;
 
 	/* Android's (EvreService.java); nullptr elsewhere */
 	static SystemBridge *system();

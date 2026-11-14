@@ -21,6 +21,13 @@ Drawer {
 
     edge: rtl ? Qt.RightEdge : Qt.LeftEdge
     background: Rectangle { color: PhoneTheme.surface }
+    // its slide (Material's takes about as long); at once when Android's animations are removed
+    enter: Transition {
+        NumberAnimation { duration: PhoneSession.motion ? 220 : 0; easing.type: Easing.OutCubic }
+    }
+    exit: Transition {
+        NumberAnimation { duration: PhoneSession.motion ? 220 : 0; easing.type: Easing.OutCubic }
+    }
     onAboutToShow: PhoneSession.refreshPorts()
 
     // a board plugged in or out shows in the list while the drawer is open on USB

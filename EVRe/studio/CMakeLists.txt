@@ -256,7 +256,7 @@ endif() # NOT ANDROID
 if(EVRE_PHONE)
     # the screens at the module's root (qrc:/qt/qml/EVRe/Phone/Main.qml), where they find each other by name
     foreach(screen Main ConnectDrawer LinkPill LogScreen MonitorScreen PhoneIcon HelpScreen PlaceholderScreen P9Screen RegistersScreen RegisterRow
-            RegisterSheet EmptyState ChartScreen PhoneMenu)
+            RegisterSheet EmptyState ChartScreen PhoneMenu FilterChip FrameSheet)
         set_source_files_properties(src/phone/qml/${screen}.qml PROPERTIES QT_RESOURCE_ALIAS ${screen}.qml)
     endforeach()
     qt_add_library(evre_phone_qml STATIC)
@@ -283,6 +283,8 @@ if(EVRE_PHONE)
             src/phone/qml/ChartScreen.qml
             src/phone/qml/MonitorScreen.qml
             src/phone/qml/PhoneMenu.qml
+            src/phone/qml/FilterChip.qml
+            src/phone/qml/FrameSheet.qml
         SOURCES
             src/phone/phone_theme.h     src/phone/phone_theme.cpp
             src/phone/phone_language.h  src/phone/phone_language.cpp
@@ -296,7 +298,8 @@ if(EVRE_PHONE)
             src/phone/phone_help.h      src/phone/phone_help.cpp
             src/phone/chart_item.h      src/phone/chart_item.cpp
             src/phone/chart_demo.h      src/phone/chart_demo.cpp
-            src/phone/frame_log.h       src/phone/frame_log.cpp)
+            src/phone/frame_log.h       src/phone/frame_log.cpp
+            src/phone/row_filter.h      src/phone/row_filter.cpp)
     # src/phone too: the generated type registrations include the classes' headers by their bare names
     target_include_directories(evre_phone_qml PUBLIC src PRIVATE src/phone)
     target_link_libraries(evre_phone_qml PUBLIC evre_engine Qt6::Quick Qt6::QuickControls2)

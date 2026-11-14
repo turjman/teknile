@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // The Chart screen (STUDIO.md 25.6): the plotted lines over time, drawn by the GPU from nodes of the chart's own
-// (ChartItem, chart_item.h), the time and value labels as Text over it. Above it: Live / Hold, the window (10 s,
-// 1 min, 5 min), Y auto (off: a manual range from a small sheet), Clear, and Fast lines when the map has streams;
+// (ChartItem, chart_item.h), the time and value labels as Text over it. Above it: Live / Hold, the window (a button
+// with the window shown, its menu 10 s, 1 min, 5 min), Y (a button with the range shown: Auto, or a manual range from a
+// small sheet), Cursors, Clear, and Fast lines when the map has streams, as the desktop's combo boxes;
 // a line saying what a finger does; the legend, a chip per line (its colour, name and latest value in view with its
 // unit: a tap hides or shows the line, its "..." button offers Hide / Show and Take off the chart). A pinch zooms the
 // time, a drag looks back (and holds), a double tap goes live again. Time runs left to right in Arabic too: the plot,
 // its labels and the legend are never mirrored. The lines come from PhoneSession (the registers plotted on the
 // Registers screen, the fast channels chosen here); with none, the plot says how to plot one, with a button to the
-// Registers screen. Cursors (B.4): the Cursors button puts A and B where the lines have samples in view (a quarter and
+// Registers screen. Across (the phone's way for the Chart) the screen is the whole window (fullScreen, Main.qml hides
+// its header and tab bar): one 48 dp row of the controls and the legend over the plot, a button at its start (four
+// corners) brings the bars back (barsAsked), a dot on it in the link's colour; with the bars back the same button hides
+// them again. Cursors (B.4): the Cursors button puts A and B where the lines have samples in view (a quarter and
 // three quarters of that span) and holds the view; each is dragged by its round handle (48 dp; A's at the plot's top,
 // B's at its foot); the readouts beside the plot (under it in portrait; scrolled, with a scroll bar and a fade at an
 // edge with more) give A's and B's times and B - A, and per line its values at A and B, B - A, and min, max and mean
@@ -36,10 +40,20 @@ Item {
     // a cursor's handle is being dragged: the view stays where it is
     property bool cursorDragging: false
 
-    // landscape: the plot keeps about half the height (the owner's phone, 384 dp across: it had 260 of 1080 px under
-    // the controls, the gesture line and the legend). The gesture line goes (it stays upright and in Help), the
-    // buttons are as narrow as their text (48 dp or more), and the legend shares the controls' row when about a chip
-    // fits after them (legendBesideWidth), else it has a row of its own
+    // across: the rail hidden (Main.qml); the bars button at the controls' start asks for it back (or away again)
+    property bool fullScreen: false
+    signal barsAsked(bool shown)
+
+    // the window's length as its button writes it: "10 s", "1 min", or a pinch's "27.3 s" (units in Latin)
+    function windowText(seconds) {
+        if (seconds >= 60) return String(Number((seconds / 60).toPrecision(3))) + " min"
+        return String(Number(seconds.toPrecision(3))) + " s"
+    }
+
+    // landscape: the plot keeps three quarters of the height or more (the owner's phone, 760 x 384 dp beside its
+    // navigation buttons). The gesture line goes (it stays upright and in Help), the buttons are as narrow as their
+    // text (48 dp or more), the window and Y are one button each with their menu, and the legend shares the controls'
+    // row when about a chip fits after them (legendBesideWidth), else it has a row of its own
     readonly property bool wide: width > height
     readonly property real legendBesideWidth: 180
     readonly property real controlsWidth: viewGroup.width + linesGroup.width + toolsGroup.width
@@ -55,6 +69,34 @@ Item {
         bottomInset: screen.wide ? 4 : 6
         implicitWidth: Math.max(screen.wide ? 48 : implicitBackgroundWidth + leftInset + rightInset,
                                 implicitContentWidth + leftPadding + rightPadding)
+    }
+
+    // a button that opens a menu or a sheet: its text and a drawn chevron (a phone's font may have no "▾")
+    component MenuButton: BarButton {
+        id: menuButton
+        property string label
+        text: label
+        rightPadding: screen.wide ? 6 : 8
+        contentItem: Item {
+            implicitWidth: menuLabel.implicitWidth + 2 + 16
+            implicitHeight: menuLabel.implicitHeight
+            Label {
+                id: menuLabel
+                objectName: "menuButtonLabel"
+                anchors.verticalCenter: parent.verticalCenter
+                x: menuButton.mirrored ? 18 : 0
+                text: menuButton.label
+                font: menuButton.font
+                color: PhoneTheme.text
+            }
+            PhoneIcon {
+                anchors.verticalCenter: parent.verticalCenter
+                x: menuButton.mirrored ? 0 : menuLabel.implicitWidth + 2
+                kind: "down"
+                size: 16
+                color: PhoneTheme.muted
+            }
+        }
     }
 
     function showNotice(text) {
@@ -132,6 +174,46 @@ Item {
                 Row {
                     id: viewGroup
                     spacing: 2
+                    // across: the rail back, or away again (four corners in, or out); the link's
+                    // state a dot on it, as the header's pill would say it
+                    ToolButton {
+                        id: barsButton
+                        objectName: "barsButton"
+                        visible: screen.wide
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 48
+                        height: 48
+                        Accessible.name: screen.fullScreen ? qsTr("Show the tabs") : qsTr("Hide the tabs")
+                        // said on a long press (a phone has no hover), and to a screen reader
+                        readonly property string tip: screen.fullScreen ? qsTr("Show the tabs and the link")
+                                                                        : qsTr("Hide the tabs: the chart on the whole screen")
+                        ToolTip.visible: pressed
+                        ToolTip.delay: 500
+                        ToolTip.text: tip
+                        onClicked: screen.barsAsked(screen.fullScreen)
+                        contentItem: Item {
+                            PhoneIcon {
+                                objectName: "barsIcon"
+                                anchors.centerIn: parent
+                                kind: screen.fullScreen ? "shrink" : "expand"
+                                color: PhoneTheme.text
+                            }
+                            Rectangle {
+                                objectName: "barsLinkDot"
+                                visible: screen.fullScreen
+                                x: parent.width / 2 + 7
+                                y: parent.height / 2 - 13
+                                width: 9
+                                height: 9
+                                radius: 4.5
+                                border.width: 1.5
+                                border.color: PhoneTheme.bg
+                                color: PhoneSession.state === PhoneSession.Connected ? PhoneTheme.good
+                                       : PhoneSession.state === PhoneSession.Closed ? PhoneTheme.bad
+                                       : PhoneSession.state === PhoneSession.Off ? PhoneTheme.muted : PhoneTheme.warn
+                            }
+                        }
+                    }
                     // the buttons show what is chosen (checked, highlighted) and are no toggles: a tap on the one
                     // chosen keeps it chosen
                     // Live / Hold: the view follows now, or stays where it is
@@ -162,16 +244,13 @@ Item {
                             color: PhoneTheme.border
                         }
                     }
-                    Repeater {
-                        model: screen.windows.length
-                        BarButton {
-                            required property int index
-                            objectName: "window" + screen.windows[index]
-                            text: screen.windowNames[index]
-                            checked: Math.abs(chart.windowSeconds - screen.windows[index]) < 1e-6
-                            highlighted: checked
-                            onClicked: chart.windowSeconds = screen.windows[index]
-                        }
+                    // the window: its length now (a pinch's too), its menu the three lengths
+                    MenuButton {
+                        id: windowButton
+                        objectName: "windowButton"
+                        label: screen.windowText(chart.windowSeconds)
+                        Accessible.name: qsTr("Window: %1").arg(label)
+                        onClicked: windowMenu.openUnder(windowButton)
                     }
                 }
                 Row {
@@ -192,29 +271,14 @@ Item {
                             color: PhoneTheme.border
                         }
                     }
-                    // Y: Auto spans the values in view; off asks for a manual range first
-                    Switch {
-                        id: yAutoSwitch
-                        objectName: "yAutoSwitch"
-                        anchors.verticalCenter: parent.verticalCenter
-                        // 48 dp to the touch, as the buttons (Material's switch is lower)
-                        implicitHeight: 48
-                        text: qsTr("Y auto")
-                        checked: chart.yAuto
-                        onToggled: {
-                            if (checked)
-                                chart.yAuto = true
-                            else
-                                ySheet.openFor()
-                            checked = Qt.binding(() => chart.yAuto)
-                        }
-                    }
-                    // the manual range, shown and changed here while Auto is off
-                    BarButton {
-                        objectName: "yRangeButton"
-                        visible: !chart.yAuto
-                        text: qsTr("Y %1 to %2").arg(screen.shortNumber(chart.yLow))
-                                                .arg(screen.shortNumber(chart.yHigh))
+                    // Y: Auto (the values in view) or the manual range, shown here; its sheet chooses (the desktop's
+                    // Y combo box)
+                    MenuButton {
+                        id: yButton
+                        objectName: "yButton"
+                        label: chart.yAuto ? qsTr("Y auto")
+                                           : qsTr("Y %1 to %2").arg(screen.shortNumber(chart.yLow))
+                                                               .arg(screen.shortNumber(chart.yHigh))
                         onClicked: ySheet.openFor()
                     }
                 }
@@ -789,6 +853,29 @@ Item {
         }
     }
 
+    // the window's lengths, the one shown checked (none after a pinch to another)
+    PhoneMenu {
+        id: windowMenu
+        objectName: "windowMenu"
+        Instantiator {
+            model: screen.windows.length
+            delegate: MenuItem {
+                required property int index
+                objectName: "window" + screen.windows[index]
+                LayoutMirroring.enabled: windowMenu.rtl
+                text: screen.windowNames[index]
+                checkable: true
+                checked: Math.abs(chart.windowSeconds - screen.windows[index]) < 1e-6
+                onTriggered: {
+                    chart.windowSeconds = screen.windows[index]
+                    checked = Qt.binding(() => Math.abs(chart.windowSeconds - screen.windows[index]) < 1e-6)
+                }
+            }
+            onObjectAdded: (index, object) => windowMenu.insertItem(index, object)
+            onObjectRemoved: (index, object) => windowMenu.removeItem(object)
+        }
+    }
+
     // the map's streams' channels, each on the chart or not (its stream switched on with its first channel)
     PhoneMenu {
         id: fastMenu
@@ -821,6 +908,15 @@ Item {
         y: 8
         width: Math.min(screen.width - 32, 360)
         padding: 16
+        // down from the top edge, where it stays; none when Android's animations are removed
+        enter: Transition {
+            NumberAnimation { property: "y"; from: -ySheet.height; to: 8; duration: PhoneSession.motion ? 220 : 0; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: PhoneSession.motion ? 150 : 0 }
+        }
+        exit: Transition {
+            NumberAnimation { property: "y"; from: 8; to: -ySheet.height; duration: PhoneSession.motion ? 180 : 0; easing.type: Easing.InCubic }
+            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: PhoneSession.motion ? 180 : 0 }
+        }
         property string error: ""
         function openFor() {
             minField.text = screen.shortNumber(chart.yLow)
@@ -860,7 +956,7 @@ Item {
             }
             Label {
                 Layout.fillWidth: true
-                text: qsTr("Auto off: the value axis stays between these.")
+                text: qsTr("Auto follows the values in view. Or type a range: the value axis stays between these.")
                 color: PhoneTheme.muted
                 font.pixelSize: 13
                 wrapMode: Text.WordWrap
@@ -906,8 +1002,20 @@ Item {
                 wrapMode: Text.WordWrap
             }
             RowLayout {
-                Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
                 spacing: 8
+                // Auto: the values in view again, at once
+                Button {
+                    objectName: "ySheetAuto"
+                    text: qsTr("Auto")
+                    flat: true
+                    highlighted: chart.yAuto
+                    onClicked: {
+                        chart.yAuto = true
+                        ySheet.close()
+                    }
+                }
+                Item { Layout.fillWidth: true }
                 Button {
                     objectName: "ySheetCancel"
                     text: qsTr("Cancel")

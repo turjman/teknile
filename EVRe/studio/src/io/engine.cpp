@@ -633,6 +633,7 @@ void IoEngine::disconnectLink() {
 	layoutGeneration_++; /* the answers still due belong to the old link */
 	autoSendRequest_++;  /* and the AUTO_SEND ones: cancelled below, that is no refusal */
 	pollsUnderWay_.clear();
+	pollsSentAt_.clear();
 	if (listening_) { /* the last round, and a frame still waiting: nothing else would end them */
 		closeRound();
 		sayStrayFrame();
@@ -941,6 +942,7 @@ void IoEngine::rebuildBlocks() {
 	}
 	layoutGeneration_++;
 	pollsUnderWay_.clear();
+	pollsSentAt_.clear();
 	pruneDumps();
 }
 
@@ -988,6 +990,9 @@ void IoEngine::pollTick() {
 void IoEngine::onBlockResult(quint64 layout, quint64 pollId, const Block &block, const evre::Result &r) {
 	if (layout != layoutGeneration_) return; /* a poll of an older layout: its rows may be others now */
 	heardFrom(block.slave, r);
+	/* when the request went out: the answer's time less the time it took (a request may wait in the master's queue) */
+	if (sampleAtRequest_ && r.ok)
+		pollsSentAt_[pollId] = std::max(pollsSentAt_.value(pollId, -1), now() - r.latencyMs / 1000.0);
 	if (r.ok) {
 		storeBlock(block, r.data);
 	} else if (r.error != 0) {
@@ -1003,7 +1008,9 @@ void IoEngine::onBlockResult(quint64 layout, quint64 pollId, const Block &block,
 	auto it = pollsUnderWay_.find(pollId);
 	if (it != pollsUnderWay_.end() && --it.value() <= 0) {
 		pollsUnderWay_.erase(it);
-		pollDone();
+		const double sentAt = pollsSentAt_.value(pollId, -1);
+		pollsSentAt_.remove(pollId);
+		pollDone(sentAt);
 	}
 }
 
@@ -1059,12 +1066,14 @@ void IoEngine::splitBlock(const Block &block) {
 /* every block of a poll answered: a point per plotted register, a CSV row (with AUTO_SEND on and its frames coming,
  * each frame is the tick instead: the polls of the rest only refresh the table; a device switched on that never
  * sends a frame keeps its polled samples) */
-void IoEngine::pollDone() {
+void IoEngine::pollDone(double sentAt) {
 	pollsSinceRate_++;
 	/* polls waiting for a slot, or as fast as possible: the next one now */
 	if (pollsBehind_ > 0 || (continuous_ && pollingOn_)) QTimer::singleShot(0, this, &IoEngine::pollTick);
 	if (autoSendOn_ && streamCount_ > 0) return;
-	const double t = now();
+	/* when the device read the values: the request's time (never before the poll before), else the answer's */
+	const double t = sampleAtRequest_ && sentAt >= 0 ? std::max(sentAt, lastPollSample_) : now();
+	lastPollSample_ = t;
 	appendSamples(t);
 	writeCsvRow(t);
 }

@@ -53,7 +53,15 @@ Drawer {
     }
 
     edge: Qt.BottomEdge
-    height: Math.min(column.implicitHeight + 44 + keyboardLift, parent ? parent.height - 24 : 600)
+    // the content, the drawer's paddings and the keyboard's part: nothing to scroll while it fits the window
+    height: Math.min(flick.contentHeight + topPadding + bottomPadding + keyboardLift, parent ? parent.height - 24 : 600)
+    // its slide (Material's takes about as long); at once when Android's animations are removed
+    enter: Transition {
+        NumberAnimation { duration: PhoneSession.motion ? 220 : 0; easing.type: Easing.OutCubic }
+    }
+    exit: Transition {
+        NumberAnimation { duration: PhoneSession.motion ? 220 : 0; easing.type: Easing.OutCubic }
+    }
     background: Rectangle {
         color: PhoneTheme.surface
         topLeftRadius: 16
@@ -259,578 +267,632 @@ Drawer {
         anchors.bottomMargin: sheet.keyboardLift
         contentWidth: width
         contentHeight: column.implicitHeight + 40
+        // more than the window holds: a scroll bar that stays, so a row cut at the foot reads as more to scroll
+        ScrollBar.vertical: ScrollBar {
+            policy: flick.contentHeight > flick.height + 0.5 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+        }
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         // a popup is not a child of the window's items: it mirrors by its own
         LayoutMirroring.enabled: sheet.rtl
         LayoutMirroring.childrenInherit: true
 
-        ColumnLayout {
+        // upright one column; across two side by side, so the sheet fits the low window (760 x 384): the register, its
+        // value and trend at the start, Plot, Copy and the write at the end, each from the top
+        GridLayout {
             id: column
-            // a phone's width in landscape too, in the middle: a sheet 900 wide reads as a stretched line
-            width: Math.min(flick.width - 40, 600)
+            readonly property bool twoColumns: sheet.parent !== null && sheet.parent.width > sheet.parent.height
+            // at most a phone's width upright (600), 900 across, in the middle: wider reads as a stretched line
+            width: Math.min(flick.width - 40, twoColumns ? 900 : 600)
             x: (flick.width - width) / 2
             y: 24
-            spacing: 10
+            columns: twoColumns ? 2 : 1
+            columnSpacing: 24
+            rowSpacing: 10
+            readonly property real partWidth: twoColumns ? (width - columnSpacing) / 2 : width
 
-            // the name, its address and group; the close cross
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                ColumnLayout {
+            ColumnLayout {
+                objectName: "sheetAbout"
+                Layout.preferredWidth: column.partWidth
+                Layout.maximumWidth: column.partWidth
+                Layout.alignment: Qt.AlignTop
+                spacing: 10
+
+                // the name, its address and group; the close cross
+                RowLayout {
                     Layout.fillWidth: true
-                    spacing: 0
-                    Label {
-                        objectName: "sheetName"
-                        horizontalAlignment: Text.AlignLeft
+                    spacing: 8
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        text: sheet.entry.name || ""
-                        color: PhoneTheme.text
-                        font.pixelSize: 20
-                        font.weight: Font.Medium
-                        elide: Text.ElideRight
+                        spacing: 0
+                        Label {
+                            objectName: "sheetName"
+                            horizontalAlignment: Text.AlignLeft
+                            Layout.fillWidth: true
+                            text: sheet.entry.name || ""
+                            color: PhoneTheme.text
+                            font.pixelSize: 20
+                            font.weight: Font.Medium
+                            elide: Text.ElideRight
+                        }
+                        // the address left to right, then the group
+                        Label {
+                            objectName: "sheetAddr"
+                            horizontalAlignment: Text.AlignLeft
+                            Layout.fillWidth: true
+                            text: (sheet.entry.addr || "") + (sheet.entry.group ? "  ·  " + sheet.entry.group : "")
+                            color: PhoneTheme.muted
+                            font.pixelSize: 13
+                            elide: Text.ElideRight
+                        }
                     }
-                    // the address left to right, then the group
+                    ToolButton {
+                        // upright beside the name; across the sheet's corner has it (cornerClose)
+                        objectName: visible ? "sheetClose" : "sheetCloseUpright"
+                        visible: !column.twoColumns
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        Layout.alignment: Qt.AlignTop
+                        focusPolicy: Qt.NoFocus
+                        Accessible.name: qsTr("Close")
+                        onClicked: sheet.close()
+                        contentItem: Item {
+                            PhoneIcon {
+                                anchors.centerIn: parent
+                                kind: "clear"
+                                size: 20
+                                color: PhoneTheme.muted
+                            }
+                        }
+                    }
+                }
+
+                // the value large and its unit, left to right in every language, at the start edge
+                Item {
+                    Layout.fillWidth: true
+                    Layout.topMargin: -6
+                    implicitHeight: valueText.implicitHeight
+                    Row {
+                        objectName: "sheetValueRow"
+                        LayoutMirroring.enabled: false
+                        LayoutMirroring.childrenInherit: true
+                        x: sheet.rtl ? parent.width - width : 0
+                        spacing: 8
+                        Label {
+                            id: valueText
+                            objectName: "sheetValue"
+                            width: Math.min(implicitWidth, column.partWidth - unitBig.width - 8)
+                            text: sheet.entry.value || ""
+                            color: sheet.failed ? PhoneTheme.bad : sheet.entry.stale ? PhoneTheme.muted : PhoneTheme.text
+                            font.pixelSize: 34
+                            font.weight: Font.DemiBold
+                            font.features: { "tnum": 1 }
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            id: unitBig
+                            objectName: "sheetValueUnit"
+                            anchors.baseline: valueText.baseline
+                            visible: text.length > 0
+                            text: sheet.entry.unit || ""
+                            color: PhoneTheme.muted
+                            font.pixelSize: 18
+                        }
+                    }
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    visible: sheet.entry.stale === true || sheet.entry.plotted === true
+                    spacing: 8
+                    Tag {
+                        objectName: "sheetStaleTag"
+                        visible: sheet.entry.stale === true
+                        color: PhoneTheme.warnSoft
+                        text: qsTr("not refreshed")
+                        textColor: PhoneTheme.warn
+                        textName: "sheetStale"
+                    }
+                    Tag {
+                        objectName: "sheetPlottedTag"
+                        visible: sheet.entry.plotted === true
+                        color: PhoneTheme.accentSoft
+                        dot: PhoneTheme.accent
+                        text: qsTr("on the chart")
+                        textColor: PhoneTheme.text
+                        textName: "sheetPlotted"
+                    }
+                }
+                Label {
+                    objectName: "sheetDecoded"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignLeft
+                    visible: !sheet.failed && text.length > 0
+                    text: sheet.entry.decoded || ""
+                    color: PhoneTheme.muted
+                    font.pixelSize: 14
+                    wrapMode: Text.Wrap
+                }
+                Label {
+                    objectName: "sheetError"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignLeft
+                    visible: sheet.failed
+                    text: sheet.entry.error || ""
+                    color: PhoneTheme.bad
+                    font.pixelSize: 14
+                    wrapMode: Text.Wrap
+                }
+
+                // the last values: a line over the span kept, its highest and lowest at its top and foot at the end, the
+                // span under its start. Left to right in every language (time goes that way on the chart too); no text
+                // lies over the line
+                Rectangle {
+                    objectName: "sheetTrend"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    implicitHeight: 84
+                    visible: sheet.trend.points !== undefined
+                    radius: 10
+                    color: PhoneTheme.surface2
+                    LayoutMirroring.enabled: false
+                    LayoutMirroring.childrenInherit: true
+                    readonly property bool flat: sheet.trend.min === sheet.trend.max
+                    // the line, drawn (no new module): the newest value at the end edge, a dot on it
+                    Canvas {
+                        id: trendCanvas
+                        objectName: "sheetTrendLine"
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: Math.max(trendMax.implicitWidth, trendMin.implicitWidth) + 24
+                        anchors.topMargin: 14
+                        anchors.bottomMargin: 28
+                        onPaint: {
+                            const ctx = getContext("2d")
+                            ctx.reset()
+                            const points = sheet.trend.points
+                            if (!points || points.length < 2) return
+                            const span = Math.max(sheet.trend.seconds, 1e-6)
+                            const low = sheet.trend.min, high = sheet.trend.max
+                            const flat = high - low <= 0
+                            const xOf = p => (1 + p.x / span) * (width - 4) + 1
+                            const yOf = p => flat ? height / 2 : height - (p.y - low) / (high - low) * height
+                            ctx.strokeStyle = PhoneTheme.accent
+                            ctx.lineWidth = 2
+                            ctx.lineJoin = "round"
+                            ctx.beginPath()
+                            ctx.moveTo(xOf(points[0]), yOf(points[0]))
+                            for (let i = 1; i < points.length; ++i) ctx.lineTo(xOf(points[i]), yOf(points[i]))
+                            ctx.stroke()
+                            const last = points[points.length - 1]
+                            ctx.fillStyle = PhoneTheme.accent
+                            ctx.beginPath()
+                            ctx.arc(xOf(last), yOf(last), 3, 0, 2 * Math.PI)
+                            ctx.fill()
+                        }
+                    }
+                    // the highest at the line's top, the lowest at its foot; one value alone at its middle
                     Label {
-                        objectName: "sheetAddr"
-                        horizontalAlignment: Text.AlignLeft
+                        id: trendMax
+                        objectName: "sheetTrendMax"
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.flat ? trendCanvas.verticalCenter : trendCanvas.top
+                        text: sheet.trend.maxText || ""
+                        color: PhoneTheme.muted
+                        font.pixelSize: 12
+                        font.features: { "tnum": 1 }
+                    }
+                    Label {
+                        id: trendMin
+                        objectName: "sheetTrendMin"
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: trendCanvas.bottom
+                        visible: !parent.flat
+                        text: sheet.trend.minText || ""
+                        color: PhoneTheme.muted
+                        font.pixelSize: 12
+                        font.features: { "tnum": 1 }
+                    }
+                    Label {
+                        objectName: "sheetTrendSpan"
+                        anchors.left: parent.left
+                        anchors.bottom: parent.bottom
+                        anchors.leftMargin: 12
+                        anchors.bottomMargin: 5
+                        text: sheet.trend.seconds !== undefined ? qsTr("last %1 s").arg(Math.max(1, Math.round(sheet.trend.seconds))) : ""
+                        color: PhoneTheme.muted
+                        font.pixelSize: 11
+                    }
+                }
+
+            }
+            ColumnLayout {
+                objectName: "sheetActions"
+                Layout.preferredWidth: column.partWidth
+                Layout.maximumWidth: column.partWidth
+                Layout.alignment: Qt.AlignTop
+                // under the corner's close cross
+                Layout.topMargin: column.twoColumns ? 36 : 0
+                spacing: 10
+
+                // Plot and Copy, side by side
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    SheetAction {
+                        objectName: "sheetPlot"
                         Layout.fillWidth: true
-                        text: (sheet.entry.addr || "") + (sheet.entry.group ? "  ·  " + sheet.entry.group : "")
+                        visible: sheet.entry.plottable === true
+                        glyph: "chart"
+                        text: sheet.entry.plotted === true ? qsTr("Take off the chart") : qsTr("Plot")
+                        onClicked: sheet.togglePlot()
+                    }
+                    SheetAction {
+                        objectName: "sheetCopy"
+                        Layout.fillWidth: true
+                        glyph: "copy"
+                        text: qsTr("Copy")
+                        onClicked: sheet.copy()
+                    }
+                }
+                Label {
+                    objectName: "sheetDone"
+                    Layout.fillWidth: true
+                    Layout.topMargin: -4
+                    horizontalAlignment: Text.AlignLeft
+                    visible: text.length > 0
+                    text: sheet.done
+                    color: sheet.doneOk ? PhoneTheme.muted : PhoneTheme.warn
+                    font.pixelSize: 13
+                    wrapMode: Text.Wrap
+                }
+
+                // the write: a line above it, its title and the map's limits
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    visible: sheet.writable
+                    implicitHeight: 1
+                    color: PhoneTheme.border
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: sheet.writable
+                    spacing: 8
+                    Label {
+                        objectName: "sheetWriteTitle"
+                        horizontalAlignment: Text.AlignLeft
+                        text: qsTr("Write")
+                        color: PhoneTheme.accent
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                    }
+                    Label {
+                        objectName: "sheetLimits"
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignLeft
+                        visible: text.length > 0
+                        text: {
+                            const limits = sheet.source >= 0 ? PhoneSession.limitsText(sheet.source) : ""
+                            return limits.length > 0 ? qsTr("The map's limits: %1").arg(limits) : ""
+                        }
                         color: PhoneTheme.muted
                         font.pixelSize: 13
                         elide: Text.ElideRight
                     }
                 }
-                ToolButton {
-                    objectName: "sheetClose"
-                    Layout.preferredWidth: 48
-                    Layout.preferredHeight: 48
-                    Layout.alignment: Qt.AlignTop
-                    focusPolicy: Qt.NoFocus
-                    Accessible.name: qsTr("Close")
-                    onClicked: sheet.close()
-                    contentItem: Item {
-                        PhoneIcon {
-                            anchors.centerIn: parent
-                            kind: "clear"
-                            size: 20
-                            color: PhoneTheme.muted
-                        }
-                    }
-                }
-            }
 
-            // the value large and its unit, left to right in every language, at the start edge
-            Item {
-                Layout.fillWidth: true
-                Layout.topMargin: -6
-                implicitHeight: valueText.implicitHeight
-                Row {
-                    objectName: "sheetValueRow"
-                    LayoutMirroring.enabled: false
-                    LayoutMirroring.childrenInherit: true
-                    x: sheet.rtl ? parent.width - width : 0
-                    spacing: 8
-                    Label {
-                        id: valueText
-                        objectName: "sheetValue"
-                        width: Math.min(implicitWidth, column.width - unitBig.width - 8)
-                        text: sheet.entry.value || ""
-                        color: sheet.failed ? PhoneTheme.bad : sheet.entry.stale ? PhoneTheme.muted : PhoneTheme.text
-                        font.pixelSize: 34
-                        font.weight: Font.DemiBold
-                        font.features: { "tnum": 1 }
-                        elide: Text.ElideRight
-                    }
-                    Label {
-                        id: unitBig
-                        objectName: "sheetValueUnit"
-                        anchors.baseline: valueText.baseline
-                        visible: text.length > 0
-                        text: sheet.entry.unit || ""
-                        color: PhoneTheme.muted
-                        font.pixelSize: 18
-                    }
-                }
-            }
-            Flow {
-                Layout.fillWidth: true
-                visible: sheet.entry.stale === true || sheet.entry.plotted === true
-                spacing: 8
-                Tag {
-                    objectName: "sheetStaleTag"
-                    visible: sheet.entry.stale === true
-                    color: PhoneTheme.warnSoft
-                    text: qsTr("not refreshed")
-                    textColor: PhoneTheme.warn
-                    textName: "sheetStale"
-                }
-                Tag {
-                    objectName: "sheetPlottedTag"
-                    visible: sheet.entry.plotted === true
-                    color: PhoneTheme.accentSoft
-                    dot: PhoneTheme.accent
-                    text: qsTr("on the chart")
-                    textColor: PhoneTheme.text
-                    textName: "sheetPlotted"
-                }
-            }
-            Label {
-                objectName: "sheetDecoded"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignLeft
-                visible: !sheet.failed && text.length > 0
-                text: sheet.entry.decoded || ""
-                color: PhoneTheme.muted
-                font.pixelSize: 14
-                wrapMode: Text.Wrap
-            }
-            Label {
-                objectName: "sheetError"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignLeft
-                visible: sheet.failed
-                text: sheet.entry.error || ""
-                color: PhoneTheme.bad
-                font.pixelSize: 14
-                wrapMode: Text.Wrap
-            }
-
-            // the last values: a line over the span kept, its highest and lowest at its top and foot at the end, the
-            // span under its start. Left to right in every language (time goes that way on the chart too); no text
-            // lies over the line
-            Rectangle {
-                objectName: "sheetTrend"
-                Layout.fillWidth: true
-                Layout.topMargin: 2
-                implicitHeight: 84
-                visible: sheet.trend.points !== undefined
-                radius: 10
-                color: PhoneTheme.surface2
-                LayoutMirroring.enabled: false
-                LayoutMirroring.childrenInherit: true
-                readonly property bool flat: sheet.trend.min === sheet.trend.max
-                // the line, drawn (no new module): the newest value at the end edge, a dot on it
-                Canvas {
-                    id: trendCanvas
-                    objectName: "sheetTrendLine"
-                    anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: Math.max(trendMax.implicitWidth, trendMin.implicitWidth) + 24
-                    anchors.topMargin: 14
-                    anchors.bottomMargin: 28
-                    onPaint: {
-                        const ctx = getContext("2d")
-                        ctx.reset()
-                        const points = sheet.trend.points
-                        if (!points || points.length < 2) return
-                        const span = Math.max(sheet.trend.seconds, 1e-6)
-                        const low = sheet.trend.min, high = sheet.trend.max
-                        const flat = high - low <= 0
-                        const xOf = p => (1 + p.x / span) * (width - 4) + 1
-                        const yOf = p => flat ? height / 2 : height - (p.y - low) / (high - low) * height
-                        ctx.strokeStyle = PhoneTheme.accent
-                        ctx.lineWidth = 2
-                        ctx.lineJoin = "round"
-                        ctx.beginPath()
-                        ctx.moveTo(xOf(points[0]), yOf(points[0]))
-                        for (let i = 1; i < points.length; ++i) ctx.lineTo(xOf(points[i]), yOf(points[i]))
-                        ctx.stroke()
-                        const last = points[points.length - 1]
-                        ctx.fillStyle = PhoneTheme.accent
-                        ctx.beginPath()
-                        ctx.arc(xOf(last), yOf(last), 3, 0, 2 * Math.PI)
-                        ctx.fill()
-                    }
-                }
-                // the highest at the line's top, the lowest at its foot; one value alone at its middle
+                // no link, or writes off: why, and the way to the drawer
                 Label {
-                    id: trendMax
-                    objectName: "sheetTrendMax"
-                    anchors.right: parent.right
-                    anchors.rightMargin: 12
-                    anchors.verticalCenter: parent.flat ? trendCanvas.verticalCenter : trendCanvas.top
-                    text: sheet.trend.maxText || ""
-                    color: PhoneTheme.muted
-                    font.pixelSize: 12
-                    font.features: { "tnum": 1 }
-                }
-                Label {
-                    id: trendMin
-                    objectName: "sheetTrendMin"
-                    anchors.right: parent.right
-                    anchors.rightMargin: 12
-                    anchors.verticalCenter: trendCanvas.bottom
-                    visible: !parent.flat
-                    text: sheet.trend.minText || ""
-                    color: PhoneTheme.muted
-                    font.pixelSize: 12
-                    font.features: { "tnum": 1 }
-                }
-                Label {
-                    objectName: "sheetTrendSpan"
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    anchors.leftMargin: 12
-                    anchors.bottomMargin: 5
-                    text: sheet.trend.seconds !== undefined ? qsTr("last %1 s").arg(Math.max(1, Math.round(sheet.trend.seconds))) : ""
-                    color: PhoneTheme.muted
-                    font.pixelSize: 11
-                }
-            }
-
-            // Plot and Copy, side by side
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                SheetAction {
-                    objectName: "sheetPlot"
-                    Layout.fillWidth: true
-                    visible: sheet.entry.plottable === true
-                    glyph: "chart"
-                    text: sheet.entry.plotted === true ? qsTr("Take off the chart") : qsTr("Plot")
-                    onClicked: sheet.togglePlot()
-                }
-                SheetAction {
-                    objectName: "sheetCopy"
-                    Layout.fillWidth: true
-                    glyph: "copy"
-                    text: qsTr("Copy")
-                    onClicked: sheet.copy()
-                }
-            }
-            Label {
-                objectName: "sheetDone"
-                Layout.fillWidth: true
-                Layout.topMargin: -4
-                horizontalAlignment: Text.AlignLeft
-                visible: text.length > 0
-                text: sheet.done
-                color: sheet.doneOk ? PhoneTheme.muted : PhoneTheme.warn
-                font.pixelSize: 13
-                wrapMode: Text.Wrap
-            }
-
-            // the write: a line above it, its title and the map's limits
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.topMargin: 4
-                visible: sheet.writable
-                implicitHeight: 1
-                color: PhoneTheme.border
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                visible: sheet.writable
-                spacing: 8
-                Label {
-                    objectName: "sheetWriteTitle"
-                    horizontalAlignment: Text.AlignLeft
-                    text: qsTr("Write")
-                    color: PhoneTheme.accent
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                }
-                Label {
-                    objectName: "sheetLimits"
+                    objectName: "sheetBlocked"
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignLeft
-                    visible: text.length > 0
-                    text: {
-                        const limits = sheet.source >= 0 ? PhoneSession.limitsText(sheet.source) : ""
-                        return limits.length > 0 ? qsTr("The map's limits: %1").arg(limits) : ""
-                    }
-                    color: PhoneTheme.muted
-                    font.pixelSize: 13
-                    elide: Text.ElideRight
-                }
-            }
-
-            // no link, or writes off: why, and the way to the drawer
-            Label {
-                objectName: "sheetBlocked"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignLeft
-                visible: sheet.writable && !sheet.canWrite
-                text: !PhoneSession.connected ? qsTr("Not connected: connect in the Connect drawer first.")
-                                              : qsTr("Writes are off: turn on Allow writes in the Connect drawer.")
-                color: PhoneTheme.warn
-                font.pixelSize: 15
-                wrapMode: Text.Wrap
-            }
-            Button {
-                objectName: "sheetConnect"
-                Layout.fillWidth: true
-                visible: sheet.writable && !sheet.canWrite
-                text: qsTr("Open the Connect drawer")
-                highlighted: true
-                Material.accent: PhoneTheme.accentFill
-                // the drawer once the sheet is gone: one popup at a time
-                onClicked: {
-                    sheet.connectAfter = true
-                    sheet.close()
-                }
-            }
-
-            // an enum: its values as a list, one chosen
-            Rectangle {
-                objectName: "sheetChoices"
-                Layout.fillWidth: true
-                visible: sheet.writable && sheet.canWrite && sheet.choices.length > 0
-                implicitHeight: choiceColumn.implicitHeight + 2
-                radius: 12
-                color: "transparent"
-                border.color: PhoneTheme.border
-                clip: true
-                Column {
-                    id: choiceColumn
-                    x: 1
-                    y: 1
-                    width: parent.width - 2
-                    Repeater {
-                        model: sheet.choices
-                        Rectangle {
-                            id: choice
-                            required property var modelData
-                            required property int index
-                            readonly property bool picked: sheet.chosen === modelData.value
-                            objectName: "sheetChoice_" + modelData.value
-                            width: choiceColumn.width
-                            height: 48
-                            // the first and the last row rounded as the list's frame: a chosen row's tint stays inside it
-                            topLeftRadius: index === 0 ? 11 : 0
-                            topRightRadius: index === 0 ? 11 : 0
-                            bottomLeftRadius: index === sheet.choices.length - 1 ? 11 : 0
-                            bottomRightRadius: index === sheet.choices.length - 1 ? 11 : 0
-                            color: choiceTap.pressed ? PhoneTheme.surface2 : picked ? PhoneTheme.accentSoft : "transparent"
-                            Accessible.role: Accessible.RadioButton
-                            Accessible.name: modelData.text
-                            Accessible.checked: picked
-                            // a radio drawn: a ring, its dot when chosen
-                            Rectangle {
-                                id: ring
-                                anchors.left: parent.left
-                                anchors.leftMargin: 14
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 20
-                                height: 20
-                                radius: 10
-                                color: "transparent"
-                                border.width: 2
-                                border.color: choice.picked ? PhoneTheme.accent : PhoneTheme.control
-                                Rectangle {
-                                    anchors.centerIn: parent
-                                    width: 10
-                                    height: 10
-                                    radius: 5
-                                    visible: choice.picked
-                                    color: PhoneTheme.accent
-                                }
-                            }
-                            Label {
-                                anchors.left: ring.right
-                                anchors.right: parent.right
-                                anchors.leftMargin: 14
-                                anchors.rightMargin: 14
-                                anchors.verticalCenter: parent.verticalCenter
-                                horizontalAlignment: Text.AlignLeft
-                                text: choice.modelData.text
-                                color: PhoneTheme.text
-                                font.pixelSize: 15
-                                font.weight: choice.picked ? Font.Medium : Font.Normal
-                                elide: Text.ElideRight
-                            }
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: 1
-                                visible: choice.index < sheet.choices.length - 1
-                                color: PhoneTheme.border
-                            }
-                            TapHandler {
-                                id: choiceTap
-                                onTapped: sheet.chosen = choice.modelData.value
-                            }
-                        }
-                    }
-                }
-            }
-            // the quick write: a number or a text in the field, its unit after it (left to right in every language),
-            // Write at the end (the left in Arabic); an enum's Write under its list
-            RowLayout {
-                id: writeRow
-                objectName: "sheetWriteRow"
-                Layout.fillWidth: true
-                visible: sheet.writable && sheet.canWrite
-                spacing: 10
-                RowLayout {
-                    Layout.fillWidth: true
-                    visible: sheet.choices.length === 0
-                    LayoutMirroring.enabled: false
-                    LayoutMirroring.childrenInherit: true
-                    spacing: 10
-                    TextField {
-                        id: valueField
-                        objectName: "sheetField"
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignLeft
-                        font.pixelSize: 18
-                        font.features: { "tnum": 1 }
-                        inputMethodHints: sheet.numberPad ? Qt.ImhFormattedNumbersOnly | Qt.ImhNoPredictiveText
-                                                          : Qt.ImhPreferNumbers | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
-                        EnterKey.type: Qt.EnterKeySend
-                        onAccepted: if (sheet.question.length === 0) sheet.apply()
-                        onActiveFocusChanged: if (activeFocus) Qt.callLater(sheet.revealField)
-                    }
-                    Label {
-                        objectName: "sheetUnit"
-                        visible: text.length > 0
-                        text: sheet.entry.unit || ""
-                        color: PhoneTheme.muted
-                        font.pixelSize: 18
-                    }
-                }
-                Item {
-                    Layout.fillWidth: true
-                    visible: sheet.choices.length > 0
+                    visible: sheet.writable && !sheet.canWrite
+                    text: !PhoneSession.connected ? qsTr("Not connected: connect in the Connect drawer first.")
+                                                  : qsTr("Writes are off: turn on Allow writes in the Connect drawer.")
+                    color: PhoneTheme.warn
+                    font.pixelSize: 15
+                    wrapMode: Text.Wrap
                 }
                 Button {
-                    objectName: "sheetApply"
-                    Layout.preferredHeight: 56
-                    Layout.minimumWidth: 96
-                    enabled: sheet.question.length === 0 && !sheet.waiting
-                    Material.accent: PhoneTheme.accentFill
+                    objectName: "sheetConnect"
+                    Layout.fillWidth: true
+                    visible: sheet.writable && !sheet.canWrite
+                    text: qsTr("Open the Connect drawer")
                     highlighted: true
-                    text: qsTr("Write")
-                    onClicked: sheet.apply()
+                    Material.accent: PhoneTheme.accentFill
+                    // the drawer once the sheet is gone: one popup at a time
+                    onClicked: {
+                        sheet.connectAfter = true
+                        sheet.close()
+                    }
                 }
-            }
 
-            // asked first: past the limits, or a register that moves something; a warning, in its colours
-            Rectangle {
-                objectName: "sheetQuestion"
-                Layout.fillWidth: true
-                visible: sheet.question.length > 0
-                implicitHeight: questionColumn.implicitHeight + 28
-                radius: 12
-                color: PhoneTheme.warnSoft
-                border.color: PhoneTheme.warn
-                PhoneIcon {
-                    id: warningIcon
-                    objectName: "sheetQuestionIcon"
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.leftMargin: 14
-                    anchors.topMargin: 14
-                    kind: "warning"
-                    color: PhoneTheme.warn
-                    markColor: PhoneTheme.surface
-                }
-                ColumnLayout {
-                    id: questionColumn
-                    anchors.left: warningIcon.right
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 14
-                    anchors.topMargin: 14
-                    spacing: 6
-                    Label {
-                        objectName: "sheetQuestionTitle"
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignLeft
-                        text: qsTr("Check before writing")
-                        color: PhoneTheme.warn
-                        font.pixelSize: 15
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                    }
-                    Label {
-                        objectName: "sheetQuestionText"
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignLeft
-                        text: sheet.question
-                        color: PhoneTheme.text
-                        font.pixelSize: 15
-                        wrapMode: Text.Wrap
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.topMargin: 2
-                        spacing: 8
-                        Button {
-                            objectName: "sheetWriteAnyway"
-                            Material.accent: PhoneTheme.accentFill
-                            highlighted: true
-                            text: qsTr("Write anyway")
-                            onClicked: sheet.send(sheet.pending)
-                        }
-                        Button {
-                            objectName: "sheetCancel"
-                            flat: true
-                            Material.foreground: PhoneTheme.text
-                            text: qsTr("Cancel")
-                            onClicked: {
-                                sheet.question = ""
-                                sheet.answer = qsTr("Not written")
-                                sheet.answerOk = false
-                                sheet.waiting = false
+                // an enum: its values as a list, one chosen
+                Rectangle {
+                    objectName: "sheetChoices"
+                    Layout.fillWidth: true
+                    visible: sheet.writable && sheet.canWrite && sheet.choices.length > 0
+                    implicitHeight: choiceColumn.implicitHeight + 2
+                    radius: 12
+                    color: "transparent"
+                    border.color: PhoneTheme.border
+                    clip: true
+                    Column {
+                        id: choiceColumn
+                        x: 1
+                        y: 1
+                        width: parent.width - 2
+                        Repeater {
+                            model: sheet.choices
+                            Rectangle {
+                                id: choice
+                                required property var modelData
+                                required property int index
+                                readonly property bool picked: sheet.chosen === modelData.value
+                                objectName: "sheetChoice_" + modelData.value
+                                width: choiceColumn.width
+                                height: 48
+                                // the first and the last row rounded as the list's frame: a chosen row's tint stays inside it
+                                topLeftRadius: index === 0 ? 11 : 0
+                                topRightRadius: index === 0 ? 11 : 0
+                                bottomLeftRadius: index === sheet.choices.length - 1 ? 11 : 0
+                                bottomRightRadius: index === sheet.choices.length - 1 ? 11 : 0
+                                color: choiceTap.pressed ? PhoneTheme.surface2 : picked ? PhoneTheme.accentSoft : "transparent"
+                                Accessible.role: Accessible.RadioButton
+                                Accessible.name: modelData.text
+                                Accessible.checked: picked
+                                // a radio drawn: a ring, its dot when chosen
+                                Rectangle {
+                                    id: ring
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 14
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 20
+                                    height: 20
+                                    radius: 10
+                                    color: "transparent"
+                                    border.width: 2
+                                    border.color: choice.picked ? PhoneTheme.accent : PhoneTheme.control
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        width: 10
+                                        height: 10
+                                        radius: 5
+                                        visible: choice.picked
+                                        color: PhoneTheme.accent
+                                    }
+                                }
+                                Label {
+                                    anchors.left: ring.right
+                                    anchors.right: parent.right
+                                    anchors.leftMargin: 14
+                                    anchors.rightMargin: 14
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    horizontalAlignment: Text.AlignLeft
+                                    text: choice.modelData.text
+                                    color: PhoneTheme.text
+                                    font.pixelSize: 15
+                                    font.weight: choice.picked ? Font.Medium : Font.Normal
+                                    elide: Text.ElideRight
+                                }
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 1
+                                    visible: choice.index < sheet.choices.length - 1
+                                    color: PhoneTheme.border
+                                }
+                                TapHandler {
+                                    id: choiceTap
+                                    onTapped: sheet.chosen = choice.modelData.value
+                                }
                             }
                         }
                     }
                 }
-            }
+                // the quick write: a number or a text in the field, its unit after it (left to right in every language),
+                // Write at the end (the left in Arabic); an enum's Write under its list
+                RowLayout {
+                    id: writeRow
+                    objectName: "sheetWriteRow"
+                    Layout.fillWidth: true
+                    visible: sheet.writable && sheet.canWrite
+                    spacing: 10
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: sheet.choices.length === 0
+                        LayoutMirroring.enabled: false
+                        LayoutMirroring.childrenInherit: true
+                        spacing: 10
+                        TextField {
+                            id: valueField
+                            objectName: "sheetField"
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
+                            font.pixelSize: 18
+                            font.features: { "tnum": 1 }
+                            inputMethodHints: sheet.numberPad ? Qt.ImhFormattedNumbersOnly | Qt.ImhNoPredictiveText
+                                                              : Qt.ImhPreferNumbers | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+                            EnterKey.type: Qt.EnterKeySend
+                            onAccepted: if (sheet.question.length === 0) sheet.apply()
+                            onActiveFocusChanged: if (activeFocus) Qt.callLater(sheet.revealField)
+                        }
+                        Label {
+                            objectName: "sheetUnit"
+                            visible: text.length > 0
+                            text: sheet.entry.unit || ""
+                            color: PhoneTheme.muted
+                            font.pixelSize: 18
+                        }
+                    }
+                    Item {
+                        Layout.fillWidth: true
+                        visible: sheet.choices.length > 0
+                    }
+                    Button {
+                        objectName: "sheetApply"
+                        Layout.preferredHeight: 56
+                        Layout.minimumWidth: 96
+                        enabled: sheet.question.length === 0 && !sheet.waiting
+                        Material.accent: PhoneTheme.accentFill
+                        highlighted: true
+                        text: qsTr("Write")
+                        onClicked: sheet.apply()
+                    }
+                }
 
-            // the answer, in its colour on its soft tone; once written, what the device holds (read back)
-            Rectangle {
-                objectName: "sheetAnswerBox"
-                Layout.fillWidth: true
-                visible: sheet.answer.length > 0
-                implicitHeight: answerColumn.implicitHeight + 20
-                radius: 10
-                color: sheet.waiting ? PhoneTheme.surface2 : sheet.answerOk ? PhoneTheme.goodSoft : PhoneTheme.badSoft
+                // asked first: past the limits, or a register that moves something; a warning, in its colours
                 Rectangle {
-                    id: answerDot
-                    anchors.left: parent.left
-                    anchors.leftMargin: 14
-                    anchors.top: parent.top
-                    anchors.topMargin: 10 + (answerText.height - height) / 2
-                    width: 8
-                    height: 8
-                    radius: 4
-                    color: answerText.color
-                }
-                ColumnLayout {
-                    id: answerColumn
-                    anchors.left: answerDot.right
-                    anchors.right: parent.right
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 14
-                    anchors.top: parent.top
-                    anchors.topMargin: 10
-                    spacing: 2
-                    Label {
-                        id: answerText
-                        objectName: "sheetAnswer"
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignLeft
-                        text: sheet.answer
-                        color: sheet.waiting ? PhoneTheme.muted : sheet.answerOk ? PhoneTheme.good : PhoneTheme.bad
-                        font.pixelSize: 15
-                        wrapMode: Text.Wrap
+                    objectName: "sheetQuestion"
+                    Layout.fillWidth: true
+                    visible: sheet.question.length > 0
+                    implicitHeight: questionColumn.implicitHeight + 28
+                    radius: 12
+                    color: PhoneTheme.warnSoft
+                    border.color: PhoneTheme.warn
+                    PhoneIcon {
+                        id: warningIcon
+                        objectName: "sheetQuestionIcon"
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.leftMargin: 14
+                        anchors.topMargin: 14
+                        kind: "warning"
+                        color: PhoneTheme.warn
+                        markColor: PhoneTheme.surface
                     }
-                    Label {
-                        objectName: "sheetReadBack"
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignLeft
-                        visible: sheet.answerOk && sheet.readBack.length > 0
-                        text: qsTr("Read back: %1").arg(sheet.readBack + (sheet.entry.unit ? " " + sheet.entry.unit : ""))
-                        color: PhoneTheme.text
-                        font.pixelSize: 14
-                        wrapMode: Text.Wrap
+                    ColumnLayout {
+                        id: questionColumn
+                        anchors.left: warningIcon.right
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 14
+                        anchors.topMargin: 14
+                        spacing: 6
+                        Label {
+                            objectName: "sheetQuestionTitle"
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
+                            text: qsTr("Check before writing")
+                            color: PhoneTheme.warn
+                            font.pixelSize: 15
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            objectName: "sheetQuestionText"
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
+                            text: sheet.question
+                            color: PhoneTheme.text
+                            font.pixelSize: 15
+                            wrapMode: Text.Wrap
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 2
+                            spacing: 8
+                            Button {
+                                objectName: "sheetWriteAnyway"
+                                Material.accent: PhoneTheme.accentFill
+                                highlighted: true
+                                text: qsTr("Write anyway")
+                                onClicked: sheet.send(sheet.pending)
+                            }
+                            Button {
+                                objectName: "sheetCancel"
+                                flat: true
+                                Material.foreground: PhoneTheme.text
+                                text: qsTr("Cancel")
+                                onClicked: {
+                                    sheet.question = ""
+                                    sheet.answer = qsTr("Not written")
+                                    sheet.answerOk = false
+                                    sheet.waiting = false
+                                }
+                            }
+                        }
                     }
                 }
+
+                // the answer, in its colour on its soft tone; once written, what the device holds (read back)
+                Rectangle {
+                    objectName: "sheetAnswerBox"
+                    Layout.fillWidth: true
+                    visible: sheet.answer.length > 0
+                    implicitHeight: answerColumn.implicitHeight + 20
+                    radius: 10
+                    color: sheet.waiting ? PhoneTheme.surface2 : sheet.answerOk ? PhoneTheme.goodSoft : PhoneTheme.badSoft
+                    Rectangle {
+                        id: answerDot
+                        anchors.left: parent.left
+                        anchors.leftMargin: 14
+                        anchors.top: parent.top
+                        anchors.topMargin: 10 + (answerText.height - height) / 2
+                        width: 8
+                        height: 8
+                        radius: 4
+                        color: answerText.color
+                    }
+                    ColumnLayout {
+                        id: answerColumn
+                        anchors.left: answerDot.right
+                        anchors.right: parent.right
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 14
+                        anchors.top: parent.top
+                        anchors.topMargin: 10
+                        spacing: 2
+                        Label {
+                            id: answerText
+                            objectName: "sheetAnswer"
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
+                            text: sheet.answer
+                            color: sheet.waiting ? PhoneTheme.muted : sheet.answerOk ? PhoneTheme.good : PhoneTheme.bad
+                            font.pixelSize: 15
+                            wrapMode: Text.Wrap
+                        }
+                        Label {
+                            objectName: "sheetReadBack"
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
+                            visible: sheet.answerOk && sheet.readBack.length > 0
+                            text: qsTr("Read back: %1").arg(sheet.readBack + (sheet.entry.unit ? " " + sheet.entry.unit : ""))
+                            color: PhoneTheme.text
+                            font.pixelSize: 14
+                            wrapMode: Text.Wrap
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // across, the close cross at the sheet's top end corner, over the actions' column (upright it is beside the name)
+    ToolButton {
+        id: cornerClose
+        objectName: visible ? "sheetClose" : "sheetCloseCorner"
+        visible: column.twoColumns
+        LayoutMirroring.enabled: sheet.rtl
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 8
+        anchors.rightMargin: 8
+        width: 48
+        height: 48
+        focusPolicy: Qt.NoFocus
+        Accessible.name: qsTr("Close")
+        onClicked: sheet.close()
+        contentItem: Item {
+            PhoneIcon {
+                anchors.centerIn: parent
+                kind: "clear"
+                size: 20
+                color: PhoneTheme.muted
             }
         }
     }
