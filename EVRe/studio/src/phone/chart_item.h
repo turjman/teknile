@@ -19,11 +19,19 @@
  *   CursorReadouts  the cursors' readouts: a row per shown line, its values at A and B, B - A, and over A..B its min,
  *               max and mean (ChartData::statsOf, statsOfFast for a fast line, as the desktop's measurements), written
  *               as the legend writes a value, with the unit.
+ *   MeasureRows the Measure sheet's table, as the desktop's measurements under its chart: a row per shown line, its
+ *               min, max, mean, RMS, std dev and peak-peak over the view, or over A -> B when both cursors are placed
+ *               (the same ChartData::statsOf / statsOfFast), taken while the sheet is open (measuring) every
+ *               MEASURE_MS, so a live view's numbers change at most four times a second.
  *
  * Cursors A and B (B.4): placeCursors() puts A and B at a quarter and three quarters of the span the shown lines have
  * samples in, in view (of the view when there are none), and holds the view;
  * moveCursor(which, x) drags one (its handle's x in the item, kept inside the plot); clearCursors() takes them off.
  * cursorAX and cursorBX say where they are drawn (NaN: off the view).
+ *
+ * Times on the axis and in the cursors' readouts are clock times, as the desktop's (17:50:50): the chart's clock's zero
+ * in wall-clock time (epochMs, taken when the clock is set). The time step is the desktop's (1-2-5 under a second, then
+ * 1, 2, 5, 10, 15, 30 s, 1, 2, 5, 10, 15, 30 min ...), with fewer labels while one would not keep a gap to the next.
  *
  * Fed from C++: addLine(id, colour, name, unit) with a colour of its own, or addThemedLine(id, index, ...) with the
  * theme's series colour `index` (colours, recoloured with the theme), a fast line with its stream's store and channel
@@ -41,6 +49,7 @@
 #include <QElapsedTimer>
 #include <QQuickItem>
 #include <QRectF>
+#include <QTimer>
 #include <QVariantList>
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
@@ -137,6 +146,34 @@ private:
 	QVector<Row> rows_;
 };
 
+class MeasureRows : public QAbstractListModel {
+	Q_OBJECT
+	QML_ELEMENT
+	QML_UNCREATABLE("the chart's own")
+
+public:
+	enum Role { IdRole = Qt::UserRole + 1, NameRole, ColourRole, MinRole, MaxRole, MeanRole, RmsRole, StdRole, P2pRole };
+	struct Row {
+		int id = 0;
+		QString name, min, max, mean, rms, std, p2p;
+		QColor colour;
+		bool operator==(const Row &o) const {
+			return id == o.id && name == o.name && min == o.min && max == o.max && mean == o.mean && rms == o.rms
+					&& std == o.std && p2p == o.p2p && colour == o.colour;
+		}
+	};
+
+	explicit MeasureRows(QObject *parent = nullptr) : QAbstractListModel(parent) {}
+	int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+	QVariant data(const QModelIndex &index, int role) const override;
+	QHash<int, QByteArray> roleNames() const override;
+	const QVector<Row> &rows() const { return rows_; }
+	void set(const QVector<Row> &rows); /* the same lines: dataChanged by row; others: reset */
+
+private:
+	QVector<Row> rows_;
+};
+
 class ChartItem : public QQuickItem {
 	Q_OBJECT
 	QML_ELEMENT
@@ -149,6 +186,7 @@ class ChartItem : public QQuickItem {
 	Q_PROPERTY(QColor gridColor READ gridColor WRITE setGridColor NOTIFY colorsChanged)
 	Q_PROPERTY(QColor frameColor READ frameColor WRITE setFrameColor NOTIFY colorsChanged)
 	Q_PROPERTY(QRectF plotRect READ plotRect NOTIFY plotRectChanged)
+	Q_PROPERTY(double topPad READ topPad WRITE setTopPad NOTIFY plotRectChanged)
 	Q_PROPERTY(int lineCount READ lineCount NOTIFY linesChanged)
 	Q_PROPERTY(ChartTicks *timeTicks READ timeTicks CONSTANT)
 	Q_PROPERTY(ChartTicks *valueTicks READ valueTicks CONSTANT)
@@ -162,15 +200,24 @@ class ChartItem : public QQuickItem {
 	Q_PROPERTY(QString cursorBText READ cursorBText NOTIFY cursorsMoved)
 	Q_PROPERTY(QString cursorSpanText READ cursorSpanText NOTIFY cursorsMoved)
 	Q_PROPERTY(CursorReadouts *readouts READ readouts CONSTANT)
+	Q_PROPERTY(bool measuring READ measuring WRITE setMeasuring NOTIFY measuringChanged)
+	Q_PROPERTY(MeasureRows *measureRows READ measureRows CONSTANT)
+	Q_PROPERTY(bool measureOverCursors READ measureOverCursors NOTIFY measured)
+	Q_PROPERTY(double measureSeconds READ measureSeconds NOTIFY measured)
 
 public:
 	static constexpr double MIN_WINDOW = 0.01;  /* seconds: the shortest view a pinch gives */
 	static constexpr double MAX_WINDOW = 300;   /* the longest, the window choice's 5 min */
 	static constexpr double LINE_WIDTH = 1.5;   /* dp, the line through the columns */
-	/* the labels' room around the plot, dp: the value labels left of it, the time labels under it */
+	/* the labels' room around the plot, dp: the value labels left of it, the time labels under it; over it TOP_PAD, or
+	 * the legend's row (topPad, ChartScreen.qml: its chips over the plot's top, as the desktop's) */
 	static constexpr double LEFT_PAD = 52, RIGHT_PAD = 10, TOP_PAD = 8, BOTTOM_PAD = 24;
 	static constexpr int MAX_TICKS_X = 6, MAX_TICKS_Y = 6;
 	static constexpr int LEGEND_MS = 250; /* the legend's values at most this often (4 a second) */
+	static constexpr int MEASURE_MS = 250; /* the Measure sheet's numbers, as often */
+	static constexpr double TIME_LABEL_PX = 11; /* the time labels' font size, as ChartScreen.qml draws them */
+	static constexpr double TIME_LABEL_GAP = 16; /* dp at least between two time labels */
+	static constexpr double TIME_LINE_SPACING = 90; /* dp at least between two time lines */
 
 	explicit ChartItem(QQuickItem *parent = nullptr);
 	~ChartItem() override;
@@ -188,11 +235,28 @@ public:
 	QVariantList colours() const { return colours_; }
 	void setColours(const QVariantList &colours); /* the theme's series colours, for the lines added by index */
 	QRectF plotRect() const { return plot_; }
+	double topPad() const { return topPad_; }
+	void setTopPad(double pad);
 	int lineCount() const { return int(lines_.size()); }
 	ChartTicks *timeTicks() const { return timeTicks_; }
 	ChartTicks *valueTicks() const { return valueTicks_; }
 	ChartLines *legend() const { return legend_; }
 	CursorReadouts *readouts() const { return readouts_; }
+	MeasureRows *measureRows() const { return measureRows_; }
+
+	/* the Measure sheet: open (measuring), its rows taken now and every MEASURE_MS; over A -> B with both cursors
+	 * placed, else over the view; the range's length in seconds */
+	bool measuring() const { return measuring_; }
+	void setMeasuring(bool on);
+	bool measureOverCursors() const { return measureCursors_; }
+	double measureSeconds() const { return measureSeconds_; }
+	/* tests: a line's statistics over the sheet's range, and how many times the sheet's rows were taken */
+	ChartData::Stats measureStats(int id) const;
+	qint64 measureCount() const { return measureCount_; }
+	/* the clock's zero in wall-clock time, ms since the epoch: a time t of the chart is epochMs + t * 1000 */
+	qint64 epochMs() const { return epochMs_; }
+	/* a time of the chart as a clock time, as precise as `step` needs: "17:50:50", "17:50:50.2", "17:50:50.25" */
+	QString clockText(double t, double step) const;
 
 	/* the cursors: times of the chart's clock; off: NaN */
 	bool cursorsOn() const { return std::isfinite(cursorA_) && std::isfinite(cursorB_); }
@@ -230,8 +294,10 @@ public:
 	Q_INVOKABLE bool setYRange(double lo, double hi);
 	/* a fast line's records came into its store (the session's): the next frame draws them */
 	void storeChanged() { polish(); }
-	/* now, in seconds of the samples' times; not set: the newest sample's time */
+	/* now, in seconds of the samples' times; not set: the newest sample's time. Its zero in wall-clock time is taken
+	 * from it (now less its time), or given (epochMs) */
 	void setClock(std::function<double()> clock);
+	void setClock(std::function<double()> clock, qint64 epochMs);
 	/* a polled line is broken where two samples lie further apart than this, seconds (0: never), as a fast line is
 	 * over lost records: no segment across a stretch no poll filled. The session gives the time a value goes stale */
 	void setGapSeconds(double seconds);
@@ -272,6 +338,8 @@ signals:
 	void framed(); /* a frame's lines were made (updatePolish): tests wait for it */
 	void cursorsChanged();
 	void cursorsMoved(); /* placed, dragged, or the view moved under them */
+	void measuringChanged();
+	void measured(); /* the Measure sheet's rows were taken */
 
 protected:
 	void updatePolish() override;
@@ -305,6 +373,9 @@ private:
 	QColor colourOf(const Line &line) const;
 	void updateLegend(bool values);
 	void updateReadouts();
+	void updateMeasure();
+	void updatePlotRect();
+	ChartData::Stats statsOver(const Line &line, double t0, double t1, double a, double b) const;
 	double cursorX(double t) const;
 
 	std::vector<std::unique_ptr<Line>> lines_;
@@ -327,6 +398,13 @@ private:
 	ChartTicks *timeTicks_ = nullptr, *valueTicks_ = nullptr;
 	ChartLines *legend_ = nullptr;
 	CursorReadouts *readouts_ = nullptr;
+	MeasureRows *measureRows_ = nullptr;
+	bool measuring_ = false, measureCursors_ = false;
+	double measureSeconds_ = 0;
+	qint64 measureCount_ = 0;
+	QTimer *measureTimer_ = nullptr;
+	qint64 epochMs_ = 0;
+	double topPad_ = TOP_PAD;
 	double cursorA_ = NAN, cursorB_ = NAN;
 	double cursorAtX_ = NAN, cursorBtX_ = NAN; /* where they were drawn last: cursorsMoved when it changes */
 	QMetaObject::Connection frameConnection_;

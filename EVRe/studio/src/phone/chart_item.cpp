@@ -2,6 +2,9 @@
 /* The phone's chart: see chart_item.h. */
 #include "phone/chart_item.h"
 
+#include <QDateTime>
+#include <QFontMetricsF>
+#include <QGuiApplication>
 #include <QQuickWindow>
 #include <QSGFlatColorMaterial>
 #include <QSGGeometryNode>
@@ -130,6 +133,48 @@ void CursorReadouts::set(const QVector<Row> &rows) {
 	}
 }
 
+/* ------------------------------------------------------------------ the Measure sheet's rows */
+
+int MeasureRows::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : int(rows_.size()); }
+
+QVariant MeasureRows::data(const QModelIndex &index, int role) const {
+	if (!index.isValid() || index.row() >= rows_.size()) return {};
+	const Row &row = rows_[index.row()];
+	switch (role) {
+	case IdRole: return row.id;
+	case NameRole: return row.name;
+	case ColourRole: return row.colour;
+	case MinRole: return row.min;
+	case MaxRole: return row.max;
+	case MeanRole: return row.mean;
+	case RmsRole: return row.rms;
+	case StdRole: return row.std;
+	case P2pRole: return row.p2p;
+	default: return {};
+	}
+}
+
+QHash<int, QByteArray> MeasureRows::roleNames() const {
+	return { { IdRole, "lineId" }, { NameRole, "name" }, { ColourRole, "colour" }, { MinRole, "min" }, { MaxRole, "max" },
+		{ MeanRole, "mean" }, { RmsRole, "rms" }, { StdRole, "std" }, { P2pRole, "p2p" } };
+}
+
+void MeasureRows::set(const QVector<Row> &rows) {
+	bool same = rows.size() == rows_.size();
+	for (qsizetype i = 0; same && i < rows.size(); ++i) same = rows[i].id == rows_[i].id;
+	if (!same) {
+		beginResetModel();
+		rows_ = rows;
+		endResetModel();
+		return;
+	}
+	for (qsizetype i = 0; i < rows.size(); ++i) {
+		if (rows[i] == rows_[i]) continue;
+		rows_[i] = rows[i];
+		emit dataChanged(index(int(i)), index(int(i)));
+	}
+}
+
 /* ------------------------------------------------------------------ helpers */
 
 namespace {
@@ -147,19 +192,26 @@ double niceStep(double rough) {
 /* the decimals a step needs (0.2: 1, 0.05: 2, 5: 0) */
 int decimalsFor(double step) { return std::clamp(int(std::ceil(-std::log10(step) - 1e-9)), 0, 9); }
 
-/* a time of the chart's clock as m:ss (h:mm:ss past an hour), with the decimals a step under a second needs; Western
- * digits in any language (as formatValue writes numbers) */
-QString timeLabel(double t, double step) {
-	const int decimals = step < 1 ? decimalsFor(step) : 0;
-	const double scale = std::pow(10.0, decimals);
-	const double rounded = std::round(std::fabs(t) * scale) / scale;
-	const qint64 whole = qint64(std::floor(rounded));
-	const double fraction = rounded - double(whole);
-	const qint64 h = whole / 3600, m = (whole / 60) % 60, s = whole % 60;
-	QString text = h > 0 ? QStringLiteral("%1:%2:%3").arg(h).arg(m, 2, 10, QLatin1Char('0')).arg(s, 2, 10, QLatin1Char('0'))
-	                     : QStringLiteral("%1:%2").arg(m).arg(s, 2, 10, QLatin1Char('0'));
-	if (decimals > 0) text += QString::number(fraction, 'f', decimals).mid(1); /* ".25" */
-	return t < 0 && rounded > 0 ? QLatin1Char('-') + text : text;
+/* the time grid's smallest step of at least `least` seconds, of the desktop's steps (chart_widget.cpp niceTimeStep):
+ * 1-2-5 under a second, then steps a clock reads well */
+double timeStepAtLeast(double least) {
+	if (!(least > 0) || !std::isfinite(least)) return 1;
+	if (least < 1) {
+		const double power = std::pow(10.0, std::floor(std::log10(least)));
+		for (const double m : { 1.0, 2.0, 5.0, 10.0 })
+			if (m * power >= least * (1 - 1e-9)) return m * power;
+	}
+	static const double steps[] = { 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400 };
+	for (double s : steps)
+		if (s >= least * (1 - 1e-9)) return s;
+	return 14400;
+}
+
+/* the font the time labels are drawn in (ChartScreen.qml: the application's at 11 px) */
+QFont timeLabelFont() {
+	QFont font = QGuiApplication::font();
+	font.setPixelSize(int(ChartItem::TIME_LABEL_PX));
+	return font;
 }
 
 QString valueLabel(double v, double step) {
@@ -234,6 +286,22 @@ ChartItem::ChartItem(QQuickItem *parent) : QQuickItem(parent) {
 	valueTicks_ = new ChartTicks(this);
 	legend_ = new ChartLines(this);
 	readouts_ = new CursorReadouts(this);
+	measureRows_ = new MeasureRows(this);
+	measureTimer_ = new QTimer(this);
+	measureTimer_->setInterval(MEASURE_MS);
+	connect(measureTimer_, &QTimer::timeout, this, &ChartItem::updateMeasure);
+	epochMs_ = QDateTime::currentMSecsSinceEpoch(); /* no clock yet: a time 0 is now */
+}
+
+/* a clock time as the desktop's time labels write it (chart_widget.cpp timeLabel), local time, Western digits */
+QString ChartItem::clockText(double t, double step) const {
+	if (!std::isfinite(t)) return QString();
+	const QDateTime at = QDateTime::fromMSecsSinceEpoch(epochMs_ + qint64(std::llround(t * 1000)));
+	if (step >= 1) return at.toString(QStringLiteral("HH:mm:ss"));
+	if (step >= 0.1) return at.toString(QStringLiteral("HH:mm:ss.z"));
+	QString label = at.toString(QStringLiteral("HH:mm:ss.zzz"));
+	if (step >= 0.01) label.chop(1); /* hundredths */
+	return label;
 }
 
 /* ------------------------------------------------------------------ the cursors */
@@ -243,8 +311,8 @@ double ChartItem::cursorX(double t) const {
 	return axes_.x(t);
 }
 
-QString ChartItem::cursorAText() const { return std::isfinite(cursorA_) ? timeLabel(cursorA_, 0.01) : QString(); }
-QString ChartItem::cursorBText() const { return std::isfinite(cursorB_) ? timeLabel(cursorB_, 0.01) : QString(); }
+QString ChartItem::cursorAText() const { return std::isfinite(cursorA_) ? clockText(cursorA_, 0.01) : QString(); }
+QString ChartItem::cursorBText() const { return std::isfinite(cursorB_) ? clockText(cursorB_, 0.01) : QString(); }
 
 QString ChartItem::cursorSpanText() const {
 	if (!cursorsOn()) return QString();
@@ -319,14 +387,73 @@ void ChartItem::setCursors(double a, double b) {
 	polish();
 }
 
+/* a line's measurements over t0..t1, its values at a and b (the desktop's: statsOf, statsOfFast for a fast line) */
+ChartData::Stats ChartItem::statsOver(const Line &line, double t0, double t1, double a, double b) const {
+	const ChartData::Series &s = line.series;
+	if (s.fast) return s.fast->hasTime() ? ChartData::statsOfFast(*s.fast, s.channel, t0, t1, a, b) : ChartData::Stats();
+	return s.times.isEmpty() ? ChartData::Stats() : ChartData::statsOf(s.times, s.values, t0, t1, a, b);
+}
+
 ChartData::Stats ChartItem::cursorStats(int id) const {
 	const Line *line = find(id);
 	if (!line || !cursorsOn()) return ChartData::Stats();
-	const ChartData::Series &s = line->series;
-	const double t0 = std::min(cursorA_, cursorB_), t1 = std::max(cursorA_, cursorB_);
-	if (s.fast) return s.fast->hasTime() ? ChartData::statsOfFast(*s.fast, s.channel, t0, t1, cursorA_, cursorB_)
-										 : ChartData::Stats();
-	return s.times.isEmpty() ? ChartData::Stats() : ChartData::statsOf(s.times, s.values, t0, t1, cursorA_, cursorB_);
+	return statsOver(*line, std::min(cursorA_, cursorB_), std::max(cursorA_, cursorB_), cursorA_, cursorB_);
+}
+
+/* ------------------------------------------------------------------ the Measure sheet */
+
+void ChartItem::setMeasuring(bool on) {
+	if (on == measuring_) return;
+	measuring_ = on;
+	if (on) {
+		updateMeasure();
+		measureTimer_->start();
+	} else {
+		measureTimer_->stop();
+	}
+	emit measuringChanged();
+}
+
+/* the range measured: A -> B with both cursors placed, else the view as last drawn */
+ChartData::Stats ChartItem::measureStats(int id) const {
+	const Line *line = find(id);
+	if (!line) return ChartData::Stats();
+	if (cursorsOn()) return cursorStats(id);
+	if (!(axes_.span > 0)) return ChartData::Stats();
+	return statsOver(*line, axes_.t0, axes_.t1, axes_.t0, axes_.t1);
+}
+
+/* each shown line's min, max, mean, RMS, std dev and peak-peak over the range, written as the legend writes a value,
+ * with its unit (the time-weighted statistics of statsOf, so an uneven poll does not tilt them); a value the line has
+ * not there (no sample in the range; the mean, RMS and std dev where a fast line kept only its summaries): an em dash.
+ * At most every MEASURE_MS, while the sheet is open: a cursor's drag changes the range at every frame */
+void ChartItem::updateMeasure() {
+	++measureCount_;
+	QVector<MeasureRows::Row> rows;
+	for (const auto &line : lines_) {
+		if (!line->shown) continue;
+		const ChartData::Stats st = measureStats(line->id);
+		const QString unit = line->series.unit.isEmpty() ? QString() : QLatin1Char(' ') + line->series.unit;
+		const auto text = [&unit](double v, bool ok) {
+			return ok && std::isfinite(v) ? ChartData::number(v) + unit : QStringLiteral("\u2014");
+		};
+		const bool samples = st.ok && !st.summaries;
+		MeasureRows::Row row;
+		row.id = line->id;
+		row.name = line->series.name;
+		row.colour = colourOf(*line);
+		row.min = text(st.min, st.ok);
+		row.max = text(st.max, st.ok);
+		row.mean = text(st.mean, samples);
+		row.rms = text(st.rms, samples);
+		row.std = text(st.std, samples);
+		row.p2p = text(st.p2p, st.ok);
+		rows << row;
+	}
+	measureRows_->set(rows);
+	measureCursors_ = cursorsOn();
+	measureSeconds_ = measureCursors_ ? std::fabs(cursorB_ - cursorA_) : (axes_.span > 0 ? axes_.span : window_);
+	emit measured();
 }
 
 /* each shown line's values at A and B and over A..B (the desktop's measurements, ChartView::stats), as the legend
@@ -574,7 +701,15 @@ void ChartItem::clear() {
 }
 
 void ChartItem::setClock(std::function<double()> clock) {
+	/* its zero in wall-clock time: now, less the clock's time now (as the desktop's ChartTab gives it) */
+	const qint64 wall = QDateTime::currentMSecsSinceEpoch();
+	const qint64 epoch = clock ? wall - qint64(std::llround(clock() * 1000.0)) : wall;
+	setClock(std::move(clock), epoch);
+}
+
+void ChartItem::setClock(std::function<double()> clock, qint64 epochMs) {
 	clock_ = std::move(clock);
+	epochMs_ = epochMs;
 	polish();
 }
 
@@ -674,8 +809,18 @@ QVector<ChartData::Bin> ChartItem::bins(int id) const {
 
 void ChartItem::geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) {
 	QQuickItem::geometryChange(newGeometry, oldGeometry);
-	const QRectF plot(LEFT_PAD, TOP_PAD, std::max(0.0, width() - LEFT_PAD - RIGHT_PAD),
-			std::max(0.0, height() - TOP_PAD - BOTTOM_PAD));
+	updatePlotRect();
+}
+
+void ChartItem::setTopPad(double pad) {
+	if (!(pad >= 0) || pad == topPad_) return;
+	topPad_ = pad;
+	updatePlotRect();
+}
+
+void ChartItem::updatePlotRect() {
+	const QRectF plot(LEFT_PAD, topPad_, std::max(0.0, width() - LEFT_PAD - RIGHT_PAD),
+			std::max(0.0, height() - topPad_ - BOTTOM_PAD));
 	if (plot != plot_) {
 		plot_ = plot;
 		emit plotRectChanged();
@@ -749,8 +894,17 @@ void ChartItem::makeTicks(QVector<float> &grid) {
 	QVector<ChartTicks::Tick> times, values;
 	/* at most MAX_LOOP steps each way: a step under a value's precision (v + step == v) cannot spin either */
 	constexpr int MAX_LOOP = 64;
-	const int xCount = std::max(2, int(plot_.width() / 90));
-	const double tStep = niceStep(axes_.span / xCount);
+	/* clock times as the desktop's (17:50:50): the smallest step a clock reads well that leaves each label its width
+	 * and a gap to the next (each is centred on its line: the step in pixels is the room of one), and 90 dp at least
+	 * between two lines, so a narrower plot has fewer */
+	const QFontMetricsF labelMetrics(timeLabelFont());
+	const auto room = [&](double step) {
+		return std::max(TIME_LINE_SPACING, labelMetrics.horizontalAdvance(clockText(axes_.t1, step)) + TIME_LABEL_GAP);
+	};
+	const double perPixel = plot_.width() > 0 ? axes_.span / plot_.width() : 1;
+	double tStep = timeStepAtLeast(room(1) * perPixel);
+	/* a step under a second writes decimals: wider labels, so perhaps a larger step */
+	for (int i = 0; i < 4 && tStep < 1 && tStep < room(tStep) * perPixel; ++i) tStep = timeStepAtLeast(room(tStep) * perPixel);
 	const bool timesOk = std::isfinite(axes_.t0) && std::isfinite(axes_.t1) && std::isfinite(tStep) && tStep > 0;
 	int steps = 0;
 	for (double t = std::ceil(axes_.t0 / tStep) * tStep; timesOk && t <= axes_.t1 + tStep * 1e-9 && steps < MAX_LOOP;
@@ -758,7 +912,7 @@ void ChartItem::makeTicks(QVector<float> &grid) {
 		const double x = snapX(axes_.x(t));
 		if (x < plot_.left() || x >= plot_.right()) continue;
 		rect(grid, x, plot_.top(), x + hair, plot_.bottom());
-		times.push_back({ x, timeLabel(t, tStep) });
+		times.push_back({ x, clockText(t, tStep) });
 	}
 	const int yCount = std::clamp(int(plot_.height() / 40), 2, MAX_TICKS_Y);
 	const double vStep = niceStep((axes_.hi - axes_.lo) / yCount);

@@ -11,6 +11,11 @@
  *                 try, as the desktop does, except after a refused token, a device that wants one, or a refused USB
  *                 permission: those would only be refused again, so the link stays closed until Connect
  *   polling       on or off and its interval; the measured rate twice a second while connected
+ *   link health   as the desktop's status bar, twice a second while connected (healthText: "Latency 0.8 ms · TX 271 ·
+ *                 RX 271 · Timeouts 0 · Errors 0 · Bad frames 0", the engine's counters, evre::Master::Stats); while
+ *                 timeouts, error answers or bad frames rise (any in the last QUIET_MS) linkTroubled is on and
+ *                 troubleText says how many of each came in that time: the pill turns to the warning colour, the
+ *                 drawer says why. After QUIET_MS with none, it is off again
  *   writes        Allow writes (off at every start, as on the desktop); write(row, text) is MainWindow::onWriteRequested's
  *                 path: encodeValue, the map's limits and a danger register asked first (writeQuestion), the write, and
  *                 the engine reads it back, so the card shows what the device holds; writeAnswered says how it went
@@ -53,6 +58,7 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
+#include "evre/master.h"
 #include "model/device_map.h"
 #include "model/fast_store.h"
 #include "phone/chart_item.h"
@@ -101,6 +107,9 @@ class PhoneSession : public QObject {
 	Q_PROPERTY(int intervalMs READ intervalMs WRITE setIntervalMs NOTIFY settingsChanged)
 	Q_PROPERTY(double pollHz READ pollHz NOTIFY statsChanged)
 	Q_PROPERTY(QString pollText READ pollText NOTIFY statsChanged)
+	Q_PROPERTY(QString healthText READ healthText NOTIFY healthChanged)
+	Q_PROPERTY(bool linkTroubled READ linkTroubled NOTIFY healthChanged)
+	Q_PROPERTY(QString troubleText READ troubleText NOTIFY healthChanged)
 	Q_PROPERTY(bool writesEnabled READ writesEnabled WRITE setWritesEnabled NOTIFY settingsChanged)
 	Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
 	Q_PROPERTY(QString recordFile READ recordFile NOTIFY recordingChanged)
@@ -130,6 +139,7 @@ public:
 	static constexpr int RECONNECT_LOST_MS = 500;    /* a link that was up: again soon */
 	static constexpr int RECONNECT_FAILED_MS = 2000; /* a try that failed: not faster than this */
 	static constexpr int STATS_MS = 500;
+	static constexpr int QUIET_MS = 5000;    /* no timeout, error or bad frame for this long: the link is well again */
 	static constexpr int SYNC_IDLE_MS = 50;  /* no frame drawn for this long: sync() by the timer (nothing moves) */
 	static constexpr int ID_RETRIES = 3;     /* a DEVICE_ID read without an answer: tried again this often */
 	static constexpr int ID_RETRY_MS = 1000;
@@ -170,6 +180,9 @@ public:
 	void setIntervalMs(int ms);
 	double pollHz() const { return pollHz_; }
 	QString pollText() const;
+	QString healthText() const { return healthText_; }
+	bool linkTroubled() const { return !troubles_.isEmpty(); }
+	QString troubleText() const { return troubleText_; }
 	bool writesEnabled() const;
 	void setWritesEnabled(bool on);
 	bool recording() const { return recording_; }
@@ -256,6 +269,7 @@ signals:
 	void settingsChanged();
 	void systemChanged();
 	void statsChanged();
+	void healthChanged();
 	void recordingChanged();
 	/* each line of the Log as it is added (LogModel::Level) */
 	void message(int level, const QString &text);
@@ -288,6 +302,8 @@ private:
 	void readMotion();
 	void buzz(); /* the system's short haptic, if any */
 	void refreshStats();
+	void updateHealth(const evre::Master::Stats &link);
+	void clearHealth();
 	void markDeviceLost();
 	void retryDeviceId();
 	void linkDown();
@@ -348,6 +364,17 @@ private:
 	bool polling_ = true;
 	int intervalMs_ = 100;
 	double pollHz_ = 0;
+
+	/* the link's health: its counters at the last look, and each rise with when it came (healthClock_'s ms) */
+	struct Trouble {
+		qint64 at = 0;
+		quint64 timeouts = 0, errors = 0, badFrames = 0;
+	};
+	QVector<Trouble> troubles_;
+	Trouble lastCounts_;
+	bool countsSeen_ = false;
+	QElapsedTimer healthClock_;
+	QString healthText_, troubleText_;
 
 	int deviceId_ = -1;          /* -1: not read on this link */
 	int revision_ = 0;

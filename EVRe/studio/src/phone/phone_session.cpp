@@ -520,6 +520,7 @@ void PhoneSession::connectLink() {
 	reconnectTimer_.stop();
 	loginStop_.clear(); /* a new try: its own login */
 	connected_ = false;
+	clearHealth();
 	pushLinkOptions();
 	pushPolling();
 	if (tcp_) {
@@ -573,6 +574,7 @@ void PhoneSession::disconnectLink() {
 	reconnectTimer_.stop();
 	engine_->post([engine = engine_] { engine->disconnectLink(); });
 	connected_ = false;
+	clearHealth();
 	linkDown();
 	markDeviceLost();
 	if (wasUp) addLog(LogModel::Info, tr("disconnected"));
@@ -584,6 +586,8 @@ void PhoneSession::onOpened(const QString &link) {
 	if (!wantConnected_) return; /* stopped meanwhile */
 	connected_ = true;
 	idTries_ = 0;
+	clearHealth();
+	if (engine_) updateHealth(engine_->stats().master); /* the counters so far: a rise counts from here */
 	model_->setLinkUp(true);
 	syncTimer_.start();
 	addLog(LogModel::Info, tr("connected: %1").arg(link));
@@ -599,6 +603,7 @@ void PhoneSession::onOpened(const QString &link) {
 void PhoneSession::onClosed(const QString &why, const QString &detail) {
 	const bool wasUp = connected_;
 	connected_ = false;
+	clearHealth();
 	linkDown();
 	if (!why.isEmpty()) {
 		const QString both = detail.isEmpty() ? why : QStringLiteral("%1 (%2)").arg(why, detail);
@@ -737,11 +742,62 @@ QString PhoneSession::connectText() const {
 
 void PhoneSession::refreshStats() {
 	if (!connected_) return;
-	const double hz = polling_ ? engine_->stats().pollHz : 0.0;
+	const IoEngine::Stats stats = engine_->stats();
+	updateHealth(stats.master);
+	const double hz = polling_ ? stats.pollHz : 0.0;
 	if (hz == pollHz_) return;
 	pollHz_ = hz;
 	if (intervalMs_ == 0) updatePlotLimit(); /* as fast as possible: the measured rate sets the limit */
 	emit statsChanged();
+}
+
+/* the desktop's status bar in one line (MainWindow::refreshStatus), and whether the link is in trouble: a timeout, an
+ * error answer or a bad frame in the last QUIET_MS (counted from the rises seen at each look) */
+void PhoneSession::updateHealth(const evre::Master::Stats &link) {
+	if (!healthClock_.isValid()) healthClock_.start();
+	const qint64 now = healthClock_.elapsed();
+	if (countsSeen_) {
+		Trouble rise;
+		rise.at = now;
+		rise.timeouts = link.timeouts > lastCounts_.timeouts ? link.timeouts - lastCounts_.timeouts : 0;
+		rise.errors = link.errors > lastCounts_.errors ? link.errors - lastCounts_.errors : 0;
+		rise.badFrames = link.badFrames > lastCounts_.badFrames ? link.badFrames - lastCounts_.badFrames : 0;
+		if (rise.timeouts + rise.errors + rise.badFrames > 0) troubles_ << rise;
+	}
+	lastCounts_.timeouts = link.timeouts;
+	lastCounts_.errors = link.errors;
+	lastCounts_.badFrames = link.badFrames;
+	countsSeen_ = true;
+	while (!troubles_.isEmpty() && troubles_.first().at <= now - QUIET_MS) troubles_.removeFirst();
+	Trouble sum;
+	for (const Trouble &rise : std::as_const(troubles_)) {
+		sum.timeouts += rise.timeouts;
+		sum.errors += rise.errors;
+		sum.badFrames += rise.badFrames;
+	}
+	QStringList parts;
+	if (sum.timeouts > 0) parts << tr("Timeouts +%1").arg(sum.timeouts);
+	if (sum.errors > 0) parts << tr("Errors +%1").arg(sum.errors);
+	if (sum.badFrames > 0) parts << tr("Bad frames +%1").arg(sum.badFrames);
+	const QString trouble = parts.isEmpty() ? QString()
+			: tr("The link is struggling: %1 in the last %2 s").arg(parts.join(QStringLiteral(" · "))).arg(QUIET_MS / 1000);
+	const QString text = tr("Latency %1 ms · TX %2 · RX %3 · Timeouts %4 · Errors %5 · Bad frames %6")
+			.arg(link.avgLatencyMs, 0, 'f', 1).arg(link.tx).arg(link.rx).arg(link.timeouts).arg(link.errors)
+			.arg(link.badFrames);
+	if (text == healthText_ && trouble == troubleText_) return;
+	healthText_ = text;
+	troubleText_ = trouble;
+	emit healthChanged();
+}
+
+/* a new link: its counters' rises from now on; none while not connected */
+void PhoneSession::clearHealth() {
+	countsSeen_ = false;
+	troubles_.clear();
+	if (healthText_.isEmpty() && troubleText_.isEmpty()) return;
+	healthText_.clear();
+	troubleText_.clear();
+	emit healthChanged();
 }
 
 void PhoneSession::addLog(LogModel::Level level, const QString &text) {

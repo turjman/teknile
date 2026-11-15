@@ -5223,7 +5223,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/phone/phone_system.h`,&nbsp;`.cpp` | `SystemBridge`: what Android does for the app: the foreground service with its notification, the screen kept on, a screen's orientation, a short buzz (haptic feedback), the animator scale (Remove animations); Android's over JNI to `android/src/com/teknile/evre/EvreService.java`, none elsewhere, a test's stand-in in the test |
 | `src/phone/phone_help.h`,&nbsp;`.cpp` | `PhoneHelp`: the Help screen's topics and pages (`help_topics.cpp`: the phone's list), right to left in Arabic |
 | `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat; also the Registers screen's and the chart demo's speed line, `EVRE_PERF`) |
-| `src/phone/chart_item.h`,&nbsp;`.cpp` | `ChartItem`: the phone's chart, drawn by the GPU from nodes of its own, binned by `ChartData`; `ChartTicks`: an axis's labels; `ChartLines`: the legend (25.6) |
+| `src/phone/chart_item.h`,&nbsp;`.cpp` | `ChartItem`: the phone's chart, drawn by the GPU from nodes of its own, binned by `ChartData`; `ChartTicks`: an axis's labels; `ChartLines`: the legend; `CursorReadouts` and `MeasureRows`: the cursors' readouts and the Measure sheet (25.6) |
 | `src/phone/chart_demo.h`,&nbsp;`.cpp` | `ChartDemo`: the chart's test feed (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`): 8 lines at 1,000 Hz |
 | `src/phone/frame_log.h`,&nbsp;`.cpp` | `FrameLog`: the Monitor's frames, the newest 5000, each split into its time, direction, bytes and note, its side and its function's name and kind; the counts each way; `decode` (a frame field by field, the Dump's words); Pause and Clear (25.6) |
 | `src/phone/qml/Main.qml` | the phone's window: header and tab bar upright, the rail across, the drawer, the screens (their change's motion), the Chart's whole window, mirroring, Material's colours |
@@ -5837,17 +5837,18 @@ the models, the theme's colours, the language) get no QML macros: QML reaches th
 | `PhoneHelp` | singleton: the Help screen's topics and pages (`help_topics.cpp`): *Using the phone app*, then the desktop's that apply on a phone; right to left in Arabic | `titles`; `page(index, dark)` | phone test (Help) |
 | `PhoneTheme` | singleton: the colours of `Theme::colorsFor(dark)` and `dark`, saved in `ui/dark`; Material follows it in `Main.qml` | `dark`, `bg`, `surface`, `surface2`, `border`, `text`, `muted`, `accent`, `accentFill`, `badFill`, `control`, `good`, `warn`, `bad`, `grid`, `series`, and the phone's soft tones `accentSoft`, `goodSoft`, `warnSoft`, `badSoft` (the state's colour over the surface at 14 % dark, 8 % light: behind chips, the pill, the chosen tab, the warning); signal `changed` | phone test (theme) |
 | `PhoneLanguage` | singleton: the drawer's language choice, saved in `ui/language`, applied at the next start | `codes`, `choice`, `pending`; signal `changed` | phone test (language) |
-| `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()`; DEVICE_ID read again after no answer; the values copied once a frame (`sync`), writes as `MainWindow::onWriteRequested`, Plot with the lines' limit; the chart's feed: a line per plotted register in the theme's next series colour, each poll's samples (`takeSamples`) once a frame on the engine's clock, a disconnect keeping the lines; fast lines: a channel plotted switches its stream on, the blocks (`takeFastBlocks`) into a `fast::Store` per stream, kept for the chart's memory; the Monitor's frames (`takeFrames`) while its screen shows and they are not paused (`IoEngine::setMonitor`); the system (`SystemBridge`): the foreground service while a link is wanted, the screen kept on while connected, a screen's orientation, a buzz when the link comes up and when a write is taken, the app's motion off with Android's animations removed; a poll's samples timed at its request (`IoEngine::setSampleAtRequest`), the chart's polled lines broken at a lost link and after a stale gap | `state`, `pillText`, `linkText`, `linkDetail`, `connectText`, `connected`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`, `registerList`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`, `editText`, `choices`, `limitsText`, `writeQuestion`, `write`, `setPlot`, `chart`, `fastChannels`, `setFastPlot`, `unplotLine`, `fastLineId`, `frames`, `monitorShown`, `monitoring`; `keepScreenOn`, `serviceText`, `screenKeptOn`, `orientation`, `motion`; `attachWindow`, `sync`; signals `message(level, text)`, `writeAnswered(row, ok, text)`, `readBack(row, text)` (the first value read after a write, at the table time of its answer or later), `notice(text)`; `setUsbBridgeForTests`, `setSystemBridgeForTests` | phone test (connect to USB gone, DEVICE_ID again, the Registers checks, the chart's lines, fast lines, service, orientation, Monitor) |
+| `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()`; DEVICE_ID read again after no answer; the values copied once a frame (`sync`), writes as `MainWindow::onWriteRequested`, Plot with the lines' limit; the chart's feed: a line per plotted register in the theme's next series colour, each poll's samples (`takeSamples`) once a frame on the engine's clock, a disconnect keeping the lines; fast lines: a channel plotted switches its stream on, the blocks (`takeFastBlocks`) into a `fast::Store` per stream, kept for the chart's memory; the Monitor's frames (`takeFrames`) while its screen shows and they are not paused (`IoEngine::setMonitor`); the system (`SystemBridge`): the foreground service while a link is wanted, the screen kept on while connected, a screen's orientation, a buzz when the link comes up and when a write is taken, the app's motion off with Android's animations removed; a poll's samples timed at its request (`IoEngine::setSampleAtRequest`), the chart's polled lines broken at a lost link and after a stale gap; the link's health as the desktop's status bar from the engine's counters, troubled while timeouts, error answers or bad frames rose in the last `QUIET_MS` | `state`, `pillText`, `healthText`, `linkTroubled`, `troubleText`, `linkText`, `linkDetail`, `connectText`, `connected`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`, `registerList`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`, `editText`, `choices`, `limitsText`, `writeQuestion`, `write`, `setPlot`, `chart`, `fastChannels`, `setFastPlot`, `unplotLine`, `fastLineId`, `frames`, `monitorShown`, `monitoring`; `keepScreenOn`, `serviceText`, `screenKeptOn`, `orientation`, `motion`; `attachWindow`, `sync`; signals `message(level, text)`, `writeAnswered(row, ok, text)`, `readBack(row, text)` (the first value read after a write, at the table time of its answer or later), `notice(text)`; `setUsbBridgeForTests`, `setSystemBridgeForTests` | phone test (connect to USB gone, DEVICE_ID again, the Registers checks, the chart's lines, fast lines, service, orientation, Monitor) |
 | `PortList` | list model: the USB devices plugged in, from `UsbBridge::devices()`; a device with the map's USB IDs named by the map; changed only when the devices are | roles `name`, `product`, `vid`, `pid`, `mapped`, `label`; `indexOf` | phone test (USB ports) |
 | `LogModel` | list model: the phone's Log, the newest 2000 lines | roles `level`, `time`, `text`; `count`, `infoCount`, `warningCount`, `errorCount`, `clear`, `copy(levels)`, `text(levels)` | phone test (Log screen, Log levels) |
 | `RowFilter` | a `QSortFilterProxyModel` for QML: only the rows whose role `roleName` is one of `shown`, the choice kept under `settingsKey` | `roleName`, `shown`, `settingsKey`, `count`; `setValueShown`, `valueShown` | phone test (Log levels, Monitor kinds) |
 | `RegisterList` | list model over `RegisterModel`: a row per register, each group's together in the order of its first register; the search (`RegisterFilter`); `dataChanged` forwarded row by row with the roles that changed, the glow's own repaints only when a glow begins; stale looked at every 250 ms | roles `name`, `group`, `addr`, `value`, `unit`, `decoded`, `glow`, `direction`, `writable`, `plotted`, `error`, `stale`, `plottable`, `danger`, `source`, `numeric`; `search`, `count`, `total`, `glowMs`; `entry`, `copy`, `rowOf`; `sample`, `trend`, `trendSize` (the sheet's trend, `TREND_POINTS` a register) | phone test (Registers) |
 | `P9Registers` | the proof P-9's list model: the example map's registers, every value a step along a sine 20 times a second | roles `name`, `address`, `value`, `unit`; `ticks` | phone test (P-9) |
 | `P9Meter` | the proof P-9's frames: `QQuickWindow::frameSwapped` timed on the render thread, a line a second (`EVRE_P9`); with another tag and a "shown" test, the Registers screen's and the chart demo's speed line (`EVRE_PERF`) | `tag`; signal `logged(line)` | phone test (P-9, perf, chart demo) |
-| `ChartItem` | the Chart screen's plot, a `QQuickItem`: lines fed from C++, binned in `updatePolish` by `ChartData` as the desktop's view is, drawn as triangles, one `QSGGeometryNode` per line (clipped to the plot), one for the grid and one for the plot's edge (25.6); a line hidden or shown, Y Auto or a manual range, the legend's model | `windowSeconds`, `live`, `yAuto`, `yLow`, `yHigh`, `colours`, `gridColor`, `frameColor`, `plotRect`, `lineCount`, `timeTicks`, `valueTicks`, `legend`; `cursorsOn`, `cursorA`, `cursorB`, `cursorAX`, `cursorBX`, `cursorAText`, `cursorBText`, `cursorSpanText`, `readouts`; `addLine`, `addThemedLine` (a fast line with its store), `removeLine`, `removeAll`, `appendSamples`, `setGapSeconds`, `breakLines` (a polled line's gaps, as a fast line's), `clear`, `setLineShown`, `setYRange`, `placeCursors`, `moveCursor`, `clearCursors`, `cursorStats`, `setClock`, `zoomTime`, `panPixels`; signals `framed`, `cursorsChanged`, `cursorsMoved` | phone test (chart, legend, Y, fast lines, cursors) |
+| `ChartItem` | the Chart screen's plot, a `QQuickItem`: lines fed from C++, binned in `updatePolish` by `ChartData` as the desktop's view is, drawn as triangles, one `QSGGeometryNode` per line (clipped to the plot), one for the grid and one for the plot's edge (25.6); a line hidden or shown, Y Auto or a manual range, the legend's model | `windowSeconds`, `live`, `yAuto`, `yLow`, `yHigh`, `colours`, `gridColor`, `frameColor`, `plotRect`, `lineCount`, `timeTicks`, `valueTicks`, `legend`; `cursorsOn`, `cursorA`, `cursorB`, `cursorAX`, `cursorBX`, `cursorAText`, `cursorBText`, `cursorSpanText`, `readouts`, `topPad`, `measuring`, `measureRows`, `measureOverCursors`, `measureSeconds`, `epochMs`, `clockText`; `addLine`, `addThemedLine` (a fast line with its store), `removeLine`, `removeAll`, `appendSamples`, `setGapSeconds`, `breakLines` (a polled line's gaps, as a fast line's), `clear`, `setLineShown`, `setYRange`, `placeCursors`, `moveCursor`, `clearCursors`, `cursorStats`, `setClock`, `zoomTime`, `panPixels`; signals `framed`, `cursorsChanged`, `cursorsMoved` | phone test (chart, legend, Y, fast lines, cursors) |
 | `ChartTicks` | list model: an axis's labels, a changed one told by `dataChanged` | roles `at`, `label` | phone test (chart, Arabic) |
 | `FrameLog` | list model: the Monitor's frames as the engine writes them (`IoEngine::takeFrames`), the newest 5000; a pile the engine dropped said in a line of its own; nothing added while paused; each frame's side and function (`evre::fnName` of its third byte) with its kind (`read`, `write`, `answer`, `error`); a frame spelled out field by field (`evre::Parser`, the Dump's words), the registers its offset covers named by the session | roles `time`, `direction`, `bytes`, `note`, `side`, `type`, `kind`; `count`, `sentCount`, `receivedCount`, `paused`, `clear`, `decode(bytes, direction)`, `copyText`, `setNamer`; `added`, `line` (tests) | phone test (Monitor, Monitor kinds, frame sheet) |
 | `CursorReadouts` | list model: the cursors' readouts, a row per shown line: its values at A and B, B - A, and min, max and mean over A..B (`ChartData::statsOf`, `statsOfFast`), written by `ChartData::number` with the unit | roles `lineId`, `name`, `colour`, `atA`, `atB`, `delta`, `min`, `max`, `mean` | phone test (cursors) |
+| `MeasureRows` | list model: the Measure sheet's table, a row per shown line: min, max, mean, RMS, std dev and peak-peak over the view or over A..B (`ChartData::statsOf`, `statsOfFast`), written by `ChartData::number` with the unit, taken every 250 ms while the sheet is open | roles `lineId`, `name`, `colour`, `min`, `max`, `mean`, `rms`, `std`, `p2p` | phone test (Measure) |
 | `ChartLines` | list model: the legend, a row per line, its latest value in view (`ChartData::latestInView`, written by `ChartData::number` with the unit) at most four times a second | roles `lineId`, `name`, `unit`, `colour`, `value`, `shown`, `fast` | phone test (legend) |
 | `ChartDemo` | the chart's test feed: 8 lines of a synthetic signal at 1,000 Hz, live in a 1 min window | `chart`, `running`, `colours`; `signal` | phone test (chart demo) |
 
@@ -7023,7 +7024,7 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   |---|---|
   | **USB**&nbsp;/&nbsp;**TCP** | the link's kind. USB: the devices plugged in (a board through a USB OTG adapter), a device with the map's USB IDs named by the map, the list kept up to date every 2 s while the drawer is open; the baud rate (a USB CDC board ignores it). TCP: the host, the port and the token (never saved) |
   | **Map** | the maps that come with the app (`example_device.json` first) or **Open…** (Android's picker); the number of registers under it. The last one opens at the next start |
-  | **Connect** | Connect, then *Cancel* while it connects, *Stop reconnecting* while a try waits, *Disconnect* once connected. Under it what the link is or why it is down, and the device's ID (*Device ID 0x1001 · protocol rev 1*; *last seen: ...* once the link is down; a warning when the map is for another device). A device ID read that gets no answer (a board still booting when the link comes back) is tried again three times, a second apart, *reading the device ID…* meanwhile; a refusal (permission denied) is the token's and is not tried again |
+  | **Connect** | Connect, then *Cancel* while it connects, *Stop reconnecting* while a try waits, *Disconnect* once connected. Under it what the link is or why it is down; connected, the link's health as the desktop's status bar, live (twice a second): *Latency 0.8 ms · TX 271 · RX 271 · Timeouts 0 · Errors 0 · Bad frames 0*, the engine's own counters (`evre::Master::Stats`); while timeouts, error answers or bad frames rise (any in the last 5 s, `PhoneSession::QUIET_MS`) the state and the pill turn amber and a line with the warning's mark says why (*The link is struggling: Timeouts +6 in the last 5 s*), gone again after 5 s with none; then the device's ID (*Device ID 0x1001 · protocol rev 1*; *last seen: ...* once the link is down; a warning when the map is for another device). A device ID read that gets no answer (a board still booting when the link comes back) is tried again three times, a second apart, *reading the device ID…* meanwhile; a refusal (permission denied) is the token's and is not tried again |
   | **Reconnect&nbsp;by&nbsp;itself** | after a lost link a try 0.5 s later, after a failed try every 2 s, as on the desktop. A USB board that comes back under another name (reset, plugged in again: Android numbers it anew) is found by the USB IDs it had at Connect, and Android asks its permission again. A refused token, a device that wants a token, and a USB permission refused stop the tries: the same try would be refused again (the permission asked again every 2 s) |
   | **Polling** | on or off, and its interval in ms (0: as fast as the device answers); the polls a second measured under it while connected |
   | **Allow&nbsp;writes** | off at every start, as on the desktop |
@@ -7035,7 +7036,8 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   goes to the screens. Across there is none: the rail has the menu, the tabs and the link's state.
 - **The header's pill** says the link's state in a word and a dot in its colour: grey *Not connected*, amber
   *Connecting…*, *Waiting for permission…* and *Reconnecting…*, green *Connected*, red *Not connected* when the link
-  went down with a reason (the drawer says it). Connected and polling, it has the polls a second beside the word, as
+  went down with a reason (the drawer says it); amber too while connected but timeouts, error answers or bad frames
+  rise (the drawer's line says why; green again after 5 s quiet). Connected and polling, it has the polls a second beside the word, as
   the desktop's status bar has them (*Connected · 48 Hz*: whole numbers, a tenth under 2 Hz, *0.5 Hz*). The word is in the text
   colour on the state's soft tone (`PhoneTheme`'s `goodSoft`, `warnSoft`, `badSoft`: the state's colour laid over the
   surface at 14 % in the dark theme, 8 % in the light), so it reads in both. A chevron drawn at its end says it opens
@@ -7124,14 +7126,18 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   triangles, a quad over each pixel column from its min to its max and the line through the first and last values
   as quads 1.5 dp wide; nothing painted by the processor), binned by the desktop chart's own code (`ChartData`,
   23.1), so a live view bins only the samples since the frame before. A grid at 1, 2, 5 steps; the value labels
-  left of the plot, the times (m:ss of the chart's clock) under it, `Text` over the plot. **Live** follows now,
+  left of the plot, the times under it as clock times, as the desktop's (*17:50:50*; *17:50:50.25* at a step under a
+  second: the chart's clock's zero in wall-clock time, `ChartItem::epochMs`, taken when the clock is set), `Text` over
+  the plot. Their step is the desktop's (1-2-5 under a second, then 1, 2, 5, 10, 15, 30 s, 1, 2, 5 min ...), the
+  smallest that leaves each label its width and 16 dp to the next and 90 dp between two lines, so a narrower plot has
+  fewer and no two labels touch. **Live** follows now,
   **Hold** keeps the view; the window's button shows its length with a drawn chevron (*1 min*, a pinch's *27.3 s*) and
   opens its menu, **10&nbsp;s**, **1&nbsp;min** or **5&nbsp;min** (the desktop's *View* box). A pinch zooms the time, a drag looks
   back and holds, a double tap goes live again; upright, a line under the buttons says so (Help says it too). The plot
   is not mirrored in Arabic: time runs left to right.
 
   **Across** (the Chart turns the phone to landscape) the chart has the whole window (`Main.qml`'s `chartFull`): the
-  rail goes (`Main.qml`'s `railShown`), and one 48 dp row holds the controls and the legend over the plot. The chart's area is
+  rail goes (`Main.qml`'s `railShown`), and one 48 dp row holds the controls over the plot. The chart's area is
   then about 88 % of the height: the owner's phone (2340 x 1080 px at 450 dpi) leaves about 760 x 384 dp beside its
   navigation buttons, and the plot had 40 % of it (the header, the tab bar, two rows of controls, the legend on a row
   of its own). At the row's start the **bars button** (four corners drawn pointing in, a dot on it in the link's
@@ -7139,10 +7145,16 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   shows four corners pointing out, and a tap hides them again. Android's back in the whole window brings them back
   too; another tab chosen forgets that, so the Chart is the whole window again when it is chosen again. A long press on
   the button says what it does. The buttons are as narrow as their text (Material's are 64 dp wide at least) and
-  48 dp high; the window and Y are one button each (as the desktop's combo boxes), so the legend shares the row, apart
-  from the buttons by a line as between their groups, when 180 dp or more is left after them (about a chip; in Arabic
-  the buttons are at the right and the legend at the left); else it has a row of its own under them. Every button
+  48 dp high; the window and Y are one button each (as the desktop's combo boxes). Every button
   stays shown whole and 48 dp to the touch; the gesture line goes. Upright, the header and the tab bar stay.
+
+  **The legend is over the plot** (part C), as the desktop's, upright and across: a row 34 dp high at the top of the
+  chart's area (the plot starts under it: `ChartItem::topPad`), across the chart's width. In part B it shared the
+  controls' row across and was cut mid-word at 760 dp (*TEMPERAT*), and upright the second chip was cut at the
+  screen's edge. Now only whole chips are drawn: the first ones that fit, then a **+N** chip (N the lines not shown,
+  48 dp to the touch) that opens the **Lines** sheet; nothing is ever cut. A chip's value keeps the widest room it
+  has needed, so a value that changes does not move the chips nor hide one. The chart's area keeps about 88 % of the
+  height at 760 x 384 in English and Arabic (the plot itself 72 %, the legend's row over it).
 
   The lines (part B.3b) are the registers plotted from their sheets (a tap on a row, **Plot**): each a line in the theme's next series
   colour (as the desktop gives them), named with its unit, fed with every poll's samples once a frame
@@ -7161,7 +7173,9 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
 
   | Part | What it does |
   |---|---|
-  | **Legend** | a chip per line over the plot: its colour's dot, its name and its latest value in view with its unit (as the desktop's legend writes it, four times a second), sideways when the chips do not fit: a fade over the end with more chips, and over the start once scrolled, so a chip cut by the edge reads as more to scroll (a cut *SETPOIN* at the screen's edge said nothing); left to right in Arabic too. A tap on a chip hides its line (the dot a ring, the name struck through and muted; a hidden line is not in the Y range) or shows it again. Its "⋯" button (three drawn dots): **Hide** / **Show**, **Take off the chart** (the register's Plot off) |
+  | **Legend** | a compact chip per line over the plot's top (drawn 28 dp high, 48 dp to the touch): its colour's dot, its name and its latest value in view with its unit (as the desktop's legend writes it, four times a second), and at its end a drawn "▾" set apart by a thin line, as a split button; left to right in Arabic too. Whole chips only: those that do not fit give their place to **+N**. A tap on a chip hides its line (the dot a ring, the name struck through and muted; a hidden line is not in the Y range) or shows it again. Its "▾" (48 x 48 dp, highlighted pressed): **Hide** / **Show**, **Take off the chart** (the register's Plot off) |
+  | **+N** | the lines the legend has no room for: a tap slides up the **Lines** sheet, every line with its colour, name and value, a switch that shows or hides it and its "▾" menu (the chip's); back or the cross closes it |
+  | **Measure** | (part C) the desktop's measurements, in a sheet: per shown line **Min**, **Max**, **Mean**, **RMS**, **Std dev** and **Peak-peak** (the desktop's column names) over the view, or over A to B once both cursors are placed: the title says which and how long (*Measure: the view (10 s)*, *Measure: A to B (5 s)*). The numbers are the desktop's (`ChartData::statsOf`, `statsOfFast` for a fast line: time-weighted, an uneven poll does not tilt them), written as the legend writes a value, with the unit; an em dash where a line has none (a fast line's mean, RMS and std dev over summaries). Taken while the sheet is open, now and every 250 ms (`ChartItem::MEASURE_MS`): a live view changes them at most four times a second. Not modal: the chart stays live and its cursors can be dragged beside it. Upright it slides up from the screen's foot (half the height at most), across it comes in at the end (the right; the left in Arabic) and the plot stays beside it. The names' column stays; the six columns scroll sideways under it when they do not fit (upright at 384 dp), with a scroll bar that stays and a fade over the edge with more; in Arabic the first column is at the right. Each column is as wide as its widest text and only grows while the sheet is open, so the numbers do not jump. The button shows chosen while it is open; a tap again, the cross or back closes it |
   | **Y** | the button shows the range with a drawn chevron: *Y auto* spans the values in view (it grows at once and shrinks gently, a twentieth of the span's margin each side, as the desktop's Auto), *Y 0 to 10* a range typed. It opens a small sheet near the top (the keyboard comes from the foot; it slides down): **Min** and **Max** with **Apply** hold the axis between them (a max under the min is refused), **Auto** spans the values again |
   | **Clear** | every line's samples go; the lines stay |
   | **Fast&nbsp;lines** | with a map that has streams (Fast EVRe, 23.11): their channels (*ADC.I_LOAD (A)*), each on the chart or not. The first channel of a stream on the chart switches the stream on, the last one off switches it off; the blocks go into the stream's store, kept 5 min, and the line is binned by the desktop's `binFast` |
@@ -7171,24 +7185,26 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   ```
   +--------------------------------------------+
   | Live  Hold | 1 min v | Y auto v            |   Live / Hold, the window, Y (each a menu or sheet)
-  | Cursors  Clear  Fast lines                 |   the cursors, Clear, the streams' channels
+  | Cursors  Measure  Clear  Fast lines        |   the cursors, Measure, Clear, a stream's lines
   | Pinch: zoom the time . Drag: look back ... |   what a finger does
-  | (* SUPPLY_V 13.9 V ...) (o TEMPERATURE ...)|   the legend: a tap hides, "..." its menu
+  | (* SUPPLY_V 13.9 V|v) (* TEMP 25.1 C|v) +4 |   the legend: whole chips, "v" a menu, +N
   |  2.5 +---------------------------------+   |
   |      |  the lines (GPU), the grid      |   |   the value labels left of the plot
   |  1.5 +---------------------------------+   |
-  |      0:10      0:12      0:14      0:16    |   the times under it
+  |      17:50:50  17:50:52  17:50:54          |   clock times under it
   +--------------------------------------------+
 
-  across, the whole window: the bars button, the buttons, the legend beside them (a fade where more chips are):
+  across, the whole window: the bars button and the buttons, the legend over the plot:
   +------------------------------------------------------------------------+
-  | [><] Live Hold | 1 min v | Y auto v | Cursors Clear | (* SUPPLY_V ..)   |
+  | [><] Live Hold | 1 min v | Y auto v | Cursors Measure Clear            |
+  | (* SUPPLY_V 13.9 V|v) (* TEMPERATURE 25.1 C|v) (* SUPPLY_I ..|v) +3    |
   |  2.5 +-------------------------------------------------------------+   |
   |      |  the lines (GPU), the grid                                  |   |
   |  1.5 +-------------------------------------------------------------+   |
-  |      0:10            0:12            0:14            0:16              |
+  |      17:50:50        17:50:52        17:50:54        17:50:56          |
   +------------------------------------------------------------------------+
   ```
+  The cursors' readouts say A's and B's times as clock times too (*17:50:52.25*).
 - **The Monitor** (part B.4) shows the frames on the link as the desktop's Monitor tab writes them, newest last: each
   frame's time, its direction (*TX*, *RX*: the protocol's words) and its function's name as a label in its kind's
   colour on its soft tone (a read asked, *READ*, in the accent; a write, *WRITE* or *WRITE_ACK*, amber; an answer,
@@ -7256,7 +7272,7 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   `phonePage` give the phone's list. A tap on a topic opens its page, the header's back chevron goes back to the list.
   In Arabic every paragraph runs right to left, the code blocks left to right, as on the desktop.
 - **Android's back** (the gesture or the button) closes what is open, the topmost first: a Help page goes back to the
-  list, then the Help closes, then a register's sheet, a frame's sheet, then the drawer (also one still sliding in); the
+  list, then the Help closes, then a register's sheet, a frame's sheet, the Chart's Lines and Measure sheets, then the drawer (also one still sliding in); the
   Chart across on the whole window gets its header and tab bar back. With nothing open,
   while a link is wanted or a recording runs, the app goes to the background as with Home
   (`PhoneSession::backToBackground`, `Activity.moveTaskToBack`): finishing the activity ended the process, and the
@@ -8356,7 +8372,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 116 (26.11), 1230. The
+the phone test's 123 (26.11), 1237. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8857,7 +8873,14 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | view&nbsp;buttons | a tap on the chosen Live, 1 min (in the window's menu) or Hold keeps it chosen (no toggles) |
 | chart&nbsp;across | at 760 x 384 (the owner's phone beside its navigation buttons), 832 x 384, 755 x 354 and 915 x 412, English and Arabic, two lines: no header nor tab bar; the chart's area at least 75 % of the window's height (88 % at 760 x 384); every button shown whole inside the window, 48 x 48 dp or more, none over another or the legend; the legend beside them with room for a chip, its first value in it; no text cut; the gesture line hidden across; upright the header, the tab bar and the gesture line shown, no bars button |
 | whole&nbsp;window | across, the bars button (four corners in, its tooltip, the link's dot grey with no link): a tap brings the rail back (the plot narrower, the icon four corners out), a second hides them; a back brings them back; the Chart chosen again is the whole window |
-| legend&nbsp;scroll | six lines, across and upright, English and Arabic: the chips wider than the row, a fade at its end and none at its start; a finger scrolls to the last chip, whole in view, the fades turned round, no line hidden by the drags |
+| legend&nbsp;over&nbsp;plot | (part C) at 760 x 384 and 384 x 832, English and Arabic, two and six lines: the legend's row inside the chart's area, under the controls and over the plot's top; every chip shown whole inside it; *+N* shown with N the lines not shown (none for two lines across); each chip's "▾" 48 x 48; no text cut; the chart's area 75 % of the height across or more |
+| Lines&nbsp;sheet | six lines across: *+N* opens the sheet, every line in order with the legend's value; a line's switch hides it and shows it again; its "▾" opens the chip's menu; back closes it |
+| Measure | two fed lines upright, held: the sheet not modal, *Measure: the view (10 s)*, each line's min, max, mean, RMS, std dev and peak-peak equal to `statsOf` over the view as the legend writes a value; with the cursors at 2 s and 7 s *Measure: A to B (5 s)* and `statsOf` over A..B; the cross closes it and the measuring stops |
+| Measure&nbsp;live | a register polled from the fake device: the sheet's rows taken at most four times a second for 2 s, the mean changing; none after it closes |
+| Measure&nbsp;columns | at 384 x 832, English and Arabic: the six columns wider than their view, a scroll bar shown; scrolled to the other end the last column whole and the names where they were (at the left; the right in Arabic), no text cut; across at 760 x 384 the sheet at the end (the right; the left in Arabic), at most 65 % of the width, the plot beside it |
+| link&nbsp;health | connected, the drawer's line under the state reads as the desktop's status bar, *Latency ... ms · TX n · RX n · Timeouts 0 · Errors 0 · Bad frames 0*, TX growing; the pill green, no warning line; gone once disconnected |
+| link&nbsp;trouble | through a stand-in that keeps the requests from the device for a while: the pill amber (its dot too), the drawer's state amber and its line *The link is struggling: Timeouts +n in the last 5 s*; after the requests pass again green within the quiet period, the line gone, still connected |
+| clock&nbsp;times | at 760 x 384, 384 x 832 and 320 x 640, at 10 s, 1 min and 5 min: every time label a clock time (HH:mm:ss) of its grid line, no two closer than 8 dp, never more at 320 dp than at 760; cursor A's readout the clock time to the hundredths |
 | menus&nbsp;inside | English and Arabic, dark and light: a chip's "⋯" menu inside the window less 8 dp, under the button; an edge in the control colour, 3:1 to the page, in the picture |
 | cursors&nbsp;and&nbsp;Monitor&nbsp;texts | at 412 px in English and Arabic, dark and light: every Text inside its parent and not cut, every text translated, the frames left to right in the text colour on the background |
 | Log&nbsp;screen | the session's lines (the map loaded, one that did not), an error in red, the count; Clear empties it |
@@ -8933,7 +8956,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | Arabic&nbsp;runs | in Arabic a number and its unit one isolated left-to-right run: the sheet's limits keep *100 %*, the trend's span, the pill's rate upright and the rail's across |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (116 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (123 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `help` (its topics), `helppage` (the phone's own topic; `helppage2` a screen down, `helppage_end`
@@ -8942,8 +8965,8 @@ its end), `connected`, `drawerkb` (the token field over a keyboard stood for, dr
 `enum`; at 915 x 412 `land_registers`, `land_sheet`, `land_drawer`, `land_log` and `landscape`; and the chart's test
 feed 12 s in, `chartdemo` (landscape) and `chartdemo_portrait`; and the Chart screen at both sizes,
 `chart_<case>_<portrait|landscape>`: `empty`, `two` (SUPPLY_V and TEMPERATURE plotted, live), `hidden` (TEMPERATURE
-hidden), `manual` (Y 0 to 30), `ysheet`, `chipmenu`, `six` (four more registers: the legend scrolls),
-`sixend` (the legend at its end) and `regsheet` (SUPPLY_V's sheet, plotted, its trend); then `cursors` (two registers, the cursors on), `cursors6`
+hidden), `manual` (Y 0 to 30), `ysheet`, `chipmenu`, `six` (four more registers: whole chips and *+N*),
+`sixend` (the Lines sheet) and `regsheet` (SUPPLY_V's sheet, plotted, its trend); then `cursors` (two registers, the cursors on), `cursors6`
 (six, the readouts scrolling), `cursors6end` (scrolled to their end), `monitor` and `paused` at both sizes; and part
 B's, at the owner's phone across (760 x 384): `registers760` (the rail, one-line rows), `sheet760` (FAN_SPEED's sheet
 in two columns), `chart760_two` (the whole window), `chart760_bars` (the bars back),

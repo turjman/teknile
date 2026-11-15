@@ -757,6 +757,62 @@ Double-click to edit</source>
         <source>Auto</source>
         <translation>تلقائي</translation>
     </message>
+    <message>
+        <source>Measure</source>
+        <translation>القياسات</translation>
+    </message>
+    <message>
+        <source>All lines: %1 more</source>
+        <translation>كل الخطوط: %1 أخرى</translation>
+    </message>
+    <message>
+        <source>All the lines, with their values</source>
+        <translation>كل الخطوط بقيمها</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>إغلاق</translation>
+    </message>
+    <message>
+        <source>Lines: %1</source>
+        <translation>الخطوط: %1</translation>
+    </message>
+    <message>
+        <source>Measure: A to B (%1)</source>
+        <translation>القياسات: من A إلى B ‏(%1)</translation>
+    </message>
+    <message>
+        <source>Measure: the view (%1)</source>
+        <translation>القياسات: المعروض (%1)</translation>
+    </message>
+    <message>
+        <source>Between the cursors: drag A or B to change the range.</source>
+        <translation>بين المؤشرين: اسحب A أو B لتغيير المدى.</translation>
+    </message>
+    <message>
+        <source>Over the time in view. Place the cursors to measure between them.</source>
+        <translation>على الزمن المعروض. ضع المؤشرين للقياس بينهما.</translation>
+    </message>
+    <message>
+        <source>Mean</source>
+        <translation>المتوسط</translation>
+    </message>
+    <message>
+        <source>RMS</source>
+        <translation>RMS</translation>
+    </message>
+    <message>
+        <source>Std dev</source>
+        <translation>الانحراف المعياري</translation>
+    </message>
+    <message>
+        <source>Peak-peak</source>
+        <translation>قمة–قمة</translation>
+    </message>
+    <message>
+        <source>Line</source>
+        <translation>الخط</translation>
+    </message>
 </context>
 <context>
     <name>ChartTab</name>
@@ -4765,6 +4821,9 @@ for one (it is not stored).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Connect&lt;/b&gt;: the pill turns green and the device&apos;s ID shows; while polling, the pill has the polls a second
 (&lt;i&gt;Connected · 48 Hz&lt;/i&gt;). &lt;b&gt;Reconnect by itself&lt;/b&gt; brings a lost link back, also to a board that was reset or plugged
 in again.&lt;/li&gt;
+&lt;li&gt;Connected, a line under the link&apos;s state tells its health, as the desktop&apos;s status bar: the latency, the frames
+sent and received, the timeouts, the error answers and the bad frames. While timeouts or errors rise the pill turns
+amber and a line says why; after a quiet while it is green again.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Device&lt;/b&gt;: the map (&lt;b&gt;Open…&lt;/b&gt; chooses another &lt;code&gt;.json&lt;/code&gt;) and &lt;b&gt;Allow writes&lt;/b&gt;. &lt;b&gt;Polling&lt;/b&gt;: on
 or off, and its interval (0 ms: as fast as the device answers).&lt;/li&gt;
 &lt;li&gt;At the drawer&apos;s foot: the dark theme, the language (applied when the app is opened again) and &lt;b&gt;Help&lt;/b&gt;.&lt;/li&gt;
@@ -4791,12 +4850,17 @@ of its row brings it back (a dot on it shows the link&apos;s state: green connec
 again gives the chart the whole screen. Android&apos;s back brings it back too.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Live&lt;/b&gt; follows the newest samples, &lt;b&gt;Hold&lt;/b&gt; keeps the view still. The window&apos;s button shows its length
 (&lt;i&gt;1 min&lt;/i&gt;): a tap offers &lt;b&gt;10 s&lt;/b&gt;, &lt;b&gt;1 min&lt;/b&gt; or &lt;b&gt;5 min&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;A &lt;b&gt;pinch&lt;/b&gt; zooms the time, a &lt;b&gt;drag&lt;/b&gt; looks back (and holds), a &lt;b&gt;double tap&lt;/b&gt; goes live again.&lt;/li&gt;
+&lt;li&gt;A &lt;b&gt;pinch&lt;/b&gt; zooms the time, a &lt;b&gt;drag&lt;/b&gt; looks back (and holds), a &lt;b&gt;double tap&lt;/b&gt; goes live again. The
+times under the plot are clock times (&lt;i&gt;17:50:50&lt;/i&gt;), as on the desktop.&lt;/li&gt;
 &lt;li&gt;The &lt;b&gt;Y&lt;/b&gt; button shows the range: &lt;i&gt;Y auto&lt;/i&gt; fits the values in view. A tap opens a small sheet: a
 &lt;b&gt;Min&lt;/b&gt; and a &lt;b&gt;Max&lt;/b&gt; with &lt;b&gt;Apply&lt;/b&gt;, or &lt;b&gt;Auto&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;A lost link, or a stretch no poll filled, leaves a gap in a line: nothing is drawn across it.&lt;/li&gt;
-&lt;li&gt;The legend: a chip per line with its latest value; a tap hides or shows the line, its &lt;b&gt;...&lt;/b&gt; button
-offers &lt;b&gt;Take off the chart&lt;/b&gt;. &lt;b&gt;Clear&lt;/b&gt; empties the chart.&lt;/li&gt;
+&lt;li&gt;The legend over the plot: a chip per line with its latest value; a tap hides or shows the line, its &lt;b&gt;▾&lt;/b&gt;
+offers &lt;b&gt;Take off the chart&lt;/b&gt;. When the chips do not all fit, &lt;b&gt;+N&lt;/b&gt; at the end lists every line, each with a
+switch to show it. &lt;b&gt;Clear&lt;/b&gt; empties the chart.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Measure&lt;/b&gt; shows, per line, its min, max, mean, RMS, std dev and peak-peak over the view, or between A and B
+once the cursors are placed, as the desktop&apos;s table under its chart. The chart stays usable beside it; the columns
+scroll sideways when they do not fit.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Cursors&lt;/b&gt; puts A and B on the view and holds it; drag each by its round handle (A&apos;s at the top, B&apos;s at the
 foot). Beside the plot (under it, upright): the times of A and B and B − A, and per line its values at A and B,
 B − A, and the min, max and mean between them. &lt;b&gt;Cursors&lt;/b&gt; again takes them off.&lt;/li&gt;
@@ -4845,6 +4909,9 @@ both go on; with no link it closes the app.&lt;/p&gt;
 &lt;li&gt;&lt;b&gt;اتصال&lt;/b&gt;: تخضرّ الشارة ويظهر معرّف الجهاز؛ وفي أثناء الاستطلاع تعرض الشارة عدد الاستطلاعات في الثانية
 (&lt;i&gt;متصل · ⁦48 Hz⁩&lt;/i&gt;). &lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt; تعيد الوصلة المفقودة، وتعيدها أيضًا
 إلى لوحة أُعيد تشغيلها أو وُصلت من جديد.&lt;/li&gt;
+&lt;li&gt;عند الاتصال يقول سطر تحت حالة الوصلة صحتَها، كشريط الحالة في سطح المكتب: زمن الاستجابة، والإطارات المرسلة
+والمستقبلة، والمهلات، وردود الخطأ، والإطارات التالفة. وما دامت المهلات أو الأخطاء تتزايد تصفرّ الشارة ويقول سطر
+السبب؛ وبعد فترة هدوء تعود خضراء.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;الجهاز&lt;/b&gt;: الخريطة (&lt;b&gt;فتح…&lt;/b&gt; يختار ملف &lt;code&gt;.json&lt;/code&gt; آخر) و&lt;b&gt;السماح بالكتابة&lt;/b&gt;. &lt;b&gt;الاستطلاع&lt;/b&gt;: تشغيله
 أو إيقافه، وفاصله (القيمة ⁦0&#xa0;ms⁩: بأسرع ما يجيب الجهاز).&lt;/li&gt;
 &lt;li&gt;في أسفل لوحة الاتصال: السمة الداكنة، واللغة (تُطبَّق حين يُفتح التطبيق مرة أخرى)، و&lt;b&gt;مساعدة&lt;/b&gt;.&lt;/li&gt;
@@ -4871,12 +4938,17 @@ both go on; with no link it closes the app.&lt;/p&gt;
 ورجوع أندرويد يعيده كذلك.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;مباشر&lt;/b&gt; يتابع أحدث العينات، و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي العرض ساكنًا. زر النافذة يُظهر طولها
 (&lt;i&gt;⁦1&#xa0;min⁩&lt;/i&gt;): لمسة عليه تقدّم &lt;b&gt;⁦10&#xa0;s⁩&lt;/b&gt; أو &lt;b&gt;⁦1&#xa0;min⁩&lt;/b&gt; أو &lt;b&gt;⁦5&#xa0;min⁩&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;القرص&lt;/b&gt; يكبّر الزمن، و&lt;b&gt;السحب&lt;/b&gt; يرجع إلى الأقدم (ويثبّت العرض)، و&lt;b&gt;النقر المزدوج&lt;/b&gt; يعود إلى المباشر.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;القرص&lt;/b&gt; يكبّر الزمن، و&lt;b&gt;السحب&lt;/b&gt; يرجع إلى الأقدم (ويثبّت العرض)، و&lt;b&gt;النقر المزدوج&lt;/b&gt; يعود إلى المباشر.
+والأزمنة تحت الرسم أوقات الساعة (&lt;i&gt;⁦17:50:50⁩&lt;/i&gt;)، كما في سطح المكتب.&lt;/li&gt;
 &lt;li&gt;زر &lt;b&gt;Y&lt;/b&gt; يُظهر المدى: &lt;i&gt;مدى Y تلقائي&lt;/i&gt; يلائم القيم المعروضة. ولمسة عليه تفتح ورقة صغيرة:
 &lt;b&gt;الأدنى&lt;/b&gt; و&lt;b&gt;الأعلى&lt;/b&gt; مع &lt;b&gt;تطبيق&lt;/b&gt;، أو &lt;b&gt;تلقائي&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;الوصلة المفقودة، أو مدة لم يملأها استطلاع، تترك فجوة في الخط: لا يُرسم شيء عبرها.&lt;/li&gt;
-&lt;li&gt;وسيلة الإيضاح: شارة لكل خط بآخر قيمة له؛ لمسة عليها تُخفي الخط أو تُظهره، وزر &lt;b&gt;...&lt;/b&gt; الخاص بها يقدّم
-&lt;b&gt;إزالة من المخطط&lt;/b&gt;. &lt;b&gt;مسح&lt;/b&gt; يُفرغ المخطط.&lt;/li&gt;
+&lt;li&gt;وسيلة الإيضاح فوق الرسم: شارة لكل خط بآخر قيمة له؛ لمسة عليها تُخفي الخط أو تُظهره، وعلامة &lt;b&gt;▾&lt;/b&gt; الخاصة بها
+تقدّم &lt;b&gt;إزالة من المخطط&lt;/b&gt;. وحين لا تتسع الشارات كلها تعرض &lt;b&gt;+N&lt;/b&gt; في آخرها كل الخطوط، لكلٍّ منها مفتاح لإظهاره.
+&lt;b&gt;مسح&lt;/b&gt; يُفرغ المخطط.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;القياسات&lt;/b&gt; تعرض لكل خط الأدنى والأعلى والمتوسط وRMS والانحراف المعياري وقمة–قمة على المعروض، أو بين A وB
+بعد وضع المؤشرين، كجدول سطح المكتب تحت مخططه. ويبقى المخطط قابلًا للاستخدام بجانبها؛ وتنزلق الأعمدة جانبيًا حين
+لا تتسع.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;المؤشران&lt;/b&gt; يضع A وB على العرض ويثبّته؛ اسحب كلًّا منهما من مقبضه المستدير (مقبض A في الأعلى، ومقبض B في
 الأسفل). بجانب الرسم (وتحته بالطول): زمنا A وB و⁦B&#xa0;−&#xa0;A⁩، ولكل خط قيمتاه عند A وB، و⁦B&#xa0;−&#xa0;A⁩، والأدنى
 والأعلى والمتوسط بينهما. &lt;b&gt;المؤشران&lt;/b&gt; مرة أخرى يزيلهما.&lt;/li&gt;
@@ -7302,6 +7374,26 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
             <numerusform>%n أخرى</numerusform>
             <numerusform>%n أخرى</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Timeouts +%1</source>
+        <translation>مهلات ⁦+%1⁩</translation>
+    </message>
+    <message>
+        <source>Errors +%1</source>
+        <translation>أخطاء ⁦+%1⁩</translation>
+    </message>
+    <message>
+        <source>Bad frames +%1</source>
+        <translation>إطارات تالفة ⁦+%1⁩</translation>
+    </message>
+    <message>
+        <source>The link is struggling: %1 in the last %2 s</source>
+        <translation>الوصلة متعثرة: %1 في آخر ⁦%2 s⁩</translation>
+    </message>
+    <message>
+        <source>Latency %1 ms · TX %2 · RX %3 · Timeouts %4 · Errors %5 · Bad frames %6</source>
+        <translation>زمن الاستجابة ⁦%1 ms⁩ · TX %2 · RX %3 · مهلات %4 · أخطاء %5 · إطارات تالفة %6</translation>
     </message>
 </context>
 <context>
