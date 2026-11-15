@@ -897,6 +897,9 @@ for one (it is not stored).</li>
 <li><b>Connect</b>: the pill turns green and the device's ID shows; while polling, the pill has the polls a second
 (<i>Connected · 48 Hz</i>). <b>Reconnect by itself</b> brings a lost link back, also to a board that was reset or plugged
 in again.</li>
+<li>Connected, a line under the link's state tells its health, as the desktop's status bar: the latency, the frames
+sent and received, the timeouts, the error answers and the bad frames. While timeouts or errors rise the pill turns
+amber and a line says why; after a quiet while it is green again.</li>
 <li><b>Device</b>: the map (<b>Open…</b> chooses another <code>.json</code>) and <b>Allow writes</b>. <b>Polling</b>: on
 or off, and its interval (0 ms: as fast as the device answers).</li>
 <li>At the drawer's foot: the dark theme, the language (applied when the app is opened again) and <b>Help</b>.</li>
@@ -923,12 +926,17 @@ of its row brings it back (a dot on it shows the link's state: green connected, 
 again gives the chart the whole screen. Android's back brings it back too.</li>
 <li><b>Live</b> follows the newest samples, <b>Hold</b> keeps the view still. The window's button shows its length
 (<i>1 min</i>): a tap offers <b>10 s</b>, <b>1 min</b> or <b>5 min</b>.</li>
-<li>A <b>pinch</b> zooms the time, a <b>drag</b> looks back (and holds), a <b>double tap</b> goes live again.</li>
+<li>A <b>pinch</b> zooms the time, a <b>drag</b> looks back (and holds), a <b>double tap</b> goes live again. The
+times under the plot are clock times (<i>17:50:50</i>), as on the desktop.</li>
 <li>The <b>Y</b> button shows the range: <i>Y auto</i> fits the values in view. A tap opens a small sheet: a
 <b>Min</b> and a <b>Max</b> with <b>Apply</b>, or <b>Auto</b>.</li>
 <li>A lost link, or a stretch no poll filled, leaves a gap in a line: nothing is drawn across it.</li>
-<li>The legend: a chip per line with its latest value; a tap hides or shows the line, its <b>...</b> button
-offers <b>Take off the chart</b>. <b>Clear</b> empties the chart.</li>
+<li>The legend over the plot: a chip per line with its latest value; a tap hides or shows the line, its <b>▾</b>
+offers <b>Take off the chart</b>. When the chips do not all fit, <b>+N</b> at the end lists every line, each with a
+switch to show it. <b>Clear</b> empties the chart.</li>
+<li><b>Measure</b> shows, per line, its min, max, mean, RMS, std dev and peak-peak over the view, or between A and B
+once the cursors are placed, as the desktop's table under its chart. The chart stays usable beside it; the columns
+scroll sideways when they do not fit.</li>
 <li><b>Cursors</b> puts A and B on the view and holds it; drag each by its round handle (A's at the top, B's at the
 foot). Beside the plot (under it, upright): the times of A and B and B − A, and per line its values at A and B,
 B − A, and the min, max and mean between them. <b>Cursors</b> again takes them off.</li>

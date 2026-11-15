@@ -38,10 +38,10 @@ Drawer {
         onTriggered: PhoneSession.refreshPorts()
     }
 
-    // the state's colour, as the header's pill has it
+    // the state's colour, as the header's pill has it (connected but timeouts or errors rising: the warning's)
     readonly property color stateColor: {
         switch (PhoneSession.state) {
-        case PhoneSession.Connected: return PhoneTheme.good
+        case PhoneSession.Connected: return PhoneSession.linkTroubled ? PhoneTheme.warn : PhoneTheme.good
         case PhoneSession.Closed: return PhoneTheme.bad
         case PhoneSession.Off: return PhoneTheme.text
         default: return PhoneTheme.warn
@@ -412,6 +412,39 @@ Drawer {
                 text: PhoneSession.linkDetail
                 color: PhoneTheme.muted
                 font.pixelSize: 13
+            }
+            // the link's health, live, as the desktop's status bar: latency, frames each way, timeouts, error
+            // answers and bad frames (the counters are numbers and names: one line that wraps between its parts)
+            Note {
+                objectName: "linkHealth"
+                Layout.leftMargin: 20
+                visible: PhoneSession.state === PhoneSession.Connected && text.length > 0
+                text: PhoneSession.healthText
+                color: PhoneTheme.muted
+                font.pixelSize: 13
+            }
+            // while timeouts, errors or bad frames rise: why the pill is amber, with the warning's mark
+            RowLayout {
+                objectName: "linkTroubleRow"
+                Layout.fillWidth: true
+                Layout.leftMargin: 20
+                visible: PhoneSession.state === PhoneSession.Connected && PhoneSession.linkTroubled
+                spacing: 6
+                PhoneIcon {
+                    objectName: "linkTroubleIcon"
+                    Layout.alignment: Qt.AlignTop
+                    Layout.topMargin: 1
+                    kind: "warn"
+                    size: 16
+                    color: PhoneTheme.warn
+                }
+                Note {
+                    objectName: "linkTrouble"
+                    text: PhoneSession.troubleText
+                    color: PhoneTheme.warn
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                }
             }
             SwitchRow {
                 text: qsTr("Reconnect by itself")

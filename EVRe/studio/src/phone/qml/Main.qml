@@ -51,8 +51,10 @@ ApplicationWindow {
     // the rail across (not on the Chart's whole window), the header and the tab bar upright
     readonly property bool railShown: !p9 && wide && !chartFull
     readonly property real railWidth: 80
-    // the link's state as a tone, for the header's pill and the rail's dot
-    readonly property string linkTone: PhoneSession.state === PhoneSession.Connected ? "good"
+    // the link's state as a tone, for the header's pill and the rail's dot: connected, but with timeouts, error
+    // answers or bad frames rising, the warning's tone (the drawer says why)
+    readonly property string linkTone: PhoneSession.state === PhoneSession.Connected
+                                       ? (PhoneSession.linkTroubled ? "busy" : "good")
                                        : PhoneSession.state === PhoneSession.Closed ? "bad"
                                        : PhoneSession.state === PhoneSession.Off ? "off" : "busy"
     readonly property bool showRate: PhoneSession.state === PhoneSession.Connected && PhoneSession.polling
@@ -441,6 +443,7 @@ ApplicationWindow {
             onSheetAsked: source => registerSheet.openFor(source)
         }
         ChartScreen {
+            id: chartScreen
             transform: Translate { x: screens.currentIndex === 1 ? screens.shift : 0 }
             objectName: "screenChart"
             demo: root.chartDemo
@@ -491,6 +494,14 @@ ApplicationWindow {
         }
         if (showing(monitorScreen.sheet)) {
             monitorScreen.sheet.close()
+            return true
+        }
+        if (showing(chartScreen.linesSheet)) {
+            chartScreen.linesSheet.close()
+            return true
+        }
+        if (showing(chartScreen.measureSheet)) {
+            chartScreen.measureSheet.close()
             return true
         }
         if (showing(drawer)) {
