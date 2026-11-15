@@ -1196,6 +1196,9 @@ Item {
                         Text {
                             id: nameHead
                             objectName: "measureHeadName"
+                            // over the names, at their start (the right in Arabic)
+                            width: nameColumn.width
+                            horizontalAlignment: Text.AlignLeft
                             height: measureTable.headerHeight
                             verticalAlignment: Text.AlignVCenter
                             text: qsTr("Line")
