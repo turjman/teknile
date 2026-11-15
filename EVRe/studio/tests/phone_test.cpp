@@ -3313,9 +3313,8 @@ void checkChartLegendThemes() {
 		const Seen line = colourIn(image, plotInPicture(chart, image), colors.series.value(0), 4);
 		QQuickItem *sineChip = chip(phone, QStringLiteral("SINE"));
 		const QQuickItem *name = within(sineChip, QStringLiteral("chipName"));
-		/* the chip's face between its dot and its name's start: its colour */
-		const QColor face = sineChip ? Phone::pixel(image, sineChip->mapToScene(QPointF(sineChip->width() - 4,
-				sineChip->height() / 2))) : QColor();
+		/* the chip's face between its dot and its name's start, in the face's middle (drawn 3 .. 31): its colour */
+		const QColor face = sineChip ? Phone::pixel(image, sineChip->mapToScene(QPointF(23, 17))) : QColor();
 		const QColor nameColour = name ? name->property("color").value<QColor>() : QColor();
 		const bool good = line.pixels > 100 && near(face, colors.surface, 3) && nameColour == colors.text;
 		seen << QStringLiteral("%1: line %2 px of %3, chip %4 (%5), name %6").arg(dark ? "dark" : "light")
