@@ -2293,7 +2293,8 @@ void checkTouchTargets() {
 	if (session) session->disconnectLink();
 }
 
-/* an enum register's sheet: its values as a list, one chosen; a tap chooses another, Apply writes it */
+/* an enum register's sheet: its values as a list, one chosen (its row's tick, the only one shown; no radio's circle);
+ * a tap chooses another, Apply writes it */
 void checkEnumChoices() {
 	Phone phone(PORTRAIT);
 	PhoneSession *session = connectFake(phone);
@@ -2307,12 +2308,26 @@ void checkEnumChoices() {
 	const QString wanted = before.startsWith(QLatin1String("blink")) ? QStringLiteral("1") : QStringLiteral("2");
 	phone.tap(phone.item(wanted == QLatin1String("2") ? "sheetChoice_2" : "sheetChoice_1"));
 	const bool picked = phone.object("registerSheet") && phone.object("registerSheet")->property("chosen").toString() == wanted;
+	/* the tick in the chosen row alone, drawn (a PhoneIcon's strokes), and no round radio left */
+	QStringList ticks;
+	bool radio = false;
+	forEachItem(phone.item("sheetChoices"), [&](QQuickItem *item) {
+		if (item->objectName().startsWith(QLatin1String("radio"))) radio = true;
+		if (item->objectName() != QLatin1String("choiceCheck") || !item->isVisible()) return;
+		for (const QQuickItem *up = item; up; up = up->parentItem())
+			if (up->objectName().startsWith(QLatin1String("sheetChoice_"))) {
+				ticks << up->objectName().mid(12);
+				break;
+			}
+	});
+	const bool ticked = ticks == QStringList{ wanted } && !radio;
 	phone.tap(phone.item("sheetApply"));
 	const bool written = QTest::qWaitFor([&] {
 		return session && session->log()->contains(QStringLiteral("written: LED_MODE = %1").arg(wanted));
 	}, 3000);
-	check(list && rows == 3 && picked && written, QStringLiteral("phone, enum: LED_MODE's sheet lists its 3 values to choose from "
-			"(no field); a tap chooses %1, Apply writes it (was \"%2\")").arg(wanted, before));
+	check(list && rows == 3 && picked && ticked && written, QStringLiteral("phone, enum: LED_MODE's sheet lists its 3 values to "
+			"choose from (no field); a tap chooses %1, its row's tick the only one shown, no radio's circle (ticks: %3), Apply "
+			"writes it (was \"%2\")").arg(wanted, before, ticks.join(QLatin1Char(','))));
 	if (session) session->disconnectLink();
 }
 
@@ -3589,6 +3604,36 @@ void checkCursorLateData() {
 					"every readout of both lines has a value (without one: %5)")
 					.arg(chart ? chart->viewStart() : 0, 0, 'f', 2).arg(chart ? chart->viewEnd() : 0, 0, 'f', 2)
 					.arg(a, 0, 'f', 3).arg(b, 0, 'f', 3).arg(empty.isEmpty() ? QStringLiteral("none") : empty.join(QStringLiteral(", "))));
+}
+
+/* the cursors where a line has no sample (the owner's phone, after Clear: A and B before the line's first sample): its
+ * readout is one muted line, "No samples between A and B", not six dashes; a line with a sample in the range keeps its
+ * pairs. SINE from 6 s, DOUBLE from 7 s: A, B at 1 s and 3 s (neither has one), then at 1 s and 6.5 s (SINE has) */
+void checkCursorNoSamples() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = chartWithLines(phone, 2, { 6, 7 }, { 10, 10 });
+	auto state = [&](const QString &name) {
+		QQuickItem *row = readoutRow(phone, name);
+		const QQuickItem *note = within(row, QStringLiteral("readoutEmpty"));
+		const QQuickItem *a = within(row, QStringLiteral("readoutA"));
+		if (!row || !note || !a) return QStringLiteral("missing");
+		const bool noteShown = note->isVisible() && note->property("text").toString().contains(QStringLiteral("No samples"));
+		const bool pairsShown = a->isVisible();
+		return noteShown && !pairsShown ? QStringLiteral("note") : !noteShown && pairsShown ? QStringLiteral("pairs")
+																					: QStringLiteral("both or neither");
+	};
+	if (chart) chart->setCursors(1, 3);
+	chartFrame(phone, chart, 2);
+	const QString sine1 = state(QStringLiteral("SINE")), double1 = state(QStringLiteral("DOUBLE"));
+	if (chart) chart->setCursors(1, 6.5);
+	chartFrame(phone, chart, 2);
+	const QString sine2 = state(QStringLiteral("SINE")), double2 = state(QStringLiteral("DOUBLE"));
+	check(sine1 == QLatin1String("note") && double1 == QLatin1String("note") && sine2 == QLatin1String("pairs")
+				  && double2 == QLatin1String("note"),
+			QStringLiteral("phone, cursors: a line with no sample at A, at B or between them reads \"No samples between A and "
+					"B\" (one muted line, not six dashes), a line with one keeps its pairs (A 1 s, B 3 s: SINE %1, DOUBLE %2; "
+					"B at 6.5 s: SINE %3, DOUBLE %4)")
+					.arg(sine1, double1, sine2, double2));
 }
 
 /* a finger dragging an item's middle by dy, then still until the flick stops */
@@ -6032,11 +6077,10 @@ double drawnOpacity(const QQuickItem *item) {
 
 /* The Rectangles drawn as a pill or a circle: a corner's radius half the smaller side or more. Not counted: what stays
  * round on purpose (a Switch's track and thumb and the busy indicator, Material's; a drawn icon's strokes, whose round
- * ends are a line's ends, and its magnifier's lens; the enum list's radio, round because a radio says one of many),
+ * ends are a line's ends, and its magnifier's lens),
  * lines under 4 dp, and what draws nothing (no fill, no edge) */
 QStringList roundShapes(QQuickWindow *window, int &seen) {
-	static const QStringList kept{ QStringLiteral("iconStroke"), QStringLiteral("iconLens"), QStringLiteral("radioRing"),
-		QStringLiteral("radioDot") };
+	static const QStringList kept{ QStringLiteral("iconStroke"), QStringLiteral("iconLens") };
 	QStringList found;
 	const QRectF view(0, 0, window->width(), window->height());
 	forEachItem(topItem(window), [&](QQuickItem *item) {
@@ -6067,7 +6111,7 @@ QStringList roundShapes(QQuickWindow *window, int &seen) {
  * the Chart with six lines and the cursors on, the Lines and Measure sheets, a chip's menu, the window's menu, the
  * Monitor and a frame's sheet, the Log, the drawer at its top and its foot, the language list, the Help) upright and
  * across, no Rectangle drawn has a corner's radius of half its smaller side or more but for those kept round (a
- * Switch's parts, the busy indicator, an icon's strokes and lens, the radio); Material's controls' corners small
+ * Switch's parts, the busy indicator, an icon's strokes and lens); Material's controls' corners small
  * (the window's Material.roundedScale SmallScale) */
 void checkShapes() {
 	QStringList seen, bad;
@@ -6649,6 +6693,31 @@ bool rowShown(const Phone &phone, const QString &reg) {
  * go, the header says "· 3", the header stays where it was) and opens it again; the folds kept for the map (a new
  * window, as after a restart, has them; a folded group's registers still polled); a search finds a folded group's
  * register and the fold comes back when it is cleared */
+/* a row through a fold or an opening, sampled every few ms for 700 ms: a step where it is shown while cut (its height
+ * between none and its full one, its content not faded out) is a fault; so is no step between (nothing moved) */
+void foldWatch(const Phone &phone, const QString &name, const QString &where, QStringList &bad) {
+	QElapsedTimer since;
+	since.start();
+	int between = 0, cut = 0;
+	QString first;
+	while (since.elapsed() < 700) {
+		QQuickItem *row = regRow(phone, name);
+		const QQuickItem *panel = within(row, QStringLiteral("rowPanel"));
+		if (row && panel) {
+			const double full = row->implicitHeight(), h = row->height(), o = panel->opacity();
+			const bool partHigh = h > 0.5 && h < full - 0.5;
+			if (partHigh || (o > 0.02 && o < 0.98)) ++between;
+			if (partHigh && o > 0.02 && !cut++)
+				first = QStringLiteral("%1 px of %2 at opacity %3 (%4 ms)").arg(h, 0, 'f', 1).arg(full, 0, 'f', 1)
+								.arg(o, 0, 'f', 2).arg(since.elapsed());
+		}
+		QTest::qWait(4);
+	}
+	if (cut || !between)
+		bad << QStringLiteral("%1: %2 shown while cut %3 times (first %4), %5 steps between").arg(where, name).arg(cut)
+					   .arg(first.isEmpty() ? QStringLiteral("none") : first).arg(between);
+}
+
 void checkGroupFolds() {
 	QStringList seen, bad;
 	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
@@ -6674,7 +6743,18 @@ void checkGroupFolds() {
 				const QQuickItem *chevron = within(head, QStringLiteral("groupChevron"));
 				const bool open = chevron && chevron->isVisible() && chevron->property("kind").toString() == QLatin1String("down")
 						&& head->height() >= 47.5 && rowShown(phone, first);
-				phone.tap(head);
+				/* a tap without the settling after it, then the fold watched to its end, every few ms (the owner's phone:
+				 * every row shrinking at once showed thin slices of each, cut through the letters): the first row never
+				 * shown while cut (a height between none and its full one with its content not faded out), and moving
+				 * (a step between). Not at fixed times: a slow machine's animations run ahead of its timers */
+				{
+					static QPointingDevice *finger = QTest::createTouchDevice();
+					const QPoint c = head->mapToScene(QPointF(head->width() / 2, head->height() / 2)).toPoint();
+					QTest::touchEvent(phone.window, finger).press(0, c, phone.window.data());
+					QTest::qWait(30);
+					QTest::touchEvent(phone.window, finger).release(0, c, phone.window.data());
+				}
+				foldWatch(phone, first, where + QStringLiteral(" folding"), bad);
 				phone.settle(400);
 				const QQuickItem *count = within(head, QStringLiteral("regGroupCount"));
 				const QString countText = count && count->isVisible() ? count->property("text").toString() : QString();
@@ -6682,8 +6762,16 @@ void checkGroupFolds() {
 						&& chevron->property("kind").toString() == QLatin1String(rtl ? "back" : "next")
 						&& countText.contains(size_) && countText.contains(QChar(0x00b7));
 				const double y1 = sceneRect(head).top();
-				phone.tap(head);
-				phone.settle(400);
+				/* opening the other way round, watched the same way */
+				{
+					static QPointingDevice *finger = QTest::createTouchDevice();
+					const QPoint c = head->mapToScene(QPointF(head->width() / 2, head->height() / 2)).toPoint();
+					QTest::touchEvent(phone.window, finger).press(0, c, phone.window.data());
+					QTest::qWait(30);
+					QTest::touchEvent(phone.window, finger).release(0, c, phone.window.data());
+				}
+				foldWatch(phone, first, where + QStringLiteral(" opening"), bad);
+				phone.settle(500);
 				const bool openAgain = rowShown(phone, first) && count && !count->isVisible();
 				seen << QStringLiteral("%1: header %2 dp at %3, folded at %4 (\"%5\")").arg(where).arg(head->height()).arg(y0)
 								.arg(y1).arg(countText);
@@ -6726,8 +6814,50 @@ void checkGroupFolds() {
 	}
 	language::apply(*qApp, QStringLiteral("en"));
 	check(bad.isEmpty(), QStringLiteral("phone, Registers: a group's header (48 dp, its chevron) folds it and opens it, in "
-										"place, its count shown folded; kept for the map in a new window, still polled; a "
+										"place, its rows faded out before their room closes and faded in once it is open (never cut through their letters), its count shown folded; kept for the map in a new window, still polled; a "
 										"search finds a folded group's register (%1) %2")
+								 .arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* every group folded (a grey bar seen at the owner's phone's right edge was Samsung's Edge panel handle, not the
+ * list's; this guards the list's own): folded in a window, then a new window opened with the folds kept, as the app starts. Each time
+ * the list is still, its content the headers and the foot (no estimate of rows it does not show), its scroll
+ * indicator not active and sized by that content; upright and across */
+void checkFoldedFits() {
+	QStringList seen, bad;
+	static const char *const groups[] = { "Protocol", "System", "Power & supply", "Sensors", "Settings" };
+	for (QSize size : { QSize(384, 832), QSize(760, 384) }) {
+		for (bool fresh : { false, true }) {
+			Phone phone(size);
+			PhoneSession *session = phone.session();
+			phone.settle(500);
+			if (session && !fresh)
+				for (const char *group : groups) session->setGroupFolded(QLatin1String(group), true);
+			phone.settle(1500);
+			QQuickItem *list = phone.item("registerList");
+			QQuickItem *indicator = nullptr;
+			forEachItem(list, [&](QQuickItem *item) {
+				if (!indicator && item->inherits("QQuickScrollIndicator")) indicator = item;
+			});
+			const double content = list ? list->property("contentHeight").toDouble() : -1;
+			const double view = list ? list->height() : 0;
+			const bool moving = list && list->property("moving").toBool();
+			const bool active = indicator && indicator->property("active").toBool();
+			const double sized = indicator ? indicator->property("size").toDouble() : -1;
+			const double want = content > 0 ? std::min(1.0, view / content) : 1;
+			/* five 48 dp headers and the foot: no more than 400 px */
+			seen << QStringLiteral("%1 %2: content %3 of %4 px, moving %5, indicator active %6 size %7 (want %8)")
+							.arg(size.width()).arg(fresh ? QStringLiteral("new window") : QStringLiteral("folded"))
+							.arg(content, 0, 'f', 1).arg(view, 0, 'f', 1).arg(moving).arg(active).arg(sized, 0, 'f', 2)
+							.arg(want, 0, 'f', 2);
+			if (!list || !indicator || content > 400 || moving || active || std::fabs(sized - want) > 0.02)
+				bad << seen.last();
+			if (session && fresh)
+				for (const char *group : groups) session->setGroupFolded(QLatin1String(group), false);
+		}
+	}
+	check(bad.isEmpty(), QStringLiteral("phone, Registers: every group folded, in the window and in a new one: the list still, "
+										"its content the headers and the foot, no scroll indicator shown, sized by it (%1) %2")
 								 .arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
 }
 
@@ -6968,6 +7098,7 @@ int main(int argc, char **argv) {
 	RUN(checkCursorDrag);
 	RUN(checkCursorReadouts);
 	RUN(checkCursorLateData);
+	RUN(checkCursorNoSamples);
 	RUN(checkCursorPanelScroll);
 	RUN(checkCursorPairs);
 	RUN(checkMonitorFrames);
@@ -7062,6 +7193,7 @@ int main(int argc, char **argv) {
 	RUN(checkDrawerConnectAcross);
 	RUN(checkChipsStill);
 	RUN(checkGroupFolds);
+	RUN(checkFoldedFits);
 #undef RUN
 	runningCheck = "(the pictures and the end, after the checks)";
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {

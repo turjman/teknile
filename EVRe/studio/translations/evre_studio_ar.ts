@@ -718,6 +718,10 @@ Double-click to edit</source>
         <translation>المتوسط</translation>
     </message>
     <message>
+        <source>No samples between A and B</source>
+        <translation>لا عينات بين A و B</translation>
+    </message>
+    <message>
         <source>No lines yet</source>
         <translation>لا خطوط بعد</translation>
     </message>

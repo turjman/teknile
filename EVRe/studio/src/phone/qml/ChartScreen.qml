@@ -20,7 +20,8 @@
 // three quarters of that span) and holds the view; each is dragged by its round handle (48 dp; A's at the plot's top,
 // B's at its foot); the readouts beside the plot (under it in portrait; scrolled, with a scroll bar and a fade at an
 // edge with more) give A's and B's times and B - A, and per line its values at A and B, B - A, and min, max and mean
-// over A..B (ChartItem's readouts: the desktop's statsOf; an em dash where a line has no value). With demo (Main.qml's chartDemo) the chart's test feed draws 8 lines at 1,000 Hz (chart_demo.h).
+// over A..B (ChartItem's readouts: the desktop's statsOf; an em dash where a line has no value, "No samples between
+// A and B" where it has none at all). With demo (Main.qml's chartDemo) the chart's test feed draws 8 lines at 1,000 Hz (chart_demo.h).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -835,6 +836,9 @@ Item {
                             required property string min
                             required property string max
                             required property string mean
+                            // no sample of the line at A, at B or between them (the cursors left where Clear took the
+                            // samples away): one muted line says so, not six dashes in a row
+                            readonly property bool empty: [atA, atB, delta, min, max, mean].every(t => t === "—")
                             objectName: "readoutRow"
                             Layout.fillWidth: true
                             spacing: 2
@@ -862,8 +866,18 @@ Item {
                                     font.bold: true
                                 }
                             }
+                            Text {
+                                objectName: "readoutEmpty"
+                                Layout.fillWidth: true
+                                visible: readout.empty
+                                text: qsTr("No samples between A and B")
+                                color: PhoneTheme.muted
+                                font.pixelSize: 13
+                                wrapMode: Text.Wrap
+                            }
                             Flow {
                                 Layout.fillWidth: true
+                                visible: !readout.empty
                                 spacing: 2
                                 Pair { label: "A"; symbol: true; labelName: "cursorName"; valueName: "readoutA"; value: readout.atA }
                                 Pair { label: "B"; symbol: true; labelName: "cursorName"; valueName: "readoutB"; value: readout.atB }
