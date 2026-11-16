@@ -49,6 +49,11 @@
  *
  * Exit code: 0 all passed, 1 a check failed. */
 #include <QClipboard>
+#include <csignal>
+#if defined(__linux__)
+#include <execinfo.h>
+#include <unistd.h>
+#endif
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
@@ -7045,8 +7050,30 @@ void checkThreadWarnings() {
 
 } // namespace
 
+/* the check under way, for a crash's line (the Linux CI's phone test died twice with no word of where: once in the
+ * cursors' panel, once after the trend's check) */
+static const char *runningCheck = "(before the checks)";
+
+/* a crash (Linux): "CRASH in <check>: signal N" and the stack with the functions' names (the test is linked with
+ * -rdynamic), written with write(2) alone (safe in a signal handler), then the signal's own end, so the run still fails */
+#if defined(__linux__)
+static void crashed(int sig) {
+	const auto say = [](const char *text) { (void) !write(2, text, strlen(text)); };
+	say("CRASH in ");
+	say(runningCheck);
+	say(sig == SIGSEGV ? ": SIGSEGV\n" : sig == SIGABRT ? ": SIGABRT\n" : sig == SIGBUS ? ": SIGBUS\n" : ": a signal\n");
+	void *frames[64];
+	backtrace_symbols_fd(frames, backtrace(frames, 64), 2);
+	std::signal(sig, SIG_DFL);
+	std::raise(sig);
+}
+#endif
+
 int main(int argc, char **argv) {
 	previousHandler = qInstallMessageHandler(countThreadWarnings);
+#if defined(__linux__)
+	for (int sig : { SIGSEGV, SIGABRT, SIGBUS }) std::signal(sig, crashed);
+#endif
 	QGuiApplication app(argc, argv);
 	QGuiApplication::setOrganizationName(QStringLiteral("teknile"));
 	QGuiApplication::setApplicationName(QStringLiteral("EVReStudioPhoneTest")); /* not the user's settings */
@@ -7089,7 +7116,7 @@ int main(int argc, char **argv) {
 	}
 	/* EVRE_PHONE_ONLY=<text>: only the checks whose function's name holds it (a run of a few, by hand) */
 	const QString only = qEnvironmentVariable("EVRE_PHONE_ONLY");
-#define RUN(f) if (only.isEmpty() || QStringLiteral(#f).contains(only)) f()
+#define RUN(f) if (only.isEmpty() || QStringLiteral(#f).contains(only)) (runningCheck = #f, f())
 	RUN(checkLoads);
 	RUN(checkTabs);
 	RUN(checkDrawer);
@@ -7216,6 +7243,7 @@ int main(int argc, char **argv) {
 	RUN(checkGroupFolds);
 	RUN(checkFoldedFits);
 #undef RUN
+	runningCheck = "(the pictures and the end, after the checks)";
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		if (only.isEmpty() || only.contains(QLatin1String("Chart"))) saveChartPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
