@@ -447,8 +447,8 @@ void checkTheme() {
 	const ThemeColors dark = Theme::colorsFor(true), light = Theme::colorsFor(false);
 	/* a point of the screen between the rows' panels, behind a section's header: the window's background; one in the
 	 * header: its panel */
-	const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("regGroup"));
-	const QPointF inScreen = group ? group->parentItem()->mapToScene(QPointF(4, 4)) : QPointF(4, 600);
+	const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("groupHeader"));
+	const QPointF inScreen = group ? group->mapToScene(QPointF(4, 4)) : QPointF(4, 600);
 	const QPointF inHeader(phone.window ? phone.window->width() / 2.0 : 200, 6);
 	const QImage before = phone.grab();
 	const QColor bgBefore = Phone::pixel(before, inScreen), headerBefore = Phone::pixel(before, inHeader);
@@ -2059,8 +2059,8 @@ void checkRegisterThemes() {
 		const QImage image = phone.grab();
 		const QColor rowColor = Phone::pixel(image, at(panel, panel ? panel->width() - 6 : 0, panel ? panel->height() - 5 : 0));
 		/* the background: behind a section's header, between the groups' panels */
-		const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("regGroup"));
-		const QColor bg = Phone::pixel(image, at(group ? group->parentItem() : nullptr, 4, 4));
+		const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("groupHeader"));
+		const QColor bg = Phone::pixel(image, at(group, 4, 4));
 		const QQuickItem *name = within(regRow(phone, QStringLiteral("DEVICE_ID")), QStringLiteral("regName"));
 		const bool nameColor = name && near(name->property("color").value<QColor>(), colors.text, 2);
 		const bool fine = panel && near(rowColor, colors.surface, 4) && near(bg, colors.bg, 4) && nameColor;
@@ -4307,7 +4307,8 @@ void checkRowDensity() {
 	}
 	const bool lined = rights.size() == 5 && *std::max_element(rights.begin(), rights.end())
 			- *std::min_element(rights.begin(), rights.end()) <= 0.5;
-	check(whole >= CARDS_IN_VIEW_BEFORE * 9 / 5 && lowest >= 48 && separated == whole && secondLines && lined && tabular,
+	/* 9 before the groups' headers became 48 dp fold buttons (part D) */
+	check(whole >= CARDS_IN_VIEW_BEFORE * 8 / 5 && lowest >= 48 && separated == whole && secondLines && lined && tabular,
 			QStringLiteral("phone, Registers rows: at 412 x 915 connected %1 rows fully in view (the cards: %2), each at least "
 					"48 high (lowest %3) with a thin line under it (%4); a second line only with decoded text (STATUS, CONFIG; "
 					"not DEVICE_ID, UPTIME); the values right-aligned in tabular digits, their right edges lined up (%5)")
@@ -6243,7 +6244,7 @@ void checkPressShape() {
 		Phone phone(QSize(384, 832));
 		phone.settle(500);
 		/* the owner's case: the row tinted at once to its far corner, nothing outside, gone after */
-		QQuickItem *row = regRow(phone, QStringLiteral("SUPPLY_V"));
+		QQuickItem *row = regRow(phone, QStringLiteral("DEVICE_ID"));
 		if (row) {
 			const QRectF r = sceneRect(row);
 			const QPointF corner(r.left() + 3, r.top() + 3);
@@ -6263,7 +6264,7 @@ void checkPressShape() {
 			seen << QStringLiteral("row's corner %1 at rest, %2 at 60 ms, %3 600 ms after").arg(rest.name(), early.name(), after.name());
 			if (!atOnce || !gone) bad << QStringLiteral("row's tint: at once %1, gone %2").arg(atOnce).arg(gone);
 		}
-		hold(phone, regRow(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("a register's row"), true);
+		hold(phone, regRow(phone, QStringLiteral("DEVICE_ID")), QStringLiteral("a register's row"), true);
 		hold(phone, groupHeader(phone, QStringLiteral("System")), QStringLiteral("a group's header"), true);
 		hold(phone, phone.item("registersConnect"), QStringLiteral("a Button (Connect…)"), true);
 		pressBack(phone);

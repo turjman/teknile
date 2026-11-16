@@ -8974,7 +8974,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | USB&nbsp;back | the board reset comes back under another name: the retry opens it by its USB IDs, connected again, the new name saved and in the Log |
 | device&nbsp;line | a device that never answers DEVICE_ID, then Disconnect: the drawer says *Device ID not read yet*, the cancelled read no error in the Log |
 | typed&nbsp;numbers | a register's sheet: *1,5* writes 1.5, Arabic digits (*١٢*, *۴۵*) 12 and 45, *0x1A* as typed (26) |
-| rows | (the design pass, part A) at 412 x 915 connected, at least 9 rows fully in view (the cards: 5), each 48 dp or more with a thin line under it; a second line only with decoded text; the values right-aligned in tabular digits, their right edges lined up |
+| rows | (the design pass, part A) at 412 x 915 connected, at least 8 rows fully in view (9 before the groups' headers became 48 dp fold buttons) (the cards: 5), each 48 dp or more with a thin line under it; a second line only with decoded text; the values right-aligned in tabular digits, their right edges lined up |
 | sheet | a tap on SUPPLY_V's row opens its sheet: name, address and group, the value with its unit, its trend with its lowest and highest, Plot and Copy, no write part (read-only); FAN_SPEED's field asks for the number pad with Write beside it, CONFIG's (hex) not, its fields shown |
 | quick&nbsp;write | Enter in FAN_SPEED's field writes as Write does: the answer, then *Read back: 44 %* |
 | trend | 300 values keep the last 120 (`TREND_POINTS`), their lowest, highest and span; a value from an earlier time starts it again; a bytes register keeps none |
