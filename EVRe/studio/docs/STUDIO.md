@@ -9007,7 +9007,9 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | group&nbsp;folds | upright and across, English and Arabic: a group's header 48 dp with its chevron (down open; folded next, back in Arabic); a tap folds it (the first row watched every few ms through the fold and through the opening: never shown while cut, its height part way with its content not faded out, and moving; then its rows gone, *· 3* beside its name, the header where it was) and opens it; two folds kept for the map in a new window, the folded registers still polled; a search finds a folded group's register, the fold back when it is cleared |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (136 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (136 checks); the exit code is 0 when all pass, 1 on a failure. On Linux a crash prints
+*CRASH in <the check under way>* and the stack with the functions' names (the test is linked with `-rdynamic`), then
+ends as the signal would, so the run still fails.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `help` (its topics), `helppage` (the phone's own topic; `helppage2` a screen down, `helppage_end`
