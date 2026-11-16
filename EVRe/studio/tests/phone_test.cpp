@@ -6793,6 +6793,48 @@ void checkGroupFolds() {
 								 .arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
 }
 
+/* every group folded (the owner's phone: a scroll indicator stayed shown, a fifth of the track, over a list of five
+ * headers that fits): folded in a window, then a new window opened with the folds kept, as the app starts. Each time
+ * the list is still, its content the headers and the foot (no estimate of rows it does not show), its scroll
+ * indicator not active and sized by that content; upright and across */
+void checkFoldedFits() {
+	QStringList seen, bad;
+	static const char *const groups[] = { "Protocol", "System", "Power & supply", "Sensors", "Settings" };
+	for (QSize size : { QSize(384, 832), QSize(760, 384) }) {
+		for (bool fresh : { false, true }) {
+			Phone phone(size);
+			PhoneSession *session = phone.session();
+			phone.settle(500);
+			if (session && !fresh)
+				for (const char *group : groups) session->setGroupFolded(QLatin1String(group), true);
+			phone.settle(1500);
+			QQuickItem *list = phone.item("registerList");
+			QQuickItem *indicator = nullptr;
+			forEachItem(list, [&](QQuickItem *item) {
+				if (!indicator && item->inherits("QQuickScrollIndicator")) indicator = item;
+			});
+			const double content = list ? list->property("contentHeight").toDouble() : -1;
+			const double view = list ? list->height() : 0;
+			const bool moving = list && list->property("moving").toBool();
+			const bool active = indicator && indicator->property("active").toBool();
+			const double sized = indicator ? indicator->property("size").toDouble() : -1;
+			const double want = content > 0 ? std::min(1.0, view / content) : 1;
+			/* five 48 dp headers and the foot: no more than 400 px */
+			seen << QStringLiteral("%1 %2: content %3 of %4 px, moving %5, indicator active %6 size %7 (want %8)")
+							.arg(size.width()).arg(fresh ? QStringLiteral("new window") : QStringLiteral("folded"))
+							.arg(content, 0, 'f', 1).arg(view, 0, 'f', 1).arg(moving).arg(active).arg(sized, 0, 'f', 2)
+							.arg(want, 0, 'f', 2);
+			if (!list || !indicator || content > 400 || moving || active || std::fabs(sized - want) > 0.02)
+				bad << seen.last();
+			if (session && fresh)
+				for (const char *group : groups) session->setGroupFolded(QLatin1String(group), false);
+		}
+	}
+	check(bad.isEmpty(), QStringLiteral("phone, Registers: every group folded, in the window and in a new one: the list still, "
+										"its content the headers and the foot, no scroll indicator shown, sized by it (%1) %2")
+								 .arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
 /* part D's pictures for the eye (not checks): <prefix>_<en|ar>_<dark|light>_d11_<name>_<upright|across>.png at the
  * owner's phone upright (384 x 832) and across (760 x 384): registers (not connected), hold (a finger held 1 s on a
  * row), folds (Protocol and System folded, connected), drawer (its top), display (its Display section, another language chosen: the note and Restart now), language
@@ -7103,6 +7145,7 @@ int main(int argc, char **argv) {
 	RUN(checkDrawerConnectAcross);
 	RUN(checkChipsStill);
 	RUN(checkGroupFolds);
+	RUN(checkFoldedFits);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));

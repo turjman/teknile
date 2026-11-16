@@ -8410,7 +8410,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 135 (26.11), 1249. The
+the phone test's 136 (26.11), 1250. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -9003,10 +9003,11 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | Lines&nbsp;names | the Lines sheet's names by their dots at the start edge: at the right in Arabic (a Latin name sat at the left of its room, in the row's middle) |
 | drawer&nbsp;across | at 760 x 384, TCP and USB, English and Arabic: the drawer opens with Connect in sight (no title over its sections there; upright the title stays) |
 | chips&nbsp;still | across and upright, four lines, one value alternating between *0 V* and *-12345 V*: the chips shown, their places and widths stay the same (each value's room the widest the legend writes, from the start) |
+| folded&nbsp;fits | every group folded, in the window and in a new one opened with the folds kept, upright and across: the list still, its content the five headers and the foot, its scroll indicator not active and sized by that content (the owner's phone showed one over a list that fits) |
 | group&nbsp;folds | upright and across, English and Arabic: a group's header 48 dp with its chevron (down open; folded next, back in Arabic); a tap folds it (70 ms in, the first row's height on its way, its content its full height, cut by the row and fading; then its rows gone, *· 3* beside its name, the header where it was) and opens it; two folds kept for the map in a new window, the folded registers still polled; a search finds a folded group's register, the fold back when it is cleared |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (135 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (136 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `help` (its topics), `helppage` (the phone's own topic; `helppage2` a screen down, `helppage_end`
