@@ -71,6 +71,7 @@ Item {
             }
             Button {
                 objectName: "logCopy"
+                Material.roundedScale: Material.SmallScale
                 Layout.alignment: Qt.AlignTop
                 // as narrow as its word (Material's are 64 dp at least): the chips and both buttons on one row upright
                 leftPadding: 8
@@ -84,6 +85,7 @@ Item {
             }
             Button {
                 objectName: "logClear"
+                Material.roundedScale: Material.SmallScale
                 Layout.alignment: Qt.AlignTop
                 // as narrow as its word (Material's are 64 dp at least): the chips and both buttons on one row upright
                 leftPadding: 8

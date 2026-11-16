@@ -54,6 +54,7 @@ ColumnLayout {
     }
     Button {
         objectName: box.prefix + "Button"
+        Material.roundedScale: Material.SmallScale
         Layout.alignment: Qt.AlignHCenter
         Layout.topMargin: 8
         Layout.preferredHeight: 48

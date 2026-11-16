@@ -6,18 +6,18 @@
 // there is more to say: "not refreshed", "on the chart", the decoded text (an enum's name, the bit fields) or the
 // error. A thin line under each row; the screen's sections give the groups. At least 48 high, about 52. Across
 // (compact, the Registers screen in landscape) a row is one line 42 high: what the second line says goes between the
-// address and the value, so seven rows show at 760 x 384 (a full-width target, a full-width target).
+// address and the value, so five rows and their groups' headers (48 dp: they fold) show at 760 x 384.
 // A changed value glows as on the desktop: the row tinted toward the accent and a bar at its start edge, fading over
 // GLOW_MS (RegisterModel), with an arrow up or down for a plain number before the value. A value not refreshed for a
 // while is greyed and the second line says so; a register the device refused, or a read that failed, shows its value
-// and its error in red with a red bar at its start edge. A press shows Material's ripple.
+// and its error in red with a red bar at its start edge. A press tints the row's own rectangle at once and fades on
+// the release (PressTint): no ripple's circle (an unclipped one grew over the rows around a long press).
 // The value and its unit run left to right in Arabic too (10.5): the row mirrors (the name at the right, the value at
 // the left, by the chevron), and the values line up at their left edge there, the unit right after each. The map's
 // names (Latin) are aligned to the start edge by hand: a text left to its own letters would sit at the left.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
-import QtQuick.Controls.Material.impl
 import QtQuick.Layouts
 import EVRe.Phone
 
@@ -34,13 +34,24 @@ Item {
     required property string error
     required property bool stale
     required property int source
+    required property string group
     // one line, 42 high (across)
     property bool compact: false
+    // its group folded on the Registers screen: no height, not drawn; foldMotion: the fold a tap's, its height moves
+    property bool folded: false
+    property bool foldMotion: false
 
     signal opened(int source)
 
     objectName: "row_" + name
     implicitHeight: compact ? 42 : Math.max(52, body.implicitHeight + 14)
+    height: folded ? 0 : implicitHeight
+    visible: height > 0
+    clip: height < implicitHeight
+    Behavior on height {
+        enabled: row.foldMotion
+        NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+    }
 
     readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
     readonly property bool failed: error.length > 0
@@ -98,7 +109,7 @@ Item {
         property alias textName: tagText.objectName
         implicitWidth: tagRow.implicitWidth + 12
         implicitHeight: 18
-        radius: 9
+        radius: 6
         Row {
             id: tagRow
             anchors.centerIn: parent
@@ -108,7 +119,7 @@ Item {
                 visible: parent.parent.dot.a > 0
                 width: 6
                 height: 6
-                radius: 3
+                radius: 1.5
                 color: parent.parent.dot
             }
             Label {
@@ -175,13 +186,8 @@ Item {
         anchors.fill: parent
         color: PhoneTheme.surface
 
-        Ripple {
-            anchors.fill: parent
-            clipRadius: 0
+        PressTint {
             pressed: tap.pressed
-            anchor: panel
-            active: tap.pressed
-            color: panel.Material.rippleColor
         }
         Rectangle {
             id: tint

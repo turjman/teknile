@@ -42,6 +42,10 @@
  * sixend|regsheet>_<portrait|landscape>.png (six: six lines, whole chips and "+N"; sixend: the Lines sheet;
  * regsheet: a plotted register's sheet on the Registers screen). EVRE_PHONE_ONLY=<text> (other than shots): only the checks
  * whose function's name holds it, and with a prefix only the chart's pictures.
+ * Part D of the design pass: no pill or circle on any screen (rounded squares), a press without a ripple's circle (a
+ * finger held 1 s on each kind of item), the drawer's names wrapped, Restart now, the drawer at its top, the popups
+ * read from the right in Arabic, the Monitor's "paused" whole, the Lines sheet's names at the start edge; its pictures
+ * <prefix>_<en|ar>_<dark|light>_d11_<name>_<upright|across>.png (EVRE_PHONE_ONLY=partd: those alone).
  *
  * Exit code: 0 all passed, 1 a check failed. */
 #include <QClipboard>
@@ -65,6 +69,8 @@
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
 #include <QQmlError>
+#include <QQmlProperty>
+#include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QRegularExpression>
@@ -97,6 +103,7 @@
 #include "phone/chart_item.h"
 #include "phone/p9_proof.h"
 #include "phone/phone_app.h"
+#include "phone/phone_language.h"
 #include "phone/phone_session.h"
 #include "phone/phone_system.h"
 #include "phone/phone_theme.h"
@@ -276,6 +283,7 @@ QObject *Phone::object(const char *name) const {
 
 QRectF sceneRect(const QQuickItem *item);
 QQuickItem *within(QQuickItem *root, const QString &name);
+QQuickItem *groupHeader(const Phone &phone, const QString &group);
 
 bool near(const QColor &a, const QColor &b, int tolerance = 6) {
 	return a.isValid() && std::abs(a.red() - b.red()) <= tolerance && std::abs(a.green() - b.green()) <= tolerance
@@ -439,8 +447,8 @@ void checkTheme() {
 	const ThemeColors dark = Theme::colorsFor(true), light = Theme::colorsFor(false);
 	/* a point of the screen between the rows' panels, behind a section's header: the window's background; one in the
 	 * header: its panel */
-	const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("regGroup"));
-	const QPointF inScreen = group ? group->parentItem()->mapToScene(QPointF(4, 4)) : QPointF(4, 600);
+	const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("groupHeader"));
+	const QPointF inScreen = group ? group->mapToScene(QPointF(4, 4)) : QPointF(4, 600);
 	const QPointF inHeader(phone.window ? phone.window->width() / 2.0 : 200, 6);
 	const QImage before = phone.grab();
 	const QColor bgBefore = Phone::pixel(before, inScreen), headerBefore = Phone::pixel(before, inHeader);
@@ -2051,8 +2059,8 @@ void checkRegisterThemes() {
 		const QImage image = phone.grab();
 		const QColor rowColor = Phone::pixel(image, at(panel, panel ? panel->width() - 6 : 0, panel ? panel->height() - 5 : 0));
 		/* the background: behind a section's header, between the groups' panels */
-		const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("regGroup"));
-		const QColor bg = Phone::pixel(image, at(group ? group->parentItem() : nullptr, 4, 4));
+		const QQuickItem *group = within(phone.item("registerList"), QStringLiteral("groupHeader"));
+		const QColor bg = Phone::pixel(image, at(group, 4, 4));
 		const QQuickItem *name = within(regRow(phone, QStringLiteral("DEVICE_ID")), QStringLiteral("regName"));
 		const bool nameColor = name && near(name->property("color").value<QColor>(), colors.text, 2);
 		const bool fine = panel && near(rowColor, colors.surface, 4) && near(bg, colors.bg, 4) && nameColor;
@@ -4299,7 +4307,8 @@ void checkRowDensity() {
 	}
 	const bool lined = rights.size() == 5 && *std::max_element(rights.begin(), rights.end())
 			- *std::min_element(rights.begin(), rights.end()) <= 0.5;
-	check(whole >= CARDS_IN_VIEW_BEFORE * 9 / 5 && lowest >= 48 && separated == whole && secondLines && lined && tabular,
+	/* 9 before the groups' headers became 48 dp fold buttons (part D) */
+	check(whole >= CARDS_IN_VIEW_BEFORE * 8 / 5 && lowest >= 48 && separated == whole && secondLines && lined && tabular,
 			QStringLiteral("phone, Registers rows: at 412 x 915 connected %1 rows fully in view (the cards: %2), each at least "
 					"48 high (lowest %3) with a thin line under it (%4); a second line only with decoded text (STATUS, CONFIG; "
 					"not DEVICE_ID, UPTIME); the values right-aligned in tabular digits, their right edges lined up (%5)")
@@ -5171,7 +5180,8 @@ void savePartBPictures(const QString &prefix) {
 
 /* Across, every tab: the bottom tab bar and the header give way to a rail at the start edge (the right in Arabic): the
  * menu button, the four tabs (each 48 dp or more, the chosen one marked), the link's state; the screens beside it from
- * the window's top. At 760 x 384, connected, the Registers screen shows 7 rows or more whole (4 before), each one line
+ * the window's top. At 760 x 384, connected, the Registers screen shows 5 rows or more whole (4 before the rail, 7 with
+ * the groups' 20 dp headers before they became 48 dp fold buttons, part D), each one line
  * and at least 42 high; a tap on the rail's Log shows the Log, its menu button opens the drawer */
 void checkLandscapeRail() {
 	QStringList seen, bad;
@@ -5212,7 +5222,7 @@ void checkLandscapeRail() {
 			const QQuickItem *second = within(item, QStringLiteral("rowSecond"));
 			if (second && second->isVisible()) bad << code + QStringLiteral(": a second line across");
 		});
-		if (whole < 7 || lowest < 41.5) bad << QStringLiteral("%1: %2 rows whole, the lowest %3").arg(code).arg(whole).arg(lowest);
+		if (whole < 5 || lowest < 41.5) bad << QStringLiteral("%1: %2 rows whole, the lowest %3").arg(code).arg(whole).arg(lowest);
 		/* STATUS's decoded text on its one line */
 		const QQuickItem *inline_ = within(regRow(phone, QStringLiteral("STATUS")), QStringLiteral("regDecodedInline"));
 		if (!inline_ || !inline_->isVisible() || inline_->property("text").toString().isEmpty())
@@ -5230,7 +5240,7 @@ void checkLandscapeRail() {
 	}
 	language::apply(*qApp, QStringLiteral("en"));
 	check(bad.isEmpty(), QStringLiteral("phone, across: a rail at the start edge (the menu, the four tabs, the link's state, "
-			"each 48 dp or more), no header nor tab bar, the screens beside it; at 760 x 384 the Registers show 7 rows or "
+			"each 48 dp or more), no header nor tab bar, the screens beside it; at 760 x 384 the Registers show 5 rows or "
 			"more, each one line (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
 }
 
@@ -5981,6 +5991,876 @@ void savePartCPictures(const QString &prefix) {
 	language::apply(*qApp, QStringLiteral("en"));
 }
 
+/* ---- part D of the design pass: shapes (rounded squares, no pills or circles), the press without a ripple, the drawer */
+
+/* a finger held on `at` for `ms`, `during` called while it is down (then lifted) */
+void holdPress(const Phone &phone, QPointF at, int ms, const std::function<void()> &during) {
+	static QPointingDevice *finger = QTest::createTouchDevice();
+	QTest::touchEvent(phone.window, finger).press(0, at.toPoint(), phone.window.data());
+	QTest::qWait(ms);
+	if (during) during();
+	QTest::touchEvent(phone.window, finger).release(0, at.toPoint(), phone.window.data());
+	phone.settle();
+}
+
+/* a ComboBox's popup closed (the language list) */
+void closeComboPopup(QObject *box) {
+	if (!box) return;
+	if (QObject *popup = box->property("popup").value<QObject *>()) QMetaObject::invokeMethod(popup, "close");
+}
+
+/* an item's name for a check's text: its objectName, else its nearest named parent's with its class */
+QString itemName(const QQuickItem *item) {
+	for (const QQuickItem *up = item; up; up = up->parentItem())
+		if (!up->objectName().isEmpty())
+			return up == item ? up->objectName()
+							  : QStringLiteral("%1 in %2").arg(QLatin1String(item->metaObject()->className()), up->objectName());
+	return QLatin1String(item->metaObject()->className());
+}
+
+/* the item's opacity as drawn: its own times its parents' */
+double drawnOpacity(const QQuickItem *item) {
+	double opacity = 1;
+	for (const QQuickItem *up = item; up; up = up->parentItem()) opacity *= up->opacity();
+	return opacity;
+}
+
+/* The Rectangles drawn as a pill or a circle: a corner's radius half the smaller side or more. Not counted: what stays
+ * round on purpose (a Switch's track and thumb and the busy indicator, Material's; a drawn icon's strokes, whose round
+ * ends are a line's ends, and its magnifier's lens; the enum list's radio, round because a radio says one of many),
+ * lines under 4 dp, and what draws nothing (no fill, no edge) */
+QStringList roundShapes(QQuickWindow *window, int &seen) {
+	static const QStringList kept{ QStringLiteral("iconStroke"), QStringLiteral("iconLens"), QStringLiteral("radioRing"),
+		QStringLiteral("radioDot") };
+	QStringList found;
+	const QRectF view(0, 0, window->width(), window->height());
+	forEachItem(topItem(window), [&](QQuickItem *item) {
+		if (!item->inherits("QQuickRectangle") || !item->isVisible() || drawnOpacity(item) < 0.02) return;
+		const double w = item->width(), h = item->height();
+		if (w <= 0 || h <= 0 || !view.intersects(sceneRect(item))) return;
+		const QColor fill = item->property("color").value<QColor>();
+		const QObject *border = item->property("border").value<QObject *>();
+		const bool edged = border && border->property("width").toDouble() > 0
+				&& border->property("color").value<QColor>().alpha() > 0;
+		if (fill.alpha() == 0 && !edged && !item->property("gradient").isValid()) return;
+		++seen;
+		double radius = item->property("radius").toDouble();
+		for (const char *corner : { "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius" })
+			radius = std::max(radius, item->property(corner).toDouble());
+		const double smaller = std::min(w, h);
+		if (smaller < 4 || radius < smaller / 2 - 0.01) return;
+		for (const QQuickItem *up = item; up; up = up->parentItem())
+			if (up->inherits("QQuickSwitch") || up->inherits("QQuickBusyIndicator") || kept.contains(up->objectName())) return;
+		found << QStringLiteral("%1 (%2 x %3, radius %4)").arg(itemName(item)).arg(w).arg(h).arg(radius);
+	});
+	found.removeDuplicates();
+	return found;
+}
+
+/* Every pill and circle a rounded square (the owner, 2026-11-16: "square with rounded corners is much better"): on
+ * every screen (the Registers, connected with a line on the chart and not connected, a register's sheet and an enum's,
+ * the Chart with six lines and the cursors on, the Lines and Measure sheets, a chip's menu, the window's menu, the
+ * Monitor and a frame's sheet, the Log, the drawer at its top and its foot, the language list, the Help) upright and
+ * across, no Rectangle drawn has a corner's radius of half its smaller side or more but for those kept round (a
+ * Switch's parts, the busy indicator, an icon's strokes and lens, the radio); Material's controls' corners small
+ * (the window's Material.roundedScale SmallScale) */
+void checkShapes() {
+	QStringList seen, bad;
+	int scale = -1;
+	for (QSize size : { QSize(384, 832), QSize(760, 384) }) {
+		const QString form = size.width() > size.height() ? QStringLiteral("across") : QStringLiteral("upright");
+		Phone phone(size);
+		if (scale < 0) {
+			const QQmlProperty rounded(phone.window, QStringLiteral("Material.roundedScale"), qmlContext(phone.window));
+			scale = rounded.isValid() ? rounded.read().toInt() : -2;
+		}
+		auto walk = [&](const QString &what) {
+			int rectangles = 0;
+			const QStringList round = roundShapes(phone.window, rectangles);
+			seen << QStringLiteral("%1 %2: %3").arg(form, what).arg(rectangles);
+			for (const QString &r : round) bad << QStringLiteral("%1 %2: %3").arg(form, what, r);
+		};
+		PhoneSession *session = connectFake(phone);
+		if (session) session->setWritesEnabled(true);
+		const int supply = modelRow(session, QStringLiteral("SUPPLY_V"));
+		if (session && supply >= 0) session->setPlot(supply, true);
+		QTest::qWait(1200);
+		walk(QStringLiteral("registers"));
+		openSheet(phone, QStringLiteral("SUPPLY_V"));
+		phone.settle(800);
+		walk(QStringLiteral("a register's sheet"));
+		closeSheet(phone);
+		openSheet(phone, QStringLiteral("LED_MODE"));
+		walk(QStringLiteral("an enum's sheet"));
+		closeSheet(phone);
+		search(phone, QString());
+		ChartItem *chart = showChart(phone);
+		for (const char *reg : { "TEMPERATURE", "PRESSURE", "SUPPLY_I", "SETPOINT", "MOTOR_SPEED" }) {
+			const int row = modelRow(session, QLatin1String(reg));
+			if (session && row >= 0) session->setPlot(row, true);
+		}
+		if (chart) chart->setWindowSeconds(10);
+		QTest::qWait(2500);
+		phone.tap(phone.item("cursorsButton"));
+		phone.settle(600);
+		walk(QStringLiteral("chart, cursors on"));
+		phone.tap(phone.item("legendMore"));
+		phone.settle(600);
+		walk(QStringLiteral("Lines sheet"));
+		pressBack(phone);
+		phone.tap(phone.item("measureButton"));
+		phone.settle(800);
+		walk(QStringLiteral("Measure sheet"));
+		pressBack(phone);
+		phone.tap(phone.item("chipMore"));
+		phone.settle(500);
+		walk(QStringLiteral("a chip's menu"));
+		if (QObject *menu = phone.object("chipMenu")) QMetaObject::invokeMethod(menu, "close");
+		phone.settle(400);
+		phone.tap(phone.item("cursorsButton"));
+		phone.tap(phone.item("windowButton"));
+		phone.settle(500);
+		walk(QStringLiteral("the window's menu"));
+		if (QObject *menu = phone.object("windowMenu")) QMetaObject::invokeMethod(menu, "close");
+		phone.settle(400);
+		phone.tap(phone.item("tabMonitor"));
+		QTest::qWait(1200);
+		phone.tap(phone.item("monitorPause"));
+		phone.settle(300);
+		walk(QStringLiteral("Monitor"));
+		QQuickItem *frame = nullptr;
+		for (QQuickItem *row : visibleNamed(phone.item("monitorList"), QStringLiteral("frameRow")))
+			if (!frame && sceneRect(row).top() > 120 && sceneRect(row).bottom() < phone.window->height() - 80) frame = row;
+		phone.tap(frame);
+		phone.settle(700);
+		walk(QStringLiteral("a frame's sheet"));
+		pressBack(phone);
+		phone.tap(phone.item("monitorPause"));
+		if (LogModel *log = session ? session->log() : nullptr) {
+			log->add(LogModel::Warning, QStringLiteral("the map is for device 0x1002, this is 0x1001"));
+			log->add(LogModel::Error, QStringLiteral("write refused: NOWHERE = 1 (01 at 0xD0F0): offset out of range"));
+		}
+		phone.tap(phone.item("tabLog"));
+		phone.settle(400);
+		walk(QStringLiteral("Log"));
+		phone.tap(phone.item("tabRegisters"));
+		phone.openDrawer();
+		walk(QStringLiteral("drawer"));
+		phone.reveal(phone.item("keepScreenSwitch"));
+		phone.settle(300);
+		walk(QStringLiteral("drawer's foot"));
+		phone.tap(phone.item("languageBox"));
+		phone.settle(500);
+		walk(QStringLiteral("the language list"));
+		closeComboPopup(phone.object("languageBox"));
+		phone.settle(300);
+		phone.closeDrawer();
+		if (session) session->disconnectLink();
+		phone.settle(500);
+		walk(QStringLiteral("registers, not connected"));
+		openHelp(phone);
+		walk(QStringLiteral("Help"));
+		pressBack(phone);
+	}
+	check(bad.isEmpty() && scale == 8,
+			QStringLiteral("phone, shapes: no pill or circle on any screen, upright and across (rounded squares; kept "
+						   "round: a Switch's parts, the busy indicator, an icon's strokes and lens, the radio); the "
+						   "window's Material.roundedScale %1 (SmallScale 8) [Rectangles drawn: %2] %3")
+					.arg(scale).arg(seen.join(QStringLiteral(", ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* the Ripples drawn as a growing circle now: Material's press (pressed), or a Switch's halo (active) */
+QStringList ripplesPressed(QQuickWindow *window, int &count) {
+	QStringList found;
+	forEachItem(topItem(window), [&](QQuickItem *item) {
+		if (!item->inherits("QQuickMaterialRipple")) return;
+		++count;
+		if (!item->isVisible()) return;
+		const QQuickItem *indicator = item->parentItem();
+		const bool halo = indicator && indicator->parentItem() && indicator->parentItem()->inherits("QQuickSwitch");
+		if (item->property("pressed").toBool() || (halo && item->property("active").toBool())) found << itemName(item);
+	});
+	return found;
+}
+
+/* pixels of `after` that differ from `before` (by more than `tolerance` in a channel) outside `keep` (logical) */
+int changedOutside(const QImage &before, const QImage &after, const QRectF &keep, int tolerance = 24) {
+	if (before.size() != after.size()) return -1;
+	const qreal dpr = after.devicePixelRatio();
+	const QRect inner = QRectF(keep.x() * dpr, keep.y() * dpr, keep.width() * dpr, keep.height() * dpr).toAlignedRect();
+	int changed = 0;
+	for (int y = 0; y < after.height(); ++y)
+		for (int x = 0; x < after.width(); ++x) {
+			if (inner.contains(x, y)) continue;
+			const QColor a = before.pixelColor(x, y), b = after.pixelColor(x, y);
+			if (std::abs(a.red() - b.red()) > tolerance || std::abs(a.green() - b.green()) > tolerance
+					|| std::abs(a.blue() - b.blue()) > tolerance)
+				++changed;
+		}
+	return changed;
+}
+
+/* A press without a circle (the owner, on the real phone: a long press on the Registers list drew a grey circle three
+ * rows high over the rows around, a section's header and the gaps: the row's Ripple, unclipped). A finger held 1 s on
+ * each kind of item: a register's row, a group's header, a Button, a ToolButton, a tab, a filter chip, a Switch, the USB / TCP choice, a
+ * ComboBox, a menu's item, a sheet's Plot. While it is down no Ripple runs its wave (none pressed, no Switch's halo)
+ * and nothing is drawn outside the pressed item's rectangle; the row's tint is at its far corner at once (60 ms: a
+ * circle from the finger would be small yet), and gone 600 ms after the finger lifts */
+void checkPressShape() {
+	QStringList seen, bad;
+	int ripples = 0;
+	auto hold = [&](const Phone &phone, QQuickItem *item, const QString &what, bool still) {
+		if (!item || !item->isVisible()) {
+			bad << QStringLiteral("%1: not found").arg(what);
+			return;
+		}
+		phone.reveal(item);
+		const QRectF r = sceneRect(item);
+		/* the pointer over the item first: a desktop's hover (a tap's leftover on the button that opened a menu) moved
+		 * by the press is no press drawn outside */
+		QTest::mouseMove(phone.window, r.center().toPoint());
+		phone.settle(500);
+		const QImage before = phone.grab();
+		QStringList pressed;
+		int outside = 0;
+		/* looked at four times while it is held: a ripple's circle grows from the press and, past a long press,
+		 * fades (the owner's "fading circle") */
+		static QPointingDevice *finger = QTest::createTouchDevice();
+		QTest::touchEvent(phone.window, finger).press(0, r.center().toPoint(), phone.window.data());
+		for (int step = 0; step < 4; ++step) {
+			QTest::qWait(step == 0 ? 150 : 280);
+			pressed << ripplesPressed(phone.window, ripples);
+			if (still) outside = std::max(outside, changedOutside(before, phone.grab(), r.adjusted(-3, -3, 3, 3)));
+		}
+		QTest::touchEvent(phone.window, finger).release(0, r.center().toPoint(), phone.window.data());
+		phone.settle();
+		pressed.removeDuplicates();
+		seen << QStringLiteral("%1 (%2 changed outside)").arg(what).arg(still ? QString::number(outside) : QStringLiteral("-"));
+		if (!pressed.isEmpty() || outside != 0)
+			bad << QStringLiteral("%1: ripples pressed %2, pixels changed outside %3").arg(what, pressed.join(QLatin1Char(',')))
+						   .arg(outside);
+	};
+	{
+		Phone phone(QSize(384, 832));
+		phone.settle(500);
+		/* the owner's case: the row tinted at once to its far corner, nothing outside, gone after */
+		QQuickItem *row = regRow(phone, QStringLiteral("DEVICE_ID"));
+		if (row) {
+			const QRectF r = sceneRect(row);
+			const QPointF corner(r.left() + 3, r.top() + 3);
+			const QPoint finger = at(row, row->width() * 0.6, row->height() / 2).toPoint();
+			const QImage before = phone.grab();
+			/* held past a long press (no tap: the sheet stays closed), looked at 60 ms in */
+			static QPointingDevice *touch = QTest::createTouchDevice();
+			QTest::touchEvent(phone.window, touch).press(0, finger, phone.window.data());
+			QTest::qWait(60);
+			const QColor early = Phone::pixel(phone.grab(), corner);
+			QTest::qWait(940);
+			QTest::touchEvent(phone.window, touch).release(0, finger, phone.window.data());
+			QTest::qWait(600);
+			const QColor rest = Phone::pixel(before, corner), after = Phone::pixel(phone.grab(), corner);
+			if (sheetOpen(phone)) closeSheet(phone);
+			const bool atOnce = distance(early, rest) >= 8, gone = distance(after, rest) <= 3;
+			seen << QStringLiteral("row's corner %1 at rest, %2 at 60 ms, %3 600 ms after").arg(rest.name(), early.name(), after.name());
+			if (!atOnce || !gone) bad << QStringLiteral("row's tint: at once %1, gone %2").arg(atOnce).arg(gone);
+		}
+		hold(phone, regRow(phone, QStringLiteral("DEVICE_ID")), QStringLiteral("a register's row"), true);
+		hold(phone, groupHeader(phone, QStringLiteral("System")), QStringLiteral("a group's header"), true);
+		hold(phone, phone.item("registersConnect"), QStringLiteral("a Button (Connect…)"), true);
+		pressBack(phone);
+		hold(phone, phone.item("menuButton"), QStringLiteral("a ToolButton (the menu)"), true);
+		pressBack(phone);
+		hold(phone, phone.item("tabLog"), QStringLiteral("a tab (Log)"), true);
+		phone.settle(600); /* the Log's screen in: its fade ended */
+		hold(phone, phone.item("logLevel0"), QStringLiteral("a filter chip (Info)"), true);
+		phone.tap(phone.item("logLevel0"));
+		phone.tap(phone.item("tabRegisters"));
+		phone.openDrawer();
+		hold(phone, phone.item("reconnectSwitch"), QStringLiteral("a Switch (Reconnect)"), true);
+		phone.tap(phone.item("reconnectSwitch"));
+		hold(phone, phone.item("linkTcp"), QStringLiteral("the USB / TCP choice (TCP)"), true);
+		phone.tap(phone.item("linkUsb"));
+		hold(phone, phone.item("languageBox"), QStringLiteral("a ComboBox (Language)"), true);
+		closeComboPopup(phone.object("languageBox"));
+		phone.settle(300);
+		phone.closeDrawer();
+		openSheet(phone, QStringLiteral("SUPPLY_I"));
+		hold(phone, phone.item("sheetPlot"), QStringLiteral("a sheet's Plot"), true);
+		closeSheet(phone);
+		search(phone, QString());
+		showChart(phone);
+		/* held: the time axis still */
+		phone.tap(phone.item("holdButton"));
+		phone.tap(phone.item("windowButton"));
+		phone.settle(500);
+		hold(phone, phone.item("window60"), QStringLiteral("a menu's item (1 min)"), true);
+		phone.settle(300);
+	}
+	check(bad.isEmpty() && ripples > 0,
+			QStringLiteral("phone, a press: no circle (a finger held 1 s on each kind of item: no Ripple's wave, no Switch's "
+						   "halo, nothing drawn outside the item; the row's tint at its far corner at once and gone after "
+						   "the release; %1 Ripples met) (%2) %3")
+					.arg(ripples).arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* The drawer's switch rows never cut their name: across (760 x 384) and upright, English and Arabic, "Keep the screen
+ * on while connected" wraps to a second line rather than end in "...", inside its row, the switch at the end in the
+ * middle of the two lines */
+void checkSwitchRowsWrap() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		for (QSize size : { QSize(760, 384), QSize(384, 832) }) {
+			Phone phone(size);
+			phone.openDrawer();
+			phone.reveal(phone.item("keepScreenSwitch"));
+			phone.settle(300);
+			for (QQuickItem *name : visibleNamed(phone.item("drawerFlick"), QStringLiteral("switchRowName"))) {
+				const QQuickItem *toggle = nullptr;
+				for (QQuickItem *sibling : name->parentItem()->childItems())
+					if (sibling->inherits("QQuickSwitch")) toggle = sibling;
+				const QRectF n = sceneRect(name), t = sceneRect(toggle);
+				const bool cut = name->property("truncated").toBool();
+				const int lines = name->property("lineCount").toInt();
+				const bool inside = name->property("contentHeight").toDouble() <= name->height() + 1
+						&& name->property("contentWidth").toDouble() <= name->width() + 1;
+				const bool middle = toggle && std::fabs(n.center().y() - t.center().y()) <= 1.5;
+				seen << QStringLiteral("%1 %2 x %3 \"%4\": %5 lines").arg(code).arg(size.width()).arg(size.height())
+								.arg(name->property("text").toString().left(20)).arg(lines);
+				if (cut || !inside || !middle || lines > 2 || n.height() < 47.5)
+					bad << QStringLiteral("%1 %2 \"%3\": cut %4, inside %5, the switch in its middle %6, lines %7, high %8")
+								   .arg(code).arg(size.width()).arg(name->property("text").toString()).arg(cut).arg(inside)
+								   .arg(middle).arg(lines).arg(n.height());
+			}
+			int texts = 0;
+			for (const QString &t : textsOutside(phone.window, texts)) bad << code + QStringLiteral(" text: ") + t;
+		}
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty() && seen.size() >= 16,
+			QStringLiteral("phone, drawer: a switch's name wraps to two lines rather than end in \"...\" (Keep the screen on "
+						   "while connected across), the switch in the middle of them, both languages (%1) %2")
+					.arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* Restart now under "The language changes when the app is opened again.", as the desktop's: shown while another
+ * language is chosen than the one applied, it opens the app again (a stand-in here), gone when the language is
+ * chosen back */
+void checkRestartNow() {
+	int restarts = 0;
+	PhoneLanguage::setRestartForTests([&] { ++restarts; });
+	Phone phone(PORTRAIT);
+	phone.openDrawer();
+	QObject *box = phone.object("languageBox");
+	QQuickItem *button = phone.item("restartButton");
+	const bool hiddenFirst = button && !button->isVisible();
+	if (box) {
+		box->setProperty("currentIndex", 2);
+		QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 2));
+	}
+	phone.settle(200);
+	const QQuickItem *note = phone.item("languageNote");
+	const bool shown = button && button->isVisible() && note && note->isVisible()
+			&& sceneRect(button).top() >= sceneRect(note).bottom() - 0.5 && button->height() >= 47.5;
+	const QString text = button ? button->property("text").toString() : QString();
+	phone.tap(button);
+	const int afterTap = restarts;
+	if (box) {
+		box->setProperty("currentIndex", 1);
+		QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 1));
+	}
+	phone.settle(200);
+	const bool gone = button && !button->isVisible();
+	QSettings().remove(QStringLiteral("ui/language"));
+	PhoneLanguage::setRestartForTests(nullptr);
+	check(hiddenFirst && shown && text == QLatin1String("Restart now") && afterTap == 1 && gone,
+			QStringLiteral("phone, language: Restart now under the note while another language is chosen (48 dp), a tap "
+						   "opens the app again (%1 restart), gone when the language is chosen back (hidden first %2, "
+						   "shown %3, gone %4)").arg(afterTap).arg(hiddenFirst).arg(shown).arg(gone));
+}
+
+/* The drawer opens at its top every time (Connect in sight), however far down it was left; a sheet that sends it to
+ * Allow writes opens it there (openAtWrites) */
+void checkDrawerOpensAtTop() {
+	Phone phone(QSize(384, 832));
+	PhoneSession *session = connectFake(phone);
+	phone.openDrawer();
+	QQuickItem *flick = phone.item("drawerFlick");
+	const double most = flick ? flick->property("contentHeight").toDouble() - flick->height() : 0;
+	if (flick) flick->setProperty("contentY", most);
+	phone.settle(200);
+	phone.closeDrawer();
+	phone.openDrawer();
+	const double again = flick ? flick->property("contentY").toDouble() : -1;
+	const QQuickItem *connect = phone.item("connectButton");
+	const bool connectSeen = connect && flick && sceneRect(connect).bottom() <= sceneRect(flick).bottom() + 0.5;
+	phone.closeDrawer();
+	if (QObject *drawer = phone.object("connectDrawer")) QMetaObject::invokeMethod(drawer, "openAtWrites");
+	(void) QTest::qWaitFor([&] { return phone.drawerOpen(); }, 3000);
+	phone.settle(300);
+	const double writes = flick ? flick->property("contentY").toDouble() : -1;
+	phone.closeDrawer();
+	if (session) session->disconnectLink();
+	check(most > 50 && again == 0 && connectSeen && writes > 0,
+			QStringLiteral("phone, drawer: opens at its top each time (left %1 dp down, opened again at %2, Connect in "
+						   "sight %3); sent to Allow writes it opens there (%4 dp down)")
+					.arg(most).arg(again).arg(connectSeen).arg(writes));
+}
+
+/* the text's rectangle of a MenuItem (its IconLabel's Text), in the window */
+QRectF menuItemText(QQuickItem *menuItem) {
+	QRectF found;
+	forEachItem(menuItem, [&](QQuickItem *item) {
+		if (found.isEmpty() && item->inherits("QQuickText") && !item->property("text").toString().isEmpty()) {
+			const double w = item->property("contentWidth").toDouble();
+			const QRectF r = sceneRect(item);
+			/* the text as laid out in its item: at its right with right alignment */
+			const bool right = (item->property("effectiveHorizontalAlignment").toInt() & Qt::AlignRight) != 0;
+			found = QRectF(right ? r.right() - w : r.left(), r.top(), w, r.height());
+		}
+	});
+	return found;
+}
+
+/* In Arabic every list's popup reads from the right, as the drawer and the screens do: the ComboBoxes' (baud rate,
+ * map, language) and the Chart's menus (the window's, a chip's); each item's text nearer its right edge than its left,
+ * in English nearer its left */
+void checkPopupsMirrored() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		const bool rtl = code == QLatin1String("ar");
+		Phone phone(PORTRAIT);
+		auto inspect = [&](const QString &what, QObject *popup) {
+			const bool opened = popup && QTest::qWaitFor([&] { return popup->property("opened").toBool(); }, 3000);
+			phone.settle(200);
+			int items = 0, wrong = 0;
+			forEachItem(topItem(phone.window), [&](QQuickItem *item) {
+				if (!item->inherits("QQuickMenuItem") || !item->isVisible()) return;
+				const QRectF r = sceneRect(item), t = menuItemText(item);
+				if (t.isEmpty()) return;
+				++items;
+				const double left = t.left() - r.left(), right = r.right() - t.right();
+				if (rtl ? right >= left : left >= right) ++wrong;
+			});
+			seen << QStringLiteral("%1 %2: %3 items").arg(code, what).arg(items);
+			if (!opened || items == 0 || wrong > 0)
+				bad << QStringLiteral("%1 %2: opened %3, %4 items, %5 at the wrong side").arg(code, what).arg(opened).arg(items)
+							   .arg(wrong);
+			if (popup) QMetaObject::invokeMethod(popup, "close");
+			phone.settle(300);
+		};
+		/* USB chosen: its baud rate's list shown */
+		PhoneSession *session = phone.session();
+		const bool tcp = session && session->property("tcp").toBool();
+		if (session) session->setProperty("tcp", false);
+		phone.openDrawer();
+		for (const char *name : { "baudBox", "mapBox", "languageBox" }) {
+			QObject *box = phone.object(name);
+			phone.tap(phone.item(name));
+			inspect(QLatin1String(name), box ? box->property("popup").value<QObject *>() : nullptr);
+		}
+		phone.closeDrawer();
+		if (session) session->setProperty("tcp", tcp);
+		chartWithFedLines(phone, 2);
+		phone.tap(phone.item("windowButton"));
+		inspect(QStringLiteral("window menu"), phone.object("windowMenu"));
+		phone.tap(phone.item("chipMore"));
+		inspect(QStringLiteral("chip menu"), phone.object("chipMenu"));
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, popups: in Arabic the ComboBoxes' lists and the menus read from the right, in "
+										"English from the left (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* The Monitor's "paused" whole or not at all: upright the TX and RX chips (six digits' room) leave it too little and it
+ * read "paus…"; there it is not drawn (Resume, lit, says it), across it shows whole; English and Arabic */
+void checkMonitorPausedWhole() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		for (QSize size : { QSize(384, 832), QSize(760, 384) }) {
+			Phone phone(size);
+			PhoneSession *session = connectFake(phone);
+			phone.tap(phone.item("tabMonitor"));
+			QTest::qWait(800);
+			phone.tap(phone.item("monitorPause"));
+			phone.settle(300);
+			const QQuickItem *label = phone.item("monitorCount");
+			const double need = label ? label->implicitWidth() : 0, room = label ? label->width() : 0;
+			const double opacity = label ? label->opacity() : -1;
+			const bool whole = need <= room + 0.5;
+			const bool lit = phone.object("monitorPause") && phone.object("monitorPause")->property("highlighted").toBool();
+			seen << QStringLiteral("%1 %2: needs %3 of %4, drawn %5").arg(code).arg(size.width()).arg(need).arg(room).arg(opacity);
+			if (!label || !lit || (whole ? opacity != 1 : opacity != 0) || (size.width() > size.height() && !whole))
+				bad << QStringLiteral("%1 %2: whole %3, drawn %4, Resume lit %5").arg(code).arg(size.width()).arg(whole)
+							   .arg(opacity).arg(lit);
+			phone.tap(phone.item("monitorPause"));
+			if (session) session->disconnectLink();
+		}
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, Monitor: \"paused\" drawn whole or not at all, Resume lit (%1) %2")
+								 .arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* The Lines sheet's names at the start edge by their dots: in Arabic at the right (a Latin name with no value yet sat
+ * at the left of its room, in the row's middle), in English at the left */
+void checkLinesSheetNamesAtStart() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		const bool rtl = code == QLatin1String("ar");
+		Phone phone(PORTRAIT);
+		chartWithFedLines(phone, 3);
+		if (QObject *sheet = phone.object("linesSheet")) QMetaObject::invokeMethod(sheet, "open");
+		phone.settle(600);
+		const QList<QQuickItem *> names = visibleNamed(phone.item("linesFlick"), QStringLiteral("linesSheetName"));
+		const QList<QQuickItem *> dots = visibleNamed(phone.item("linesFlick"), QStringLiteral("linesSheetDot"));
+		for (int i = 0; i < names.size() && i < dots.size(); ++i) {
+			const QRectF n = sceneRect(names[i]), d = sceneRect(dots[i]);
+			const double w = names[i]->property("contentWidth").toDouble();
+			const bool right = (names[i]->property("effectiveHorizontalAlignment").toInt() & Qt::AlignRight) != 0;
+			const QRectF text(right ? n.right() - w : n.left(), n.top(), w, n.height());
+			/* the gap from the dot to the text's near end: the row's spacing (10), not the room left over */
+			const double gap = rtl ? d.left() - text.right() : text.left() - d.right();
+			seen << QStringLiteral("%1 %2: %3").arg(code, names[i]->property("text").toString()).arg(gap);
+			if (gap < 0 || gap > 14) bad << QStringLiteral("%1 %2: %3 dp from its dot").arg(code, names[i]->property("text").toString()).arg(gap);
+		}
+		if (names.size() != 3) bad << QStringLiteral("%1: %2 names").arg(code).arg(names.size());
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, Lines sheet: each name by its dot at the start edge, the right in Arabic "
+										"(%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* Across (760 x 384) the drawer opens with Connect in sight, TCP and USB, English and Arabic: no title over the
+ * sections there (Connect was under the drawer's foot, a scroll away); upright the title stays */
+void checkDrawerConnectAcross() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		Phone phone(QSize(760, 384));
+		PhoneSession *session = phone.session();
+		const bool tcp = session && session->property("tcp").toBool();
+		for (bool kind : { true, false }) {
+			if (session) session->setProperty("tcp", kind);
+			phone.openDrawer();
+			const QQuickItem *flick = phone.item("drawerFlick"), *connect = phone.item("connectButton");
+			const QRectF f = sceneRect(flick), c = sceneRect(connect);
+			const QQuickItem *title = phone.item("drawerTitle");
+			seen << QStringLiteral("%1 %2: Connect %3..%4 in %5").arg(code, kind ? "TCP" : "USB").arg(c.top()).arg(c.bottom())
+							.arg(f.bottom());
+			if (!connect || c.bottom() > f.bottom() + 0.5 || (title && title->isVisible()))
+				bad << QStringLiteral("%1 %2: Connect's foot %3, the drawer's %4").arg(code, kind ? "TCP" : "USB").arg(c.bottom())
+							   .arg(f.bottom());
+			phone.closeDrawer();
+		}
+		if (session) session->setProperty("tcp", tcp);
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	Phone upright(QSize(384, 832));
+	upright.openDrawer();
+	const QQuickItem *title = upright.item("drawerTitle");
+	const bool titled = title && title->isVisible();
+	check(bad.isEmpty() && titled, QStringLiteral("phone, drawer across: Connect in sight when it opens, TCP and USB, both "
+												  "languages (no title there; upright titled %1) (%2) %3")
+										   .arg(titled).arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* The legend holds still while values change (the owner's phone across: four chips, then three and "+1" as a value's
+ * text grew, and back): across and upright, four lines, one of them alternating between a short text and a long one
+ * ("0 V" and "-12345 V"); the chips shown, their places and widths stay the same through every change */
+void checkChipsStill() {
+	QStringList seen, bad;
+	for (QSize size : { QSize(760, 384), QSize(384, 832) }) {
+		Phone phone(size);
+		ChartItem *chart = showFedChart(phone);
+		if (!chart) {
+			bad << QStringLiteral("%1: no chart").arg(size.width());
+			continue;
+		}
+		static const char *const names[] = { "SUPPLY_V", "SUPPLY_I", "TEMPERATURE", "PRESSURE" };
+		static const char *const units[] = { "V", "A", "°C", "bar" };
+		chart->setWindowSeconds(10);
+		for (int i = 0; i < 4; ++i) {
+			QVector<double> times, values;
+			for (int k = 0; k <= 100; ++k) {
+				times << k / 10.0;
+				values << 5.0 + i;
+			}
+			chart->addLine(i + 1, SINE_COLOUR, QString::fromLatin1(names[i]), QString::fromUtf8(units[i]));
+			chart->appendSamples(i + 1, times, values);
+		}
+		chartFrame(phone, chart, 3);
+		phone.settle(600);
+		QString first;
+		QStringList texts;
+		for (int step = 0; step < 6; ++step) {
+			const double t = 10.0 + 0.1 * (step + 1);
+			for (int i = 0; i < 4; ++i)
+				chart->appendSamples(i + 1, { t }, { i == 0 ? (step % 2 ? -12345.0 : 0.0) : 5.0 + i });
+			chartFrame(phone, chart, 2);
+			phone.settle(400);
+			QStringList layout;
+			QString value;
+			for (QQuickItem *chipItem : visibleNamed(phone.item("legendRow"), QStringLiteral("legendChip"))) {
+				const QRectF r = sceneRect(chipItem);
+				layout << QStringLiteral("%1@%2+%3").arg(within(chipItem, QStringLiteral("chipName"))->property("text").toString())
+								  .arg(r.x(), 0, 'f', 1).arg(r.width(), 0, 'f', 1);
+				if (within(chipItem, QStringLiteral("chipName"))->property("text").toString() == QLatin1String("SUPPLY_V"))
+					value = within(chipItem, QStringLiteral("chipValue"))->property("text").toString();
+			}
+			const QQuickItem *more = phone.item("legendMore");
+			layout << QStringLiteral("+N %1").arg(more && more->isVisible() ? more->property("x").toDouble() : -1);
+			texts << value;
+			if (step == 0) first = layout.join(QLatin1Char(' '));
+			else if (layout.join(QLatin1Char(' ')) != first)
+				bad << QStringLiteral("%1, \"%2\": %3 (first %4)").arg(size.width()).arg(value, layout.join(QLatin1Char(' ')), first);
+		}
+		texts.removeDuplicates();
+		seen << QStringLiteral("%1 x %2: values %3, %4").arg(size.width()).arg(size.height()).arg(texts.join(QLatin1Char('/')), first);
+		if (texts.size() < 2) bad << QStringLiteral("%1: the value did not change (%2)").arg(size.width()).arg(texts.join(QLatin1Char('/')));
+	}
+	check(bad.isEmpty(), QStringLiteral("phone, legend: the chips shown, their places and widths stay as a value's text "
+										"grows and shrinks (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* a group's header on the Registers screen, by its name */
+QQuickItem *groupHeader(const Phone &phone, const QString &group) {
+	for (QQuickItem *head : visibleNamed(phone.item("registerList"), QStringLiteral("groupHeader")))
+		if (within(head, QStringLiteral("regGroup"))->property("text").toString() == group) return head;
+	return nullptr;
+}
+
+/* a register's row shown: there and with its height (a folded group's rows have none) */
+bool rowShown(const Phone &phone, const QString &reg) {
+	const QQuickItem *row = regRow(phone, reg);
+	return row && row->isVisible() && row->height() > 1;
+}
+
+/* Each group folds (the owner: "a foldable section for each category"), upright and across, English and Arabic: its
+ * header 48 dp with a drawn chevron at its end ("down" open; folded "next", "back" in Arabic); a tap folds it (its rows
+ * go, the header says "· 3", the header stays where it was) and opens it again; the folds kept for the map (a new
+ * window, as after a restart, has them; a folded group's registers still polled); a search finds a folded group's
+ * register and the fold comes back when it is cleared */
+void checkGroupFolds() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		const bool rtl = code == QLatin1String("ar");
+		for (QSize size : { QSize(384, 832), QSize(760, 384) }) {
+			const QString where = QStringLiteral("%1 %2").arg(code).arg(size.width());
+			/* a header in view: upright System's (three registers, under Protocol's), across Protocol's (five) */
+			const bool across = size.width() > size.height();
+			const QString group = across ? QStringLiteral("Protocol") : QStringLiteral("System");
+			const QString first = across ? QStringLiteral("DEVICE_ID") : QStringLiteral("UPTIME");
+			const QString last = across ? QStringLiteral("MSG_CNT") : QStringLiteral("COUNTER");
+			const QString size_ = across ? QStringLiteral("5") : QStringLiteral("3");
+			{
+				Phone phone(size);
+				phone.settle(500);
+				QQuickItem *head = groupHeader(phone, group);
+				if (!head) {
+					bad << where + QStringLiteral(": no %1 header").arg(group);
+					continue;
+				}
+				const double y0 = sceneRect(head).top();
+				const QQuickItem *chevron = within(head, QStringLiteral("groupChevron"));
+				const bool open = chevron && chevron->isVisible() && chevron->property("kind").toString() == QLatin1String("down")
+						&& head->height() >= 47.5 && rowShown(phone, first);
+				phone.tap(head);
+				phone.settle(400);
+				const QQuickItem *count = within(head, QStringLiteral("regGroupCount"));
+				const QString countText = count && count->isVisible() ? count->property("text").toString() : QString();
+				const bool folded = !rowShown(phone, first) && !rowShown(phone, last)
+						&& chevron->property("kind").toString() == QLatin1String(rtl ? "back" : "next")
+						&& countText.contains(size_) && countText.contains(QChar(0x00b7));
+				const double y1 = sceneRect(head).top();
+				phone.tap(head);
+				phone.settle(400);
+				const bool openAgain = rowShown(phone, first) && count && !count->isVisible();
+				seen << QStringLiteral("%1: header %2 dp at %3, folded at %4 (\"%5\")").arg(where).arg(head->height()).arg(y0)
+								.arg(y1).arg(countText);
+				if (!open || !folded || std::fabs(y1 - y0) > 1 || !openAgain)
+					bad << QStringLiteral("%1: open %2, folded %3, in place %4 (%5 to %6), open again %7").arg(where).arg(open)
+								   .arg(folded).arg(std::fabs(y1 - y0) <= 1).arg(y0).arg(y1).arg(openAgain);
+				/* two folded for the next window: this one by its header, the other as its header would */
+				phone.tap(head);
+				if (PhoneSession *session = phone.session())
+					session->setGroupFolded(across ? QStringLiteral("System") : QStringLiteral("Protocol"), true);
+			}
+			{
+				Phone phone(size);
+				PhoneSession *session = connectFake(phone);
+				phone.settle(500);
+				const QStringList folds = session ? session->foldedGroups() : QStringList();
+				const bool kept = folds.contains(QStringLiteral("System")) && folds.contains(QStringLiteral("Protocol"))
+						&& !rowShown(phone, QStringLiteral("DEVICE_ID")) && !rowShown(phone, QStringLiteral("UPTIME"));
+				/* polled while folded: UPTIME's value moves */
+				const QString before = modelValue(session, QStringLiteral("UPTIME"));
+				QTest::qWait(1200);
+				const bool polled = modelValue(session, QStringLiteral("UPTIME")) != before;
+				search(phone, QStringLiteral("UPTIME"));
+				waitStill(phone, [&] { return regRow(phone, QStringLiteral("UPTIME")); });
+				const bool found = rowShown(phone, QStringLiteral("UPTIME"));
+				search(phone, QString());
+				phone.settle(300);
+				const bool back = !rowShown(phone, QStringLiteral("DEVICE_ID")) && session
+						&& session->foldedGroups().contains(QStringLiteral("System"));
+				if (!kept || !polled || !found || !back)
+					bad << QStringLiteral("%1: kept %2, polled %3, found by a search %4, folded again %5").arg(where).arg(kept)
+								   .arg(polled).arg(found).arg(back);
+				if (session) {
+					session->setGroupFolded(QStringLiteral("System"), false);
+					session->setGroupFolded(QStringLiteral("Protocol"), false);
+					session->disconnectLink();
+				}
+			}
+		}
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, Registers: a group's header (48 dp, its chevron) folds it and opens it, in "
+										"place, its count shown folded; kept for the map in a new window, still polled; a "
+										"search finds a folded group's register (%1) %2")
+								 .arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
+/* part D's pictures for the eye (not checks): <prefix>_<en|ar>_<dark|light>_d11_<name>_<upright|across>.png at the
+ * owner's phone upright (384 x 832) and across (760 x 384): registers (not connected), hold (a finger held 1 s on a
+ * row), folds (Protocol and System folded, connected), drawer (its top), display (its Display section, another language chosen: the note and Restart now), language
+ * (the language list open), connected, sheet (FAN_SPEED's), enum (LED_MODE's choices), chart (three lines, the cursors
+ * on), lines (six: the Lines sheet), measure, chipmenu, monitor, frame (a frame's sheet), log, help. The same code at
+ * the commit before gives the before pictures. EVRE_PHONE_ONLY=partd saves only these */
+void savePartDPictures(const QString &prefix) {
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		for (bool dark : { true, false }) {
+			QSettings().setValue(QStringLiteral("ui/dark"), dark);
+			const QString name = QStringLiteral("%1_%2_%3_d11_").arg(prefix, code, dark ? "dark" : "light");
+			for (QSize size : { QSize(384, 832), QSize(760, 384) }) {
+				const QString form = size.width() > size.height() ? QStringLiteral("across") : QStringLiteral("upright");
+				auto save = [&](const Phone &phone, const char *what) {
+					phone.grab().save(name + QStringLiteral("%1_%2.png").arg(QLatin1String(what), form));
+				};
+				Phone phone(size);
+				PhoneSession *session = phone.session();
+				phone.settle(600);
+				save(phone, "registers");
+				if (QQuickItem *row = regRow(phone, QStringLiteral("SUPPLY_V")))
+					holdPress(phone, at(row, row->width() * 0.6, row->height() / 2), 1000, [&] { save(phone, "hold"); });
+				phone.openDrawer();
+				save(phone, "drawer");
+				QObject *box = phone.object("languageBox");
+				if (box) {
+					const int other = code == QLatin1String("ar") ? 1 : 2;
+					box->setProperty("currentIndex", other);
+					QMetaObject::invokeMethod(box, "activated", Q_ARG(int, other));
+				}
+				phone.reveal(phone.item("keepScreenSwitch"));
+				phone.settle(300);
+				save(phone, "display");
+				phone.tap(phone.item("languageBox"));
+				phone.settle(500);
+				save(phone, "language");
+				closeComboPopup(box);
+				phone.settle(300);
+				if (box) {
+					const int same = code == QLatin1String("ar") ? 2 : 1;
+					box->setProperty("currentIndex", same);
+					QMetaObject::invokeMethod(box, "activated", Q_ARG(int, same));
+				}
+				QSettings().remove(QStringLiteral("ui/language"));
+				phone.closeDrawer();
+				session = connectFake(phone);
+				if (session) session->setWritesEnabled(true);
+				QTest::qWait(1500);
+				save(phone, "connected");
+				if (session) {
+					session->setGroupFolded(QStringLiteral("Protocol"), true);
+					session->setGroupFolded(QStringLiteral("System"), true);
+				}
+				phone.settle(500);
+				save(phone, "folds");
+				if (session) {
+					session->setGroupFolded(QStringLiteral("Protocol"), false);
+					session->setGroupFolded(QStringLiteral("System"), false);
+				}
+				phone.settle(300);
+				openSheet(phone, QStringLiteral("FAN_SPEED"));
+				phone.settle(1500);
+				save(phone, "sheet");
+				closeSheet(phone);
+				openSheet(phone, QStringLiteral("LED_MODE"));
+				phone.settle(500);
+				save(phone, "enum");
+				closeSheet(phone);
+				search(phone, QString());
+				ChartItem *chart = showChart(phone);
+				for (const char *reg : { "SUPPLY_V", "TEMPERATURE", "PRESSURE" }) {
+					const int row = modelRow(session, QLatin1String(reg));
+					if (session && row >= 0) session->setPlot(row, true);
+				}
+				if (chart) chart->setWindowSeconds(10);
+				QTest::qWait(5000);
+				phone.tap(phone.item("cursorsButton"));
+				phone.settle(800);
+				save(phone, "chart");
+				phone.tap(phone.item("cursorsButton"));
+				for (const char *reg : { "SUPPLY_I", "SETPOINT", "MOTOR_SPEED" }) {
+					const int more = modelRow(session, QLatin1String(reg));
+					if (session && more >= 0) session->setPlot(more, true);
+				}
+				QTest::qWait(2500);
+				phone.tap(phone.item("legendMore"));
+				phone.settle(700);
+				save(phone, "lines");
+				pressBack(phone);
+				phone.settle(500);
+				phone.tap(phone.item("measureButton"));
+				QTest::qWait(1200);
+				save(phone, "measure");
+				pressBack(phone);
+				phone.settle(500);
+				phone.tap(phone.item("chipMore"));
+				phone.settle(500);
+				save(phone, "chipmenu");
+				if (QObject *menu = phone.object("chipMenu")) QMetaObject::invokeMethod(menu, "close");
+				phone.settle(400);
+				phone.tap(phone.item("tabMonitor"));
+				QTest::qWait(1500);
+				phone.tap(phone.item("monitorPause"));
+				phone.settle(400);
+				save(phone, "monitor");
+				QQuickItem *frame = nullptr;
+				for (QQuickItem *row : visibleNamed(phone.item("monitorList"), QStringLiteral("frameRow")))
+					if (!frame && sceneRect(row).top() > 120 && sceneRect(row).bottom() < phone.window->height() - 80) frame = row;
+				phone.tap(frame);
+				phone.settle(700);
+				save(phone, "frame");
+				pressBack(phone);
+				phone.tap(phone.item("monitorPause"));
+				if (LogModel *log = session ? session->log() : nullptr) {
+					log->add(LogModel::Warning, QStringLiteral("the map is for device 0x1002, this is 0x1001"));
+					log->add(LogModel::Error, QStringLiteral("write refused: NOWHERE = 1 (01 at 0xD0F0): offset out of range"));
+				}
+				phone.tap(phone.item("tabLog"));
+				phone.settle(500);
+				save(phone, "log");
+				phone.tap(phone.item("tabRegisters"));
+				if (session) session->disconnectLink();
+				phone.settle(300);
+				openHelp(phone);
+				save(phone, "help");
+				pressBack(phone);
+			}
+		}
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	QSettings().remove(QStringLiteral("ui/language"));
+	language::apply(*qApp, QStringLiteral("en"));
+}
+
 void checkThreadWarnings() {
 	const int seen = threadWarnings.load();
 	check(seen == 0, QStringLiteral("phone: no Qt warnings about objects used across threads (%1 seen)").arg(seen));
@@ -6007,10 +6887,17 @@ int main(int argc, char **argv) {
 		saveToolsPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		savePartBPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		savePartCPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		savePartDPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		QSettings().clear();
 		return 0;
 	}
 
+	/* part D's pictures alone */
+	if (qEnvironmentVariable("EVRE_PHONE_ONLY") == QLatin1String("partd")) {
+		savePartDPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		QSettings().clear();
+		return 0;
+	}
 	/* part C's pictures alone */
 	if (qEnvironmentVariable("EVRE_PHONE_ONLY") == QLatin1String("partc")) {
 		savePartCPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
@@ -6137,6 +7024,17 @@ int main(int argc, char **argv) {
 	RUN(checkLinkHealth);
 	RUN(checkLinkTrouble);
 	RUN(checkChartClockTimes);
+	RUN(checkShapes);
+	RUN(checkPressShape);
+	RUN(checkSwitchRowsWrap);
+	RUN(checkRestartNow);
+	RUN(checkDrawerOpensAtTop);
+	RUN(checkPopupsMirrored);
+	RUN(checkMonitorPausedWhole);
+	RUN(checkLinesSheetNamesAtStart);
+	RUN(checkDrawerConnectAcross);
+	RUN(checkChipsStill);
+	RUN(checkGroupFolds);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
@@ -6145,6 +7043,7 @@ int main(int argc, char **argv) {
 			saveToolsPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		if (only.isEmpty()) savePartBPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		if (only.isEmpty()) savePartCPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		if (only.isEmpty()) savePartDPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 	}
 	QCoreApplication::processEvents();
 	checkThreadWarnings();

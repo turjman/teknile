@@ -30,7 +30,11 @@ Drawer {
     }
     onAboutToShow: {
         PhoneSession.refreshPorts()
-        if (!atWrites) return
+        // at its top every time, Connect in sight (it kept the scroll it was left at, and opened at its foot)
+        if (!atWrites) {
+            flick.contentY = 0
+            return
+        }
         // a register's sheet asked for writes: open at Allow writes, its row lit for a moment (across, the switch was
         // a long scroll down from the top)
         atWrites = false
@@ -39,6 +43,8 @@ Drawer {
         writesGlow.flash()
     }
     property bool atWrites: false
+    // across (a phone's 384 dp of height) no title over the sections, a smaller margin: Connect in sight when it opens
+    readonly property bool low: height < 500
     function openAtWrites() {
         atWrites = true
         open()
@@ -119,7 +125,9 @@ Drawer {
         font.pixelSize: 14
         wrapMode: Text.Wrap
     }
-    // a setting's name and its switch at the end edge, the name a target too (48 high)
+    // a setting's name and its switch at the end edge, the name a target too (48 high or more). A name longer than its
+    // room wraps to a second line, never cut ("Keep the screen on while connected" across), the switch at the end in
+    // the middle of the two
     component SwitchRow: RowLayout {
         id: switchRow
         property alias text: name.text
@@ -130,13 +138,16 @@ Drawer {
         spacing: 8
         Label {
             id: name
+            objectName: "switchRowName"
             Layout.fillWidth: true
-            Layout.preferredHeight: 48
+            Layout.preferredHeight: Math.max(48, implicitHeight)
+            topPadding: 6
+            bottomPadding: 6
             horizontalAlignment: Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
             color: PhoneTheme.text
             font.pixelSize: 16
-            elide: Text.ElideRight
+            wrapMode: Text.Wrap
             TapHandler {
                 onTapped: {
                     toggle.toggle()
@@ -166,6 +177,8 @@ Drawer {
         topPadding: 0
         bottomPadding: 0
         Material.accent: PhoneTheme.accentFill
+        // a rounded rectangle inside the choice's (8 outside, 4 inside its 4 dp of room)
+        Material.roundedScale: Material.ExtraSmallScale
         flat: !highlighted
         enabled: highlighted || !drawer.linkBusy
         contentItem: Label {
@@ -178,6 +191,19 @@ Drawer {
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
         }
+    }
+    // an item of a list's popup (the ComboBoxes'), read in the drawer's direction: the popup is not a child of the
+    // drawer's items, and in Arabic Material's items sat at its left edge; the one chosen in the accent
+    component ChoiceItem: MenuItem {
+        required property int index
+        required property var model
+        property ComboBox box
+        objectName: "choiceItem"
+        width: ListView.view ? ListView.view.width : implicitWidth
+        text: box && box.textRole.length > 0 ? model[box.textRole] : String(model.modelData)
+        highlighted: box && box.highlightedIndex === index
+        Material.foreground: box && box.currentIndex === index ? PhoneTheme.accent : PhoneTheme.text
+        LayoutMirroring.enabled: drawer.rtl
     }
     // a field's way into the view above the keyboard
     component Field: TextField {
@@ -235,7 +261,7 @@ Drawer {
         ColumnLayout {
             id: column
             x: 20
-            y: 20
+            y: drawer.low ? 12 : 20
             width: flick.width - 40
             // at least the drawer's height: the display's settings stay at its bottom
             height: Math.max(implicitHeight, flick.height - 40)
@@ -243,6 +269,7 @@ Drawer {
 
             Label {
                 objectName: "drawerTitle"
+                visible: !drawer.low
                 Layout.fillWidth: true
                 Layout.bottomMargin: 8
                 horizontalAlignment: Text.AlignLeft
@@ -260,7 +287,7 @@ Drawer {
                 objectName: "linkChoice"
                 Layout.fillWidth: true
                 implicitHeight: 48
-                radius: 24
+                radius: 8
                 color: "transparent"
                 border.color: PhoneTheme.control
                 RowLayout {
@@ -295,6 +322,7 @@ Drawer {
                 ComboBox {
                     id: portBox
                     objectName: "portBox"
+                    delegate: ChoiceItem { box: portBox }
                     Layout.fillWidth: true
                     visible: PhoneSession.ports.count > 0
                     model: PhoneSession.ports
@@ -329,6 +357,7 @@ Drawer {
                 ComboBox {
                     id: baudBox
                     objectName: "baudBox"
+                    delegate: ChoiceItem { box: baudBox }
                     Layout.fillWidth: true
                     model: PhoneSession.baudRates
                     currentIndex: Math.max(0, PhoneSession.baudRates.indexOf(PhoneSession.baud))
@@ -401,6 +430,7 @@ Drawer {
             Button {
                 id: connectButton
                 objectName: "connectButton"
+                Material.roundedScale: Material.SmallScale
                 Layout.fillWidth: true
                 Layout.topMargin: 8
                 implicitHeight: 52
@@ -430,7 +460,7 @@ Drawer {
                     Layout.topMargin: 6
                     width: 10
                     height: 10
-                    radius: 5
+                    radius: 2.5
                     color: PhoneSession.state === PhoneSession.Off ? PhoneTheme.muted : drawer.stateColor
                 }
                 Note {
@@ -529,6 +559,7 @@ Drawer {
                 ComboBox {
                     id: mapBox
                     objectName: "mapBox"
+                    delegate: ChoiceItem { box: mapBox }
                     Layout.fillWidth: true
                     model: PhoneSession.mapNames
                     currentIndex: PhoneSession.mapFiles.indexOf(PhoneSession.mapFile)
@@ -548,6 +579,7 @@ Drawer {
                 }
                 Button {
                     objectName: "openMap"
+                    Material.roundedScale: Material.SmallScale
                     text: qsTr("Open…")
                     flat: true
                     Material.foreground: PhoneTheme.accent
@@ -640,7 +672,7 @@ Drawer {
                     implicitHeight: 40
                     y: (parent.height - height) / 2
                     height: 40
-                    radius: 20
+                    radius: 8
                     color: parent.down ? PhoneTheme.surface2 : "transparent"
                     border.color: PhoneTheme.control
                 }
@@ -677,6 +709,7 @@ Drawer {
                 ComboBox {
                     id: languageBox
                     objectName: "languageBox"
+                    delegate: ChoiceItem { box: languageBox }
                     Layout.fillWidth: true
                     // each language in its own words, as the desktop's sidebar lists them
                     model: [qsTr("System"), "English", "العربية"]
@@ -703,6 +736,25 @@ Drawer {
                 text: qsTr("The language changes when the app is opened again.")
                 color: PhoneTheme.warn
             }
+            // the way to it now, as the desktop's sidebar has it: the app closed and opened again
+            Button {
+                objectName: "restartButton"
+                Layout.fillWidth: true
+                visible: PhoneLanguage.pending
+                text: qsTr("Restart now")
+                flat: true
+                Material.foreground: PhoneTheme.accent
+                // an outlined button, as Record
+                background: Rectangle {
+                    implicitHeight: 40
+                    y: (parent.height - height) / 2
+                    height: 40
+                    radius: 8
+                    color: parent.down ? PhoneTheme.surface2 : "transparent"
+                    border.color: PhoneTheme.control
+                }
+                onClicked: PhoneLanguage.restart()
+            }
             SwitchRow {
                 text: qsTr("Keep the screen on while connected")
                 switchName: "keepScreenSwitch"
@@ -721,7 +773,7 @@ Drawer {
                     implicitHeight: 40
                     y: (parent.height - height) / 2
                     height: 40
-                    radius: 20
+                    radius: 8
                     color: parent.down ? PhoneTheme.surface2 : "transparent"
                     border.color: PhoneTheme.control
                 }

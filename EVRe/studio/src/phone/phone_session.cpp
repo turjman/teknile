@@ -13,6 +13,7 @@
 #include <QThread>
 #include <QUrl>
 #include <QVariantMap>
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <utility>
@@ -41,6 +42,14 @@ const QString KEY_POLLING = QStringLiteral("phone/polling");
 const QString KEY_INTERVAL = QStringLiteral("phone/interval");
 const QString KEY_MAP = QStringLiteral("phone/map");
 const QString KEY_SCREEN_ON = QStringLiteral("android/keepScreenOn"); /* the plan's A-5 */
+/* + the map's device name, its slashes made underscores (a key's "/" is a group of the settings) */
+const QString KEY_FOLDS = QStringLiteral("phone/foldedGroups/");
+
+QString foldsKey(const QString &device) {
+	QString name = device;
+	name.replace(QLatin1Char('/'), QLatin1Char('_')).replace(QLatin1Char('\\'), QLatin1Char('_'));
+	return KEY_FOLDS + name;
+}
 
 const QString FIRST_MAP = QStringLiteral("example_device.json");
 
@@ -243,6 +252,8 @@ bool PhoneSession::loadMap(const QString &file) {
 	if (chart_) chart_->removeAll(); /* its fast lines too */
 	updatePlotLimit();
 	model_->setDefinitions(map_.regs);
+	foldedGroups_ = QSettings().value(foldsKey(map_.device)).toStringList();
+	emit foldsChanged();
 	resetStreams();
 	addLog(LogModel::Info, tr("map loaded: %1 (%2 registers)").arg(QDir::toNativeSeparators(path)).arg(map_.regs.size()));
 	pushMap();
@@ -392,6 +403,20 @@ void PhoneSession::setUsbBridgeForTests(evre::UsbBridge *bridge) { testBridge = 
 void PhoneSession::setSystemBridgeForTests(SystemBridge *bridge) {
 	testSystem = bridge;
 	systemFromTest = bridge != nullptr;
+}
+
+void PhoneSession::setGroupFolded(const QString &group, bool folded) {
+	if (folded == foldedGroups_.contains(group)) return;
+	if (folded) foldedGroups_ << group;
+	else foldedGroups_.removeAll(group);
+	QSettings settings;
+	if (foldedGroups_.isEmpty()) settings.remove(foldsKey(map_.device));
+	else settings.setValue(foldsKey(map_.device), foldedGroups_);
+	emit foldsChanged();
+}
+
+int PhoneSession::groupSize(const QString &group) const {
+	return int(std::count_if(map_.regs.cbegin(), map_.regs.cend(), [&](const RegDef &def) { return def.group == group; }));
 }
 
 void PhoneSession::setKeepScreenOn(bool on) {

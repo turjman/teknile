@@ -65,7 +65,7 @@ Drawer {
             y: 10
             width: 32
             height: 4
-            radius: 2
+            radius: 1
             color: PhoneTheme.control
         }
     }
@@ -128,6 +128,16 @@ Drawer {
                 }
                 ToolButton {
                     objectName: "frameSheetClose"
+                    // a press: a rounded square's flat tint, not Material's circle
+                    background: Item {
+                        implicitWidth: 48
+                        implicitHeight: 48
+                        PressTint {
+                            anchors.margins: 4
+                            radius: 8
+                            pressed: parent.parent ? parent.parent.down : false
+                        }
+                    }
                     Layout.preferredWidth: 48
                     Layout.preferredHeight: 48
                     Accessible.name: qsTr("Close")
@@ -244,6 +254,7 @@ Drawer {
                 Layout.bottomMargin: 8
                 Button {
                     objectName: "frameSheetCopy"
+                    Material.roundedScale: Material.SmallScale
                     flat: true
                     text: qsTr("Copy the bytes")
                     Material.foreground: PhoneTheme.accent

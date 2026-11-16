@@ -3449,6 +3449,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `phone/map` | empty | on&nbsp;change | The map the phone opens at start: a path, or Android's `content://` one; empty or gone: the app's first map. |
 | `phone/logLevels` | `0,&nbsp;1,&nbsp;2` | on&nbsp;change | The levels the phone's Log shows (0 info, 1 warning, 2 error: its filter chips, 25.6). |
 | `phone/monitorSides` | `0,&nbsp;1,&nbsp;2` | on&nbsp;change | The frames the phone's Monitor shows (0 sent, TX; 1 received, RX; 2 its notes, always: its TX and RX chips). |
+| `phone/foldedGroups/<device>` | empty | on&nbsp;change | The groups folded on the phone's Registers screen, for the map of that device name (its `/` and `\` made `_`): their headers' fold (25.6). |
 | `android/keepScreenOn` | `true` | on&nbsp;change | The phone keeps its screen on while connected (25.6). |
 | `ui/dark` | `true` | on&nbsp;close | Dark theme. |
 | `ui/language` | `system` | on&nbsp;change | The language: `system`, `en` or `ar`; applied at the next start (14.4). |
@@ -5212,9 +5213,9 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
 | `src/ui/theme_colors.cpp` | `Theme::colorsFor(dark)`: the dark and the light look's colours, one table for both interfaces (in `evre_engine`, without Qt Widgets) |
 | `src/phone/main_phone.cpp` | `EVReStudioPhone`: the application's names (the desktop's settings), the saved language, the Material style, `Main.qml` (25.6) |
-| `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `perfAsked` (`EVRE_PERF`, the intent's extra `perf`), `chartDemoAsked` (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`), `useOwnFolder` (the settings and recordings in a folder of their own: the test's run, `EVRE_SETTINGS_DIR`), `loadMain` (the window, as the program and its test load it; its frames run `PhoneSession::sync`) |
+| `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `perfAsked` (`EVRE_PERF`, the intent's extra `perf`), `chartDemoAsked` (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`), `useOwnFolder` (the settings and recordings in a folder of their own: the test's run, `EVRE_SETTINGS_DIR`), `loadMain` (the window, as the program and its test load it; its frames run `PhoneSession::sync`; Android's back to `Main.qml` first; `NoRippleWave`: Material's ripples without their wave, a Switch's halo off, before each press) |
 | `src/phone/phone_theme.h`,&nbsp;`.cpp` | `PhoneTheme`: the colours of `Theme::colorsFor` and `dark` (`ui/dark`) for QML |
-| `src/phone/phone_language.h`,&nbsp;`.cpp` | `PhoneLanguage`: the drawer's language choice (`ui/language`), `pending` until the next start |
+| `src/phone/phone_language.h`,&nbsp;`.cpp` | `PhoneLanguage`: the drawer's language choice (`ui/language`), `pending` until the next start, `restart` (Restart now) |
 | `src/phone/phone_session.h`,&nbsp;`.cpp` | `PhoneSession`: the phone's part of `MainWindow` (Q-6): the engine on its thread, the map, the link (USB, TCP) and its states, Reconnect by itself, polling, Allow writes, recording into the app's folder (25.6) |
 | `src/phone/port_list.h`,&nbsp;`.cpp` | `PortList`: the USB devices plugged in (`UsbBridge::devices()`), the map's own named by it |
 | `src/phone/log_model.h`,&nbsp;`.cpp` | `LogModel`: the phone's Log, the newest 2000 lines, each level's count, Copy (the levels shown, each line with its level) and Clear |
@@ -5227,10 +5228,11 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/phone/chart_demo.h`,&nbsp;`.cpp` | `ChartDemo`: the chart's test feed (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`): 8 lines at 1,000 Hz |
 | `src/phone/frame_log.h`,&nbsp;`.cpp` | `FrameLog`: the Monitor's frames, the newest 5000, each split into its time, direction, bytes and note, its side and its function's name and kind; the counts each way; `decode` (a frame field by field, the Dump's words); Pause and Clear (25.6) |
 | `src/phone/qml/Main.qml` | the phone's window: header and tab bar upright, the rail across, the drawer, the screens (their change's motion), the Chart's whole window, mirroring, Material's colours |
-| `src/phone/qml/ConnectDrawer.qml` | the Connect drawer in sections (Link, Device, Polling, Recording, Display): USB or TCP, Connect, the link's state, Reconnect by itself, the map and the device's ID, Allow writes, polling, Record, the theme switch, the language; a field typed in kept above the keyboard |
+| `src/phone/qml/ConnectDrawer.qml` | the Connect drawer in sections (Link, Device, Polling, Recording, Display): USB or TCP, Connect, the link's state, Reconnect by itself, the map and the device's ID, Allow writes, polling, Record, the theme switch, the language and Restart now; a field typed in kept above the keyboard; at its top each time it opens |
 | `src/phone/qml/LinkPill.qml` | the link's state in the header, a dot in its colour on the state's soft tone, the poll rate while connected, a chevron; a tap opens the drawer |
 | `src/phone/qml/PhoneIcon.qml` | the drawn icons (rectangles on a grid of 24): the tabs' four, the magnifier, the clear cross, the warning, the chevrons, Copy's, the Log's levels (info, warn, error), the Chart's full screen (expand, shrink) |
-| `src/phone/qml/FilterChip.qml` | a filter chip: an icon, a name and a count on a pill, on or off (the Log's levels, the Monitor's TX and RX) |
+| `src/phone/qml/FilterChip.qml` | a filter chip: an icon, a name and a count on a rounded rectangle, on or off (the Log's levels, the Monitor's TX and RX) |
+| `src/phone/qml/PressTint.qml` | a press in the item's own shape: a flat tint over its rounded rectangle, at once on the press and fading on the release; never a ripple's circle (25.6) |
 | `src/phone/qml/FrameSheet.qml` | a frame's sheet: the Monitor's frame field by field as the Dump spells it, Copy the bytes |
 | `src/phone/qml/EmptyState.qml` | a screen with nothing to show: its icon, a title, a line, one button (the Chart, the Log, the Registers) |
 | `src/phone/qml/LogScreen.qml` | the Log screen: each line its level's icon and colour, its time monospaced, the levels' chips with their counts, Copy, Clear, its empty states |
@@ -5837,7 +5839,7 @@ the models, the theme's colours, the language) get no QML macros: QML reaches th
 |---|---|---|---|
 | `PhoneHelp` | singleton: the Help screen's topics and pages (`help_topics.cpp`): *Using the phone app*, then the desktop's that apply on a phone; right to left in Arabic | `titles`; `page(index, dark)` | phone test (Help) |
 | `PhoneTheme` | singleton: the colours of `Theme::colorsFor(dark)` and `dark`, saved in `ui/dark`; Material follows it in `Main.qml` | `dark`, `bg`, `surface`, `surface2`, `border`, `text`, `muted`, `accent`, `accentFill`, `badFill`, `control`, `good`, `warn`, `bad`, `grid`, `series`, and the phone's soft tones `accentSoft`, `goodSoft`, `warnSoft`, `badSoft` (the state's colour over the surface at 14 % dark, 8 % light: behind chips, the pill, the chosen tab, the warning); signal `changed` | phone test (theme) |
-| `PhoneLanguage` | singleton: the drawer's language choice, saved in `ui/language`, applied at the next start | `codes`, `choice`, `pending`; signal `changed` | phone test (language) |
+| `PhoneLanguage` | singleton: the drawer's language choice, saved in `ui/language`, applied at the next start; Restart now (the app opened again: on Android `EvreService.restart`, elsewhere a new process) | `codes`, `choice`, `pending`; `restart`, `setRestartForTests`; signal `changed` | phone test (language, Restart now) |
 | `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()`; DEVICE_ID read again after no answer; the values copied once a frame (`sync`), writes as `MainWindow::onWriteRequested`, Plot with the lines' limit; the chart's feed: a line per plotted register in the theme's next series colour, each poll's samples (`takeSamples`) once a frame on the engine's clock, a disconnect keeping the lines; fast lines: a channel plotted switches its stream on, the blocks (`takeFastBlocks`) into a `fast::Store` per stream, kept for the chart's memory; the Monitor's frames (`takeFrames`) while its screen shows and they are not paused (`IoEngine::setMonitor`); the system (`SystemBridge`): the foreground service while a link is wanted, the screen kept on while connected, a screen's orientation, a buzz when the link comes up and when a write is taken, the app's motion off with Android's animations removed; a poll's samples timed at its request (`IoEngine::setSampleAtRequest`), the chart's polled lines broken at a lost link and after a stale gap; the link's health as the desktop's status bar from the engine's counters, troubled while timeouts, error answers or bad frames rose in the last `QUIET_MS` | `state`, `pillText`, `healthText`, `linkTroubled`, `troubleText`, `linkText`, `linkDetail`, `connectText`, `connected`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`, `registerList`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`, `editText`, `choices`, `limitsText`, `writeQuestion`, `write`, `setPlot`, `chart`, `fastChannels`, `setFastPlot`, `unplotLine`, `fastLineId`, `frames`, `monitorShown`, `monitoring`; `keepScreenOn`, `serviceText`, `screenKeptOn`, `orientation`, `motion`; `attachWindow`, `sync`; signals `message(level, text)`, `writeAnswered(row, ok, text)`, `readBack(row, text)` (the first value read after a write, at the table time of its answer or later), `notice(text)`; `setUsbBridgeForTests`, `setSystemBridgeForTests` | phone test (connect to USB gone, DEVICE_ID again, the Registers checks, the chart's lines, fast lines, service, orientation, Monitor) |
 | `PortList` | list model: the USB devices plugged in, from `UsbBridge::devices()`; a device with the map's USB IDs named by the map; changed only when the devices are | roles `name`, `product`, `vid`, `pid`, `mapped`, `label`; `indexOf` | phone test (USB ports) |
 | `LogModel` | list model: the phone's Log, the newest 2000 lines | roles `level`, `time`, `text`; `count`, `infoCount`, `warningCount`, `errorCount`, `clear`, `copy(levels)`, `text(levels)` | phone test (Log screen, Log levels) |
@@ -6983,7 +6985,7 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
 |                                            |
 +--------------------------------------------+
 |   [icon]     icon       icon       icon    |   the tab bar: a drawn icon over each name (beside it in
-| Registers    Chart     Monitor     Log     |   landscape); the chosen tab's icon on a pill, in the accent
+| Registers    Chart     Monitor     Log     |   landscape); the chosen tab's icon on a rounded square
 +--------------------------------------------+
 
 across: a rail at the start edge (the right in Arabic), no header and no tab bar:
@@ -7001,20 +7003,46 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
 
 - **Across** (landscape) the header and the bottom tab bar give way to a **navigation rail** 80 dp wide at the
   window's start edge (the right in Arabic; `Main.qml`'s `railShown`): the menu button at its top, the four tabs (an
-  icon over each name, 60 dp high, the chosen one's icon on a pill in the accent), and at its foot the link's state
+  icon over each name, 60 dp high, the chosen one's icon on a rounded square in the accent), and at its foot the link's state
   (its dot in the state's colour on the state's soft tone, then the poll rate, *10 Hz*, while connected and polling,
   else the pill's word; a tap opens the drawer). The screens get the whole height: at 760 x 384 (the owner's phone
-  beside its navigation buttons) the Registers show seven rows, where the header, the search and the tab bar left four.
+  beside its navigation buttons) the Registers showed seven rows, where the header, the search and the tab bar left
+  four; five since the groups' headers are 48 dp fold buttons (part D), and more with a group folded.
 
 - **The menu button** opens the Connect drawer from the start edge (the left; the right in Arabic); the screen behind
   it (and behind a register's sheet) darkens, in both themes (a black scrim at half: Material's grey wash lightened the
   dark one). At its bottom: the
   **Dark theme** switch (`ui/dark`, the desktop's key, saved at once; Material's theme, accent and background follow
   `PhoneTheme`) and the **Language** list (System, English, العربية; `ui/language`, applied when the app is opened
-  again, which a note under the list says).
+  again, which a note under the list says, with **Restart now** under it as on the desktop: the app closed and opened
+  again in the language chosen. On Android the launcher's activity is started as a new task and the process ends
+  (`EvreService.restart`), on a desktop the program starts again and this one quits; `PhoneLanguage::restart`). The
+  drawer opens at its top each time, Connect in sight (across without its title, so Connect fits in 384 dp),
+  wherever it was left (a register's sheet that asks for writes
+  opens it at **Allow writes**). A list's popup (the USB device, the baud rate, the map, the language) reads in the
+  drawer's direction: from the right in Arabic.
 - **Right to left.** In Arabic the header, the tab bar, the screens and the drawer are mirrored
   (`LayoutMirroring`, the direction from the translation as on the desktop). The texts are the desktop's file's:
   `qsTr()` in QML, the `.qml` files read by the same `update_translations`.
+- **Shapes** (the design pass, part D; the owner: no circles). Everything that was a pill or a circle is a square with
+  rounded corners, as the desktop's buttons: 8 dp corners (6 dp for what is 24 dp high or less: the tags *on the
+  chart* and *not refreshed*), a dot a small rounded square (a quarter of its side). So the legend's chips and *+N*,
+  the chosen buttons (Live, Hold, Cursors, Measure), the filter chips, Plot and Copy, the link's pill and the rail's
+  link, the search field, USB / TCP, Record, Help, Connect, the tab bar's chosen tab, the lines' and the link's dots,
+  the cursors' A and B handles (a rounded square with the letter, 48 dp to the touch), the trend's newest value and
+  the Log's level icons. Material's own controls get small corners from the window (`Material.roundedScale:
+  SmallScale`, and on each Button, which sets its own). Kept round: a Switch's track and thumb (Material's), the busy
+  indicator, a drawn icon's strokes (a line's round ends) and the magnifier's lens, and the radio of an enum's list
+  (round says one of many; a rounded square reads as a check box).
+- **A press** shows in the item's own shape: a flat tint over its rounded rectangle, in at once when the finger
+  comes down and fading out when it lifts (`PressTint.qml`), never a circle growing from the finger, a long press
+  included. A register's row had Material's ripple unclipped (`clipRadius: 0` and no clip): held, its circle grew over
+  three rows, a group's header and the gaps. Material's controls (Button, ToolButton, ItemDelegate, MenuItem,
+  ComboBox, SpinBox) keep their Ripple without its wave: before a press reaches the window's items, every Ripple there
+  is told it is never pressed (`phone_app.cpp`'s `NoRippleWave`, its binding to the control's pressed let go), so what
+  stays is its flat tint while the control is down; a Switch's halo around its thumb goes (the thumb's move says the
+  tap). The ToolButtons (the menu, the close crosses, the sheet's back) draw the tint themselves on a 40 dp rounded
+  square.
 - **Connect** (the drawer, part B.1), top to bottom, in sections under headers in the accent: *Link* (USB or TCP as
   a segmented choice, the fields, **Connect** as the primary button, in the danger's fill once it disconnects, the
   link's state by a dot in its colour, Reconnect by itself), *Device* (the map, the device's ID, Allow writes),
@@ -7044,8 +7072,9 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   surface at 14 % in the dark theme, 8 % in the light), so it reads in both. A chevron drawn at its end says it opens
   something: a tap on the pill (48 dp high) opens the drawer.
 - **The Log** (its tab) lists what happened, newest last, as the desktop's Log: each line its level's icon in the
-  level's colour (information an *i* in a filled circle, in the accent; a warning a triangle with "!", amber; an error
-  a cross in a filled circle, red: three shapes, so a level reads without its colour too), its time in the fixed-pitch
+  level's colour (information an *i* in a filled rounded square, in the accent; a warning a triangle with "!", amber;
+  an error a cross in a filled rounded square, red: the marks and the triangle tell a level without its colour too),
+  its time in the fixed-pitch
   family (`PhoneTheme.monoFamily`), then its text, in the text colour, amber or red. Above the lines a filter chip per
   level with its count (*Info 12*, *Warnings 1*, *Errors 0*; the desktop's Log has *Show info*): a tap shows or hides
   that level's lines, the chip struck through while off, the choice kept (`phone/logLevels`). **Copy** puts the lines
@@ -7082,8 +7111,8 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   | Part | What it does |
   |---|---|
   | **Search** | the desktop's search: the name, description, group, unit or address (*0xd08*). A rounded field, the magnifier drawn at its start, a cross drawn at its end while it holds a text (a tap empties it); *registers: 1 of 16* at the list's foot. A search that finds nothing says *No match* with **Clear the search** |
-  | **A&nbsp;group** | its name in the accent on the window's background, over its rows; it scrolls with them (a header kept at the top lay over the rows passing under it and cut their values on a phone, so none is kept). The rows are on the surface, so each group reads as a panel of its own |
-  | **A&nbsp;row** | 52 dp (at least 48; across one line 42 high, the second line's words between the address and the value: a full-width target, so seven rows show at 760 x 384, the search 40 high and the groups' names lower), a thin line under it: the name, its address beside it small and muted; the value at the end in tabular digits, right-aligned in a slot of its own so the values of the rows above and below line up digit under digit, its unit after it in a slot of its own; a chevron at the end. A second, smaller line only when there is more to say: *not refreshed*, *on the chart*, the decoded text (an enum's name, the bit fields) or the error. In Arabic the row mirrors (the name at the right, the value at the left by the chevron, the values lined up at their left edge, each unit right after its value), the value and its unit stay left to right. A press shows Material's ripple; a tap opens the register's sheet. In landscape the rows keep a phone's width (640) in the middle |
+  | **A&nbsp;group** | its name in the accent on the window's background, over its rows; it scrolls with them (a header kept at the top lay over the rows passing under it and cut their values on a phone, so none is kept). The rows are on the surface, so each group reads as a panel of its own. (Part D, the owner's wish) the header folds the group: the whole header, 48 dp, is the target, a drawn chevron at its end (down while open, pointing to the end when folded: right, left in Arabic), the press a flat tint; a tap folds its rows away with a short fold of their height (none with Android's animations removed) and the header stays where it was, *Sensors · 2* saying what it holds; a tap opens it. The folds are kept per map (`phone/foldedGroups/<the map's device>`, `PhoneSession::foldedGroups`) and come back at the next start; a folded group's registers are polled as any. While a search is typed the headers are headers alone and the matches show in every group; cleared, the folds are back |
+  | **A&nbsp;row** | 52 dp (at least 48; across one line 42 high, the second line's words between the address and the value: a full-width target, so five rows and their groups' headers show at 760 x 384, the search 40 high), a thin line under it: the name, its address beside it small and muted; the value at the end in tabular digits, right-aligned in a slot of its own so the values of the rows above and below line up digit under digit, its unit after it in a slot of its own; a chevron at the end. A second, smaller line only when there is more to say: *not refreshed*, *on the chart*, the decoded text (an enum's name, the bit fields) or the error. In Arabic the row mirrors (the name at the right, the value at the left by the chevron, the values lined up at their left edge, each unit right after its value), the value and its unit stay left to right. A press tints the row's rectangle at once (no ripple's circle); a tap opens the register's sheet. In landscape the rows keep a phone's width (640) in the middle |
   | **The&nbsp;glow** | a value that changes after holding still 2 s glows as on the desktop: the row tinted toward the accent and a bar at its start edge, with an arrow up or down before a plain number, fading over 1.5 s |
   | **Stale,&nbsp;error** | a value not refreshed for a while (polling off, the link down) greys and its second line says *not refreshed* in amber; a register the device refused, or a read that failed, shows its value and why in red, a red bar at its start edge |
   | **Not&nbsp;connected** | a slim strip over the list (56 dp): *Not connected*, *The values show once the link is up.*, and **Connect…**, which opens the drawer. With no map the screen says *No registers* with **Open the Connect drawer** |
@@ -7157,8 +7186,10 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   chart's area (the plot starts under it: `ChartItem::topPad`), across the chart's width. In part B it shared the
   controls' row across and was cut mid-word at 760 dp (*TEMPERAT*), and upright the second chip was cut at the
   screen's edge. Now only whole chips are drawn: the first ones that fit, then a **+N** chip (N the lines not shown,
-  48 dp to the touch) that opens the **Lines** sheet; nothing is ever cut. A chip's value keeps the widest room it
-  has needed, so a value that changes does not move the chips nor hide one. The chart's area keeps about 88 % of the
+  48 dp to the touch) that opens the **Lines** sheet; nothing is ever cut. A chip's value has, from the start, the room of
+  the widest text the legend writes (five figures and a sign, *-12345*, *-0.123*, in figures of one width, with the
+  unit; part D: it grew with the values, and on the owner's phone four chips became three and *+1* as a value grew),
+  and keeps any wider one it has needed: the chips shown change only with the lines or the width. The chart's area keeps about 88 % of the
   height at 760 x 384 in English and Arabic (the plot itself 72 %, the legend's row over it).
 
   The lines (part B.3b) are the registers plotted from their sheets (a tap on a row, **Plot**): each a line in the theme's next series
@@ -7185,7 +7216,7 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   | **Clear** | every line's samples go; the lines stay |
   | **Fast&nbsp;lines** | with a map that has streams (Fast EVRe, 23.11): their channels (*ADC.I_LOAD (A)*), each on the chart or not. The first channel of a stream on the chart switches the stream on, the last one off switches it off; the blocks go into the stream's store, kept 5 min, and the line is binned by the desktop's `binFast` |
   | **No&nbsp;line** | on a panel over the plot: the chart's icon, *No lines yet*, *Tap a register on the Registers screen, then Plot.* (and, with streams, *Or choose a stream's channel under Fast lines.*), with **Go to Registers** |
-  | **Cursors** | (part B.4) puts A and B where the lines have samples in view, at a quarter and three quarters of the span every shown line has samples in (of the span any has when they share none, of the view when there are none), and holds the view so the readouts stay: a view whose data starts late no longer puts A before the first sample; a second tap takes them off. Each cursor is a line over the plot with a round handle, 48 dp to the touch (A's at the plot's top, B's at its foot): a drag moves it along the time, inside the plot; the view does not move. The readouts sit beside the plot in landscape and under it in portrait (at most 40 % of the height); when they do not fit they scroll, with a scroll bar that stays shown and a fade over the edge that has more, so no row is left cut through its letters: A's and B's times and B - A, then per shown line its values at A and B, B - A, and **min**, **max** and **mean** over A..B, as the desktop's measurements (`statsOf`; `statsOfFast` for a fast line, whose mean needs its records: an em dash over summaries), written as the legend writes a value; where a line has no value, an em dash (an en dash beside *B - A* read as one more minus). The labels are translated; the numbers, units and A, B stay as they are. Each label and its value are one piece, apart from the next pair: A, B and B - A read left to right in Arabic too (*B 5.11 V*), a translated word at the language's start, and in Arabic the pairs run from the right |
+  | **Cursors** | (part B.4) puts A and B where the lines have samples in view, at a quarter and three quarters of the span every shown line has samples in (of the span any has when they share none, of the view when there are none), and holds the view so the readouts stay: a view whose data starts late no longer puts A before the first sample; a second tap takes them off. Each cursor is a line over the plot with a handle, a rounded square with its letter, 48 dp to the touch (A's at the plot's top, B's at its foot): a drag moves it along the time, inside the plot; the view does not move. The readouts sit beside the plot in landscape and under it in portrait (at most 40 % of the height); when they do not fit they scroll, with a scroll bar that stays shown and a fade over the edge that has more, so no row is left cut through its letters: A's and B's times and B - A, then per shown line its values at A and B, B - A, and **min**, **max** and **mean** over A..B, as the desktop's measurements (`statsOf`; `statsOfFast` for a fast line, whose mean needs its records: an em dash over summaries), written as the legend writes a value; where a line has no value, an em dash (an en dash beside *B - A* read as one more minus). The labels are translated; the numbers, units and A, B stay as they are. Each label and its value are one piece, apart from the next pair: A, B and B - A read left to right in Arabic too (*B 5.11 V*), a translated word at the language's start, and in Arabic the pairs run from the right |
 
   ```
   +--------------------------------------------+
@@ -7221,7 +7252,7 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   while listening; room for six digits in figures of one width, so the chips stay still as the counts grow): a tap
   shows or hides those frames, kept in `phone/monitorSides`; both off, it says so. The engine
   writes the frames only while the screen shows and **Pause** is off (at fast polling they are a lot of text); Pause
-  holds what is there (*paused*, **Resume**), **Clear** empties it; the newest 5000 are kept, and a pile the engine
+  holds what is there (*paused*, whole or not at all where the chips leave too little room, and **Resume** lit), **Clear** empties it; the newest 5000 are kept, and a pile the engine
   could not hand over in time is said in a line of its own (*… 300 frames not shown*). The list follows the newest
   frame while it is at its end. Not connected, it says so with **Connect…** (the drawer).
 
@@ -8378,7 +8409,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 123 (26.11), 1237. The
+the phone test's 134 (26.11), 1248. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8943,7 +8974,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | USB&nbsp;back | the board reset comes back under another name: the retry opens it by its USB IDs, connected again, the new name saved and in the Log |
 | device&nbsp;line | a device that never answers DEVICE_ID, then Disconnect: the drawer says *Device ID not read yet*, the cancelled read no error in the Log |
 | typed&nbsp;numbers | a register's sheet: *1,5* writes 1.5, Arabic digits (*١٢*, *۴۵*) 12 and 45, *0x1A* as typed (26) |
-| rows | (the design pass, part A) at 412 x 915 connected, at least 9 rows fully in view (the cards: 5), each 48 dp or more with a thin line under it; a second line only with decoded text; the values right-aligned in tabular digits, their right edges lined up |
+| rows | (the design pass, part A) at 412 x 915 connected, at least 8 rows fully in view (9 before the groups' headers became 48 dp fold buttons) (the cards: 5), each 48 dp or more with a thin line under it; a second line only with decoded text; the values right-aligned in tabular digits, their right edges lined up |
 | sheet | a tap on SUPPLY_V's row opens its sheet: name, address and group, the value with its unit, its trend with its lowest and highest, Plot and Copy, no write part (read-only); FAN_SPEED's field asks for the number pad with Write beside it, CONFIG's (hex) not, its fields shown |
 | quick&nbsp;write | Enter in FAN_SPEED's field writes as Write does: the answer, then *Read back: 44 %* |
 | trend | 300 values keep the last 120 (`TREND_POINTS`), their lowest, highest and span; a value from an earlier time starts it again; a bytes register keeps none |
@@ -8957,12 +8988,23 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | frame&nbsp;sheet | a tap on a READ_RESP opens its sheet: START to END in order, FUNCTION READ_RESP, OFFSET with a register's name, CRC OK, the Dump's words under each; back closes it; an ERROR_RESP's *ERROR 4 offset out of range*, a READ's *0xD000 · UPTIME* and computed CRC, a wrong CRC not spelled out |
 | motion | a tab's screen fades and slides in (under way 40 ms after, done after), the register sheet slides up; with the animator scale 0 (a stand-in for Android) `motion` off, both there at once |
 | haptics | through the stand-in: one buzz when the link comes up, one when the device takes a write, none for a write not sent (writes off) |
-| rail | at 760 x 384, English and Arabic, connected: the rail at the start edge (the right in Arabic) with the menu, the four tabs and the link's state, each 48 dp or more; no header nor tab bar; the screens beside it from the top; the Registers 7 rows or more whole, one line each (42 dp; STATUS's decoded text on it); the rail's Log and menu work |
+| rail | at 760 x 384, English and Arabic, connected: the rail at the start edge (the right in Arabic) with the menu, the four tabs and the link's state, each 48 dp or more; no header nor tab bar; the screens beside it from the top; the Registers 5 rows or more whole (7 before the headers became 48 dp fold buttons), one line each (42 dp; STATUS's decoded text on it); the rail's Log and menu work |
 | sheet&nbsp;across | at 760 x 384, English and Arabic: FAN_SPEED's sheet in two columns side by side, nothing to scroll, its name, value, trend, Plot, Copy, limits, field, Write and close cross in view; no text cut |
 | Arabic&nbsp;runs | in Arabic a number and its unit one isolated left-to-right run: the sheet's limits keep *100 %*, the trend's span, the pill's rate upright and the rail's across |
+| shapes | (part D) upright (384 x 832) and across (760 x 384), on every screen (the Registers connected and not, a register's sheet and an enum's, the Chart with six lines and the cursors, the Lines and Measure sheets, a chip's menu, the window's menu, the Monitor, a frame's sheet, the Log, the drawer's top and foot, the language list, the Help): no Rectangle drawn with a corner's radius half its smaller side or more, but a Switch's parts, the busy indicator, an icon's strokes and lens and the radio; the window's `Material.roundedScale` SmallScale |
+| a&nbsp;press | a finger held 1 s on a register's row, a group's header, a Button, a ToolButton, a tab, a filter chip, a Switch, USB / TCP, a ComboBox, a sheet's Plot and a menu's item: no Ripple pressed (no wave), no Switch's halo, not a pixel changed outside the item; the row's tint at its far corner 60 ms in (a circle from the finger would not be there yet) and gone 600 ms after the release |
+| drawer&nbsp;names | across and upright, English and Arabic: no switch's name cut (*Keep the screen on while connected* on two lines across), each row 48 dp or more, the switch in the middle of its name's lines |
+| Restart&nbsp;now | another language chosen: **Restart now** under the note (48 dp), a tap restarts (a stand-in: `PhoneLanguage::setRestartForTests`); gone when the language is chosen back |
+| drawer&nbsp;at&nbsp;its&nbsp;top | left scrolled to its foot, the drawer opens again at its top with Connect in sight; `openAtWrites` still opens it at Allow writes |
+| popups&nbsp;in&nbsp;Arabic | the baud rate's, the map's and the language's lists and the window's and a chip's menus: each item's text nearer the right edge in Arabic, the left in English |
+| paused | the Monitor paused: *paused* drawn whole or not at all (upright the chips leave too little: it read *paus…*), Resume lit; across whole |
+| Lines&nbsp;names | the Lines sheet's names by their dots at the start edge: at the right in Arabic (a Latin name sat at the left of its room, in the row's middle) |
+| drawer&nbsp;across | at 760 x 384, TCP and USB, English and Arabic: the drawer opens with Connect in sight (no title over its sections there; upright the title stays) |
+| chips&nbsp;still | across and upright, four lines, one value alternating between *0 V* and *-12345 V*: the chips shown, their places and widths stay the same (each value's room the widest the legend writes, from the start) |
+| group&nbsp;folds | upright and across, English and Arabic: a group's header 48 dp with its chevron (down open; folded next, back in Arabic); a tap folds it (its rows gone, *· 3* beside its name, the header where it was) and opens it; two folds kept for the map in a new window, the folded registers still polled; a search finds a folded group's register, the fold back when it is cleared |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (123 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (134 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `help` (its topics), `helppage` (the phone's own topic; `helppage2` a screen down, `helppage_end`
@@ -8979,8 +9021,12 @@ in two columns), `chart760_two` (the whole window), `chart760_bars` (the bars ba
 `chart760_window` (the window's menu), `chart760_ysheet`, `chart760_six`, `chart760_cursors`, `chart760_gap` (a lost
 link through the bunching proxy: the break, then the slope after the reconnect), `monitor760`, `monitor760_rx` (TX off)
 and `frame760` (a READ_RESP's sheet); upright `chart_portrait`, `log_levels`, `log_filtered` (Info off) and
-`frame_portrait` (a READ's sheet). With `EVRE_PHONE_ONLY=shots` it saves them without running the checks
-(`EVRE_PHONE_ONLY=partb`: part B's alone); with another text only
+`frame_portrait` (a READ's sheet); and part D's, `d11_<name>_<upright|across>` at the owner's phone upright (384 x
+832) and across (760 x 384): `registers`, `hold` (a finger held 1 s on a row), `folds` (Protocol and System folded), `drawer`, `display` (another language
+chosen: the note and Restart now), `language` (its list open), `connected`, `sheet`, `enum`, `chart` (three lines, the
+cursors on), `lines`, `measure`, `chipmenu`, `monitor`, `frame`, `log` and `help` (the same code at the commit before
+gives the pictures before). With `EVRE_PHONE_ONLY=shots` it saves them without running the checks
+(`EVRE_PHONE_ONLY=partb`, `partc` or `partd`: that part's alone); with another text only
 the checks whose function's name holds it (and only the pictures of the chart, or of the cursors and the Monitor).
 
 ## 27. Design decisions and pitfalls

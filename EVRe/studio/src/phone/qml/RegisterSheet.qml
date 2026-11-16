@@ -15,7 +15,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
-import QtQuick.Controls.Material.impl
 import QtQuick.Layouts
 import EVRe.Phone
 
@@ -74,7 +73,7 @@ Drawer {
             y: 10
             width: 32
             height: 4
-            radius: 2
+            radius: 1
             color: PhoneTheme.control
         }
     }
@@ -190,7 +189,7 @@ Drawer {
         property alias textName: tagText.objectName
         implicitWidth: tagRow.implicitWidth + 16
         implicitHeight: 24
-        radius: 12
+        radius: 6
         Row {
             id: tagRow
             anchors.centerIn: parent
@@ -200,7 +199,7 @@ Drawer {
                 visible: parent.parent.dot.a > 0
                 width: 6
                 height: 6
-                radius: 3
+                radius: 1.5
                 color: parent.parent.dot
             }
             Label {
@@ -223,16 +222,11 @@ Drawer {
             y: 4
             width: parent.width
             height: parent.height - 8
-            radius: height / 2
-            color: action.pressed ? PhoneTheme.surface2 : "transparent"
+            radius: 8
+            color: "transparent"
             border.color: PhoneTheme.control
-            Ripple {
-                anchors.fill: parent
-                clipRadius: parent.radius
+            PressTint {
                 pressed: action.pressed
-                anchor: action
-                active: action.pressed
-                color: action.Material.rippleColor
             }
         }
         contentItem: Item {
@@ -327,6 +321,16 @@ Drawer {
                         }
                     }
                     ToolButton {
+                        // a press: a rounded square's flat tint, not Material's circle
+                        background: Item {
+                            implicitWidth: 48
+                            implicitHeight: 48
+                            PressTint {
+                                anchors.margins: 4
+                                radius: 8
+                                pressed: parent.parent ? parent.parent.down : false
+                            }
+                        }
                         // upright beside the name; across the sheet's corner has it (cornerClose)
                         objectName: visible ? "sheetClose" : "sheetCloseUpright"
                         visible: !column.twoColumns
@@ -447,7 +451,7 @@ Drawer {
                     LayoutMirroring.enabled: false
                     LayoutMirroring.childrenInherit: true
                     readonly property bool flat: sheet.trend.min === sheet.trend.max
-                    // the line, drawn (no new module): the newest value at the end edge, a dot on it
+                    // the line, drawn (no new module): the newest value at the end edge, a small rounded square on it
                     Canvas {
                         id: trendCanvas
                         objectName: "sheetTrendLine"
@@ -476,7 +480,7 @@ Drawer {
                             const last = points[points.length - 1]
                             ctx.fillStyle = PhoneTheme.accent
                             ctx.beginPath()
-                            ctx.arc(xOf(last), yOf(last), 3, 0, 2 * Math.PI)
+                            ctx.roundedRect(xOf(last) - 3, yOf(last) - 3, 6, 6, 1.5, 1.5)
                             ctx.fill()
                         }
                     }
@@ -624,6 +628,7 @@ Drawer {
                 }
                 Button {
                     objectName: "sheetConnect"
+                    Material.roundedScale: Material.SmallScale
                     Layout.fillWidth: true
                     visible: sheet.writable && !sheet.canWrite
                     text: qsTr("Open the Connect drawer")
@@ -670,9 +675,11 @@ Drawer {
                                 Accessible.role: Accessible.RadioButton
                                 Accessible.name: modelData.text
                                 Accessible.checked: picked
-                                // a radio drawn: a ring, its dot when chosen
+                                // a radio drawn: a ring, its dot when chosen. Kept round: a radio's circle says one of
+                                // many (a rounded square reads as a check box, many of many)
                                 Rectangle {
                                     id: ring
+                                    objectName: "radioRing"
                                     anchors.left: parent.left
                                     anchors.leftMargin: 14
                                     anchors.verticalCenter: parent.verticalCenter
@@ -683,6 +690,7 @@ Drawer {
                                     border.width: 2
                                     border.color: choice.picked ? PhoneTheme.accent : PhoneTheme.control
                                     Rectangle {
+                                        objectName: "radioDot"
                                         anchors.centerIn: parent
                                         width: 10
                                         height: 10
@@ -761,6 +769,7 @@ Drawer {
                     }
                     Button {
                         objectName: "sheetApply"
+                        Material.roundedScale: Material.SmallScale
                         Layout.preferredHeight: 56
                         Layout.minimumWidth: 96
                         enabled: sheet.question.length === 0 && !sheet.waiting
@@ -825,6 +834,7 @@ Drawer {
                             spacing: 8
                             Button {
                                 objectName: "sheetWriteAnyway"
+                                Material.roundedScale: Material.SmallScale
                                 Material.accent: PhoneTheme.accentFill
                                 highlighted: true
                                 text: qsTr("Write anyway")
@@ -832,6 +842,7 @@ Drawer {
                             }
                             Button {
                                 objectName: "sheetCancel"
+                                Material.roundedScale: Material.SmallScale
                                 flat: true
                                 Material.foreground: PhoneTheme.text
                                 text: qsTr("Cancel")
@@ -862,7 +873,7 @@ Drawer {
                         anchors.topMargin: 10 + (answerText.height - height) / 2
                         width: 8
                         height: 8
-                        radius: 4
+                        radius: 2
                         color: answerText.color
                     }
                     ColumnLayout {
@@ -903,6 +914,16 @@ Drawer {
     ToolButton {
         id: cornerClose
         objectName: visible ? "sheetClose" : "sheetCloseCorner"
+        // a press: a rounded square's flat tint, not Material's circle
+        background: Item {
+            implicitWidth: 48
+            implicitHeight: 48
+            PressTint {
+                anchors.margins: 4
+                radius: 8
+                pressed: parent.parent ? parent.parent.down : false
+            }
+        }
         visible: column.twoColumns
         LayoutMirroring.enabled: sheet.rtl
         anchors.top: parent.top

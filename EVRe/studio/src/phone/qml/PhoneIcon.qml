@@ -3,17 +3,19 @@
 // character, which a phone's font may not have ("☰" showed as a box on a Samsung phone). The tab bar's four
 // (registers, chart, monitor, log), the search field's magnifier and its clear cross, the register sheet's warning
 // and Copy (copy: two sheets), the chevrons (back and next: the Help and a register's row; down: the link's pill), the
-// Log's levels (info: a filled circle with an i; warn: a triangle with an exclamation mark; error: a filled circle with a
-// cross: three shapes, so a level reads without its colour too) and the Chart's full screen (expand: four corners out,
+// Log's levels (info: a filled rounded square with an i; warn: a triangle with an exclamation mark; error: a filled
+// rounded square with a cross: their marks and the triangle tell a level without its colour too) and the Chart's full screen (expand: four corners out,
 // the bars hidden; shrink: four corners in, the bars back).
-// The strokes are 2 units wide with round ends; a stroke at an angle is a turned rectangle, smoothed.
+// The strokes are 2 units wide with round ends (a line's ends, not a shape); a stroke at an angle is a turned
+// rectangle, smoothed. The shapes are rounded squares (the owner: no circles), but for the magnifier's lens, which is
+// round because a magnifier is.
 import QtQuick
 
 Item {
     id: icon
     property string kind: "registers"
     property color color: "black"
-    // the warning's mark, on its filled circle
+    // the warning's mark, on its filled rounded square
     property color markColor: "white"
     property real size: 24
     readonly property real u: size / 24
@@ -23,6 +25,7 @@ Item {
 
     // a straight stroke from (x1, y1) to (x2, y2), in grid units
     component Stroke: Rectangle {
+        objectName: "iconStroke"
         property real x1
         property real y1
         property real x2
@@ -111,6 +114,7 @@ Item {
         Rectangle {
             x: 3.5 * icon.u
             y: 3.5 * icon.u
+            objectName: "iconLens"
             width: 13 * icon.u
             height: 13 * icon.u
             radius: width / 2
@@ -151,7 +155,7 @@ Item {
         Stroke { x1: 4.5; y1: 4.5; x2: 4.5; y2: 15 }
         Stroke { x1: 4.5; y1: 4.5; x2: 14; y2: 4.5 }
     }
-    // info: a filled circle with an i
+    // info: a filled rounded square with an i
     Item {
         anchors.fill: parent
         visible: icon.kind === "info"
@@ -160,7 +164,7 @@ Item {
             y: 2 * icon.u
             width: 20 * icon.u
             height: 20 * icon.u
-            radius: width / 2
+            radius: 5 * icon.u
             color: icon.color
             antialiasing: true
         }
@@ -169,7 +173,7 @@ Item {
             y: 6.25 * icon.u
             width: 2.5 * icon.u
             height: 2.5 * icon.u
-            radius: width / 2
+            radius: width / 4
             color: icon.markColor
             antialiasing: true
         }
@@ -178,7 +182,7 @@ Item {
             y: 10 * icon.u
             width: 2.5 * icon.u
             height: 7.75 * icon.u
-            radius: width / 2
+            radius: width / 4
             color: icon.markColor
             antialiasing: true
         }
@@ -196,12 +200,12 @@ Item {
             y: 15.5 * icon.u
             width: 2 * icon.u
             height: 2 * icon.u
-            radius: width / 2
+            radius: width / 4
             color: icon.color
             antialiasing: true
         }
     }
-    // error: a filled circle with a cross
+    // error: a filled rounded square with a cross
     Item {
         anchors.fill: parent
         visible: icon.kind === "error"
@@ -210,7 +214,7 @@ Item {
             y: 2 * icon.u
             width: 20 * icon.u
             height: 20 * icon.u
-            radius: width / 2
+            radius: 5 * icon.u
             color: icon.color
             antialiasing: true
         }
@@ -243,7 +247,7 @@ Item {
         Stroke { x1: 9; y1: 20; x2: 9; y2: 15 }
         Stroke { x1: 9; y1: 15; x2: 4; y2: 15 }
     }
-    // warning: a filled circle with an exclamation mark
+    // warning: a filled rounded square with an exclamation mark
     Item {
         anchors.fill: parent
         visible: icon.kind === "warning"
@@ -252,7 +256,7 @@ Item {
             y: 2 * icon.u
             width: 20 * icon.u
             height: 20 * icon.u
-            radius: width / 2
+            radius: 5 * icon.u
             color: icon.color
             antialiasing: true
         }
@@ -261,7 +265,7 @@ Item {
             y: 6.5 * icon.u
             width: 2.5 * icon.u
             height: 7.5 * icon.u
-            radius: width / 2
+            radius: width / 4
             color: icon.markColor
             antialiasing: true
         }
@@ -270,7 +274,7 @@ Item {
             y: 15.25 * icon.u
             width: 2.5 * icon.u
             height: 2.5 * icon.u
-            radius: width / 2
+            radius: width / 4
             color: icon.markColor
             antialiasing: true
         }

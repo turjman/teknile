@@ -84,6 +84,16 @@ Popup {
                 // a chevron drawn, pointing to the start edge
                 ToolButton {
                     objectName: "helpBack"
+                    // a press: a rounded square's flat tint, not Material's circle
+                    background: Item {
+                        implicitWidth: 48
+                        implicitHeight: 48
+                        PressTint {
+                            anchors.margins: 4
+                            radius: 8
+                            pressed: parent.parent ? parent.parent.down : false
+                        }
+                    }
                     Layout.preferredWidth: 48
                     Layout.preferredHeight: 48
                     focusPolicy: Qt.NoFocus
