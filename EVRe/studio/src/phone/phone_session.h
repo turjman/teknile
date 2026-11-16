@@ -128,6 +128,7 @@ class PhoneSession : public QObject {
 	Q_PROPERTY(bool screenKeptOn READ screenKeptOn NOTIFY systemChanged)
 	Q_PROPERTY(QString orientation READ orientation WRITE setOrientation NOTIFY systemChanged)
 	Q_PROPERTY(bool motion READ motion NOTIFY systemChanged)
+	Q_PROPERTY(QStringList foldedGroups READ foldedGroups NOTIFY foldsChanged)
 
 public:
 	/* Off: no link, none wanted. Waiting: Android's permission dialog for the USB device is up. Connecting: a try under
@@ -249,6 +250,12 @@ public:
 	bool screenKeptOn() const { return screenKeptOn_; }
 	/* the app's own motion (the tabs' change, the sheets' slide): off when Android's animations are removed */
 	bool motion() const { return motion_; }
+	/* the Registers screen's groups folded (their rows hidden under their header), kept per map in
+	 * phone/foldedGroups/<the map's device name> and read again with the map */
+	QStringList foldedGroups() const { return foldedGroups_; }
+	Q_INVOKABLE void setGroupFolded(const QString &group, bool folded);
+	/* how many registers the map has in a group (a folded header says it) */
+	Q_INVOKABLE int groupSize(const QString &group) const;
 	/* Android's back with nothing open (Main.qml's back()): while a link is wanted or a recording runs, the app to the
 	 * background as Home does (true: the back is taken); else false, and Android closes the app */
 	Q_INVOKABLE bool backToBackground();
@@ -282,6 +289,7 @@ signals:
 	void chartChanged();
 	void monitorChanged();
 	void fastChanged();
+	void foldsChanged();
 
 private:
 	void startEngine();
@@ -348,6 +356,7 @@ private:
 	QTimer serviceTimer_;        /* the notification's recording time, once a second */
 	QElapsedTimer recordClock_;
 	bool keepScreenOn_ = true;
+	QStringList foldedGroups_;
 	bool screenKeptOn_ = false;
 	bool motion_ = true;
 	QString serviceText_;

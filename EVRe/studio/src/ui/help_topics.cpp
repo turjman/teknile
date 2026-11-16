@@ -911,6 +911,8 @@ does that at once) and <b>Help</b>.</li>
 with the others, and its unit. A second line only when there is more to say: the decoded fields, <i>not
 refreshed</i> (a value not read for a while), <i>on the chart</i>, or an error in red. A changed value glows.</li>
 <li><b>Search</b> at the top: a name, a unit or an address.</li>
+<li>A tap on a group's header folds its rows away (the header then says how many it holds) and opens them again. The
+folds are kept for the map; a search shows its matches in folded groups too.</li>
 <li>A tap on a row opens its sheet: the value large, the decoded fields, a small line of its last values, <b>Plot</b>
 (<b>Take off the chart</b> once plotted) and <b>Copy</b>.</li>
 <li>A writable register's sheet writes as the desktop's quick write: type the value (a number brings up the number pad;

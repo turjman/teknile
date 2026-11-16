@@ -4839,6 +4839,8 @@ does that at once) and &lt;b&gt;Help&lt;/b&gt;.&lt;/li&gt;
 with the others, and its unit. A second line only when there is more to say: the decoded fields, &lt;i&gt;not
 refreshed&lt;/i&gt; (a value not read for a while), &lt;i&gt;on the chart&lt;/i&gt;, or an error in red. A changed value glows.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Search&lt;/b&gt; at the top: a name, a unit or an address.&lt;/li&gt;
+&lt;li&gt;A tap on a group&apos;s header folds its rows away (the header then says how many it holds) and opens them again. The
+folds are kept for the map; a search shows its matches in folded groups too.&lt;/li&gt;
 &lt;li&gt;A tap on a row opens its sheet: the value large, the decoded fields, a small line of its last values, &lt;b&gt;Plot&lt;/b&gt;
 (&lt;b&gt;Take off the chart&lt;/b&gt; once plotted) and &lt;b&gt;Copy&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;A writable register&apos;s sheet writes as the desktop&apos;s quick write: type the value (a number brings up the number pad;
@@ -4927,6 +4929,8 @@ both go on; with no link it closes the app.&lt;/p&gt;
 وسطر ثانٍ حين يكون هناك ما يُقال فقط: الحقول المفكوكة، أو &lt;i&gt;غير محدّث&lt;/i&gt; (قيمة لم تُقرأ منذ مدة)، أو &lt;i&gt;على
 المخطط&lt;/i&gt;، أو خطأ بالأحمر. القيمة التي تتغيّر تتوهّج.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;البحث&lt;/b&gt; في الأعلى: اسم أو وحدة أو عنوان.&lt;/li&gt;
+&lt;li&gt;النقر على ترويسة مجموعة يطوي صفوفها (فتقول الترويسة عندئذ كم مسجّلًا تضم) ويفتحها من جديد. يُحفظ الطيّ
+للخريطة؛ ويُظهر البحث نتائجه في المجموعات المطويّة أيضًا.&lt;/li&gt;
 &lt;li&gt;لمسة على صف تفتح ورقته: القيمة كبيرةً، والحقول المفكوكة، وخط صغير لآخر قيمه، و&lt;b&gt;رسم&lt;/b&gt; (&lt;b&gt;إزالة من المخطط&lt;/b&gt;
 بعد رسمه)، و&lt;b&gt;نسخ&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;ورقة المسجّل القابل للكتابة تكتب ككتابة سطح المكتب السريعة: تُكتب القيمة (الرقم يُظهر لوحة الأرقام؛ والقيمة ذات
@@ -8995,6 +8999,14 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
 </context>
 <context>
     <name>RegistersScreen</name>
+    <message>
+        <source>Open %1</source>
+        <translation>فتح %1</translation>
+    </message>
+    <message>
+        <source>Fold %1</source>
+        <translation>طيّ %1</translation>
+    </message>
     <message>
         <source>Search: name, unit, address</source>
         <translation>بحث: الاسم، الوحدة، العنوان</translation>

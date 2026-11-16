@@ -283,6 +283,7 @@ QObject *Phone::object(const char *name) const {
 
 QRectF sceneRect(const QQuickItem *item);
 QQuickItem *within(QQuickItem *root, const QString &name);
+QQuickItem *groupHeader(const Phone &phone, const QString &group);
 
 bool near(const QColor &a, const QColor &b, int tolerance = 6) {
 	return a.isValid() && std::abs(a.red() - b.red()) <= tolerance && std::abs(a.green() - b.green()) <= tolerance
@@ -5178,7 +5179,8 @@ void savePartBPictures(const QString &prefix) {
 
 /* Across, every tab: the bottom tab bar and the header give way to a rail at the start edge (the right in Arabic): the
  * menu button, the four tabs (each 48 dp or more, the chosen one marked), the link's state; the screens beside it from
- * the window's top. At 760 x 384, connected, the Registers screen shows 7 rows or more whole (4 before), each one line
+ * the window's top. At 760 x 384, connected, the Registers screen shows 5 rows or more whole (4 before the rail, 7 with
+ * the groups' 20 dp headers before they became 48 dp fold buttons, part D), each one line
  * and at least 42 high; a tap on the rail's Log shows the Log, its menu button opens the drawer */
 void checkLandscapeRail() {
 	QStringList seen, bad;
@@ -5219,7 +5221,7 @@ void checkLandscapeRail() {
 			const QQuickItem *second = within(item, QStringLiteral("rowSecond"));
 			if (second && second->isVisible()) bad << code + QStringLiteral(": a second line across");
 		});
-		if (whole < 7 || lowest < 41.5) bad << QStringLiteral("%1: %2 rows whole, the lowest %3").arg(code).arg(whole).arg(lowest);
+		if (whole < 5 || lowest < 41.5) bad << QStringLiteral("%1: %2 rows whole, the lowest %3").arg(code).arg(whole).arg(lowest);
 		/* STATUS's decoded text on its one line */
 		const QQuickItem *inline_ = within(regRow(phone, QStringLiteral("STATUS")), QStringLiteral("regDecodedInline"));
 		if (!inline_ || !inline_->isVisible() || inline_->property("text").toString().isEmpty())
@@ -5237,7 +5239,7 @@ void checkLandscapeRail() {
 	}
 	language::apply(*qApp, QStringLiteral("en"));
 	check(bad.isEmpty(), QStringLiteral("phone, across: a rail at the start edge (the menu, the four tabs, the link's state, "
-			"each 48 dp or more), no header nor tab bar, the screens beside it; at 760 x 384 the Registers show 7 rows or "
+			"each 48 dp or more), no header nor tab bar, the screens beside it; at 760 x 384 the Registers show 5 rows or "
 			"more, each one line (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
 }
 
@@ -6199,7 +6201,7 @@ int changedOutside(const QImage &before, const QImage &after, const QRectF &keep
 
 /* A press without a circle (the owner, on the real phone: a long press on the Registers list drew a grey circle three
  * rows high over the rows around, a section's header and the gaps: the row's Ripple, unclipped). A finger held 1 s on
- * each kind of item: a register's row, a Button, a ToolButton, a tab, a filter chip, a Switch, the USB / TCP choice, a
+ * each kind of item: a register's row, a group's header, a Button, a ToolButton, a tab, a filter chip, a Switch, the USB / TCP choice, a
  * ComboBox, a menu's item, a sheet's Plot. While it is down no Ripple runs its wave (none pressed, no Switch's halo)
  * and nothing is drawn outside the pressed item's rectangle; the row's tint is at its far corner at once (60 ms: a
  * circle from the finger would be small yet), and gone 600 ms after the finger lifts */
@@ -6262,6 +6264,7 @@ void checkPressShape() {
 			if (!atOnce || !gone) bad << QStringLiteral("row's tint: at once %1, gone %2").arg(atOnce).arg(gone);
 		}
 		hold(phone, regRow(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("a register's row"), true);
+		hold(phone, groupHeader(phone, QStringLiteral("System")), QStringLiteral("a group's header"), true);
 		hold(phone, phone.item("registersConnect"), QStringLiteral("a Button (Connect…)"), true);
 		pressBack(phone);
 		hold(phone, phone.item("menuButton"), QStringLiteral("a ToolButton (the menu)"), true);
@@ -6622,9 +6625,109 @@ void checkChipsStill() {
 										"grows and shrinks (%1) %2").arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
 }
 
+/* a group's header on the Registers screen, by its name */
+QQuickItem *groupHeader(const Phone &phone, const QString &group) {
+	for (QQuickItem *head : visibleNamed(phone.item("registerList"), QStringLiteral("groupHeader")))
+		if (within(head, QStringLiteral("regGroup"))->property("text").toString() == group) return head;
+	return nullptr;
+}
+
+/* a register's row shown: there and with its height (a folded group's rows have none) */
+bool rowShown(const Phone &phone, const QString &reg) {
+	const QQuickItem *row = regRow(phone, reg);
+	return row && row->isVisible() && row->height() > 1;
+}
+
+/* Each group folds (the owner: "a foldable section for each category"), upright and across, English and Arabic: its
+ * header 48 dp with a drawn chevron at its end ("down" open; folded "next", "back" in Arabic); a tap folds it (its rows
+ * go, the header says "· 3", the header stays where it was) and opens it again; the folds kept for the map (a new
+ * window, as after a restart, has them; a folded group's registers still polled); a search finds a folded group's
+ * register and the fold comes back when it is cleared */
+void checkGroupFolds() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		const bool rtl = code == QLatin1String("ar");
+		for (QSize size : { QSize(384, 832), QSize(760, 384) }) {
+			const QString where = QStringLiteral("%1 %2").arg(code).arg(size.width());
+			/* a header in view: upright System's (three registers, under Protocol's), across Protocol's (five) */
+			const bool across = size.width() > size.height();
+			const QString group = across ? QStringLiteral("Protocol") : QStringLiteral("System");
+			const QString first = across ? QStringLiteral("DEVICE_ID") : QStringLiteral("UPTIME");
+			const QString last = across ? QStringLiteral("MSG_CNT") : QStringLiteral("COUNTER");
+			const QString size_ = across ? QStringLiteral("5") : QStringLiteral("3");
+			{
+				Phone phone(size);
+				phone.settle(500);
+				QQuickItem *head = groupHeader(phone, group);
+				if (!head) {
+					bad << where + QStringLiteral(": no %1 header").arg(group);
+					continue;
+				}
+				const double y0 = sceneRect(head).top();
+				const QQuickItem *chevron = within(head, QStringLiteral("groupChevron"));
+				const bool open = chevron && chevron->isVisible() && chevron->property("kind").toString() == QLatin1String("down")
+						&& head->height() >= 47.5 && rowShown(phone, first);
+				phone.tap(head);
+				phone.settle(400);
+				const QQuickItem *count = within(head, QStringLiteral("regGroupCount"));
+				const QString countText = count && count->isVisible() ? count->property("text").toString() : QString();
+				const bool folded = !rowShown(phone, first) && !rowShown(phone, last)
+						&& chevron->property("kind").toString() == QLatin1String(rtl ? "back" : "next")
+						&& countText.contains(size_) && countText.contains(QChar(0x00b7));
+				const double y1 = sceneRect(head).top();
+				phone.tap(head);
+				phone.settle(400);
+				const bool openAgain = rowShown(phone, first) && count && !count->isVisible();
+				seen << QStringLiteral("%1: header %2 dp at %3, folded at %4 (\"%5\")").arg(where).arg(head->height()).arg(y0)
+								.arg(y1).arg(countText);
+				if (!open || !folded || std::fabs(y1 - y0) > 1 || !openAgain)
+					bad << QStringLiteral("%1: open %2, folded %3, in place %4 (%5 to %6), open again %7").arg(where).arg(open)
+								   .arg(folded).arg(std::fabs(y1 - y0) <= 1).arg(y0).arg(y1).arg(openAgain);
+				/* two folded for the next window: this one by its header, the other as its header would */
+				phone.tap(head);
+				if (PhoneSession *session = phone.session())
+					session->setGroupFolded(across ? QStringLiteral("System") : QStringLiteral("Protocol"), true);
+			}
+			{
+				Phone phone(size);
+				PhoneSession *session = connectFake(phone);
+				phone.settle(500);
+				const QStringList folds = session ? session->foldedGroups() : QStringList();
+				const bool kept = folds.contains(QStringLiteral("System")) && folds.contains(QStringLiteral("Protocol"))
+						&& !rowShown(phone, QStringLiteral("DEVICE_ID")) && !rowShown(phone, QStringLiteral("UPTIME"));
+				/* polled while folded: UPTIME's value moves */
+				const QString before = modelValue(session, QStringLiteral("UPTIME"));
+				QTest::qWait(1200);
+				const bool polled = modelValue(session, QStringLiteral("UPTIME")) != before;
+				search(phone, QStringLiteral("UPTIME"));
+				waitStill(phone, [&] { return regRow(phone, QStringLiteral("UPTIME")); });
+				const bool found = rowShown(phone, QStringLiteral("UPTIME"));
+				search(phone, QString());
+				phone.settle(300);
+				const bool back = !rowShown(phone, QStringLiteral("DEVICE_ID")) && session
+						&& session->foldedGroups().contains(QStringLiteral("System"));
+				if (!kept || !polled || !found || !back)
+					bad << QStringLiteral("%1: kept %2, polled %3, found by a search %4, folded again %5").arg(where).arg(kept)
+								   .arg(polled).arg(found).arg(back);
+				if (session) {
+					session->setGroupFolded(QStringLiteral("System"), false);
+					session->setGroupFolded(QStringLiteral("Protocol"), false);
+					session->disconnectLink();
+				}
+			}
+		}
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, Registers: a group's header (48 dp, its chevron) folds it and opens it, in "
+										"place, its count shown folded; kept for the map in a new window, still polled; a "
+										"search finds a folded group's register (%1) %2")
+								 .arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
 /* part D's pictures for the eye (not checks): <prefix>_<en|ar>_<dark|light>_d11_<name>_<upright|across>.png at the
  * owner's phone upright (384 x 832) and across (760 x 384): registers (not connected), hold (a finger held 1 s on a
- * row), drawer (its top), display (its Display section, another language chosen: the note and Restart now), language
+ * row), folds (Protocol and System folded, connected), drawer (its top), display (its Display section, another language chosen: the note and Restart now), language
  * (the language list open), connected, sheet (FAN_SPEED's), enum (LED_MODE's choices), chart (three lines, the cursors
  * on), lines (six: the Lines sheet), measure, chipmenu, monitor, frame (a frame's sheet), log, help. The same code at
  * the commit before gives the before pictures. EVRE_PHONE_ONLY=partd saves only these */
@@ -6672,6 +6775,17 @@ void savePartDPictures(const QString &prefix) {
 				if (session) session->setWritesEnabled(true);
 				QTest::qWait(1500);
 				save(phone, "connected");
+				if (session) {
+					session->setGroupFolded(QStringLiteral("Protocol"), true);
+					session->setGroupFolded(QStringLiteral("System"), true);
+				}
+				phone.settle(500);
+				save(phone, "folds");
+				if (session) {
+					session->setGroupFolded(QStringLiteral("Protocol"), false);
+					session->setGroupFolded(QStringLiteral("System"), false);
+				}
+				phone.settle(300);
 				openSheet(phone, QStringLiteral("FAN_SPEED"));
 				phone.settle(1500);
 				save(phone, "sheet");
@@ -6919,6 +7033,7 @@ int main(int argc, char **argv) {
 	RUN(checkLinesSheetNamesAtStart);
 	RUN(checkDrawerConnectAcross);
 	RUN(checkChipsStill);
+	RUN(checkGroupFolds);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));

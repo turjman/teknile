@@ -8,7 +8,7 @@
 // test feed (chart_demo.h), chartShown telling the same line when to write.
 // Across (landscape) the header and the bottom tab bar give way to a navigation rail at the window's start edge (the
 // right in Arabic): the menu button, the four tabs (an icon over each name) and the link's state (its dot, the poll
-// rate or its word: a tap opens the drawer), so the screens keep the whole height (seven register rows at 760 x 384).
+// rate or its word: a tap opens the drawer), so the screens keep the whole height (five register rows and their groups' headers at 760 x 384).
 // The Chart across is the whole window (chartFull): the rail hidden, the chart's bars button (or Android's back) brings
 // it back until another tab is chosen. A tab's screen comes in with a short fade and slide from
 // the side of the tab chosen (none when Android's animations are removed: PhoneSession.motion).

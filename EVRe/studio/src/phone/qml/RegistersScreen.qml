@@ -7,6 +7,10 @@
 // drawn; how many registers show, quietly at the list's foot. While no link is up a slim strip at the top says so, with
 // a button to the Connect drawer; with no map, or a search that finds nothing, the screen says so with one button (the
 // drawer, or clearing the search). What a sheet's Plot or Copy did shows a moment at the bottom too.
+// Each group folds (the owner): its header, 48 dp, is a button with a drawn chevron at its end ("v" open, ">" folded,
+// mirrored in Arabic); folded, its rows go (a short fold of their height) and the header says how many it holds
+// ("Sensors · 2"). The folds are kept per map (PhoneSession.foldedGroups); a search shows its matches in every group,
+// the folds left as they were for when it is cleared. A folded group's registers are polled as any.
 // With perf (phone_app.h) a bar runs at the top, so the window draws every frame and the speed line times frames.
 import QtQuick
 import QtQuick.Controls
@@ -20,9 +24,23 @@ Item {
     readonly property var registers: PhoneSession.registerList
     // in landscape the cards keep a phone's width, in the middle: a card 900 wide reads as a stretched line
     readonly property real columnWidth: 640
-    // across (760 x 384 on the owner's phone, beside the rail): the search 40 high, the groups' names lower, the rows one
-    // line 42 high (RegisterRow's compact), so seven rows show
+    // across (760 x 384 on the owner's phone, beside the rail): the search 40 high, the rows one line 42 high
+    // (RegisterRow's compact), so five rows show with their groups' headers (48 dp, they fold)
     readonly property bool wide: width > height
+    readonly property var folds: PhoneSession.foldedGroups
+    readonly property bool searching: registers.search.length > 0
+    // a tap's fold moves the rows' height; rows the list reuses while it scrolls take theirs at once
+    property bool foldMoving: false
+    Timer {
+        id: foldMotion
+        interval: 300
+        onTriggered: screen.foldMoving = false
+    }
+    function toggleFold(group) {
+        screen.foldMoving = PhoneSession.motion
+        foldMotion.restart()
+        PhoneSession.setGroupFolded(group, screen.folds.indexOf(group) < 0)
+    }
 
     signal connectAsked()
     signal sheetAsked(int source)
@@ -244,34 +262,81 @@ Item {
             section.criteria: ViewSection.FullString
             // the group's name over its rows, on the window's background, the rows on the surface, so each group reads
             // as a panel of its own. In the list only, not kept at the view's top: a header kept there lay over the
-            // rows passing under it and cut their values (the owner's phone)
+            // rows passing under it and cut their values (the owner's phone). The whole header folds the group or
+            // opens it (48 dp, a chevron at its end); while a search is typed it is a header alone
             section.labelPositioning: ViewSection.InlineLabels
             section.delegate: Rectangle {
+                id: head
                 required property string section
+                readonly property bool named: section.length > 0
+                readonly property bool folded: named && !screen.searching && screen.folds.indexOf(section) >= 0
+                objectName: "groupHeader"
                 width: ListView.view.width
-                height: section.length > 0 ? (screen.wide ? 20 : 34) : 4
+                height: named ? 48 : 4
                 color: PhoneTheme.bg
-                Label {
-                    objectName: "regGroup"
-                    horizontalAlignment: Text.AlignLeft
+                Accessible.role: Accessible.Button
+                Accessible.name: head.folded ? qsTr("Open %1").arg(head.section) : qsTr("Fold %1").arg(head.section)
+                Accessible.onPressAction: if (head.named && !screen.searching) screen.toggleFold(head.section)
+                PressTint {
+                    pressed: headTap.pressed && head.named && !screen.searching
+                }
+                Row {
                     anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
+                    anchors.right: chevron.left
                     anchors.leftMargin: 16
-                    anchors.rightMargin: 16
-                    anchors.bottomMargin: screen.wide ? 2 : 6
-                    text: parent.section
-                    color: PhoneTheme.accent
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                    font.letterSpacing: 0.4
-                    elide: Text.ElideRight
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+                    Label {
+                        id: groupName
+                        objectName: "regGroup"
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, parent.width - (groupCount.visible ? groupCount.implicitWidth + 8 : 0))
+                        horizontalAlignment: Text.AlignLeft
+                        text: head.section
+                        color: PhoneTheme.accent
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 0.4
+                        elide: Text.ElideRight
+                    }
+                    // folded: how many registers it holds, so it still says what is in it
+                    Label {
+                        id: groupCount
+                        objectName: "regGroupCount"
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: head.folded
+                        // the dot between the name and the number in either direction
+                        text: Qt.application.layoutDirection === Qt.RightToLeft
+                              ? PhoneSession.groupSize(head.section) + " \u00b7" : "\u00b7 " + PhoneSession.groupSize(head.section)
+                        color: PhoneTheme.muted
+                        font.pixelSize: 13
+                    }
+                }
+                // "v" open, ">" folded (in Arabic "<": the start is at the right)
+                PhoneIcon {
+                    id: chevron
+                    objectName: "groupChevron"
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: head.named && !screen.searching
+                    kind: !head.folded ? "down" : Qt.application.layoutDirection === Qt.RightToLeft ? "back" : "next"
+                    size: 18
+                    color: PhoneTheme.muted
+                }
+                TapHandler {
+                    id: headTap
+                    enabled: head.named && !screen.searching
+                    onTapped: screen.toggleFold(head.section)
                 }
             }
 
             delegate: RegisterRow {
                 width: ListView.view.width
                 compact: screen.wide
+                folded: !screen.searching && screen.folds.indexOf(group) >= 0
+                foldMotion: screen.foldMoving
                 // the list takes the focus from the search field first: a closed sheet gives it back to what had it,
                 // and the field's keyboard came up again over the list
                 onOpened: source => {

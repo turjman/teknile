@@ -3449,6 +3449,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `phone/map` | empty | on&nbsp;change | The map the phone opens at start: a path, or Android's `content://` one; empty or gone: the app's first map. |
 | `phone/logLevels` | `0,&nbsp;1,&nbsp;2` | on&nbsp;change | The levels the phone's Log shows (0 info, 1 warning, 2 error: its filter chips, 25.6). |
 | `phone/monitorSides` | `0,&nbsp;1,&nbsp;2` | on&nbsp;change | The frames the phone's Monitor shows (0 sent, TX; 1 received, RX; 2 its notes, always: its TX and RX chips). |
+| `phone/foldedGroups/<device>` | empty | on&nbsp;change | The groups folded on the phone's Registers screen, for the map of that device name (its `/` and `\` made `_`): their headers' fold (25.6). |
 | `android/keepScreenOn` | `true` | on&nbsp;change | The phone keeps its screen on while connected (25.6). |
 | `ui/dark` | `true` | on&nbsp;close | Dark theme. |
 | `ui/language` | `system` | on&nbsp;change | The language: `system`, `en` or `ar`; applied at the next start (14.4). |
@@ -7005,7 +7006,8 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   icon over each name, 60 dp high, the chosen one's icon on a rounded square in the accent), and at its foot the link's state
   (its dot in the state's colour on the state's soft tone, then the poll rate, *10 Hz*, while connected and polling,
   else the pill's word; a tap opens the drawer). The screens get the whole height: at 760 x 384 (the owner's phone
-  beside its navigation buttons) the Registers show seven rows, where the header, the search and the tab bar left four.
+  beside its navigation buttons) the Registers showed seven rows, where the header, the search and the tab bar left
+  four; five since the groups' headers are 48 dp fold buttons (part D), and more with a group folded.
 
 - **The menu button** opens the Connect drawer from the start edge (the left; the right in Arabic); the screen behind
   it (and behind a register's sheet) darkens, in both themes (a black scrim at half: Material's grey wash lightened the
@@ -7109,8 +7111,8 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   | Part | What it does |
   |---|---|
   | **Search** | the desktop's search: the name, description, group, unit or address (*0xd08*). A rounded field, the magnifier drawn at its start, a cross drawn at its end while it holds a text (a tap empties it); *registers: 1 of 16* at the list's foot. A search that finds nothing says *No match* with **Clear the search** |
-  | **A&nbsp;group** | its name in the accent on the window's background, over its rows; it scrolls with them (a header kept at the top lay over the rows passing under it and cut their values on a phone, so none is kept). The rows are on the surface, so each group reads as a panel of its own |
-  | **A&nbsp;row** | 52 dp (at least 48; across one line 42 high, the second line's words between the address and the value: a full-width target, so seven rows show at 760 x 384, the search 40 high and the groups' names lower), a thin line under it: the name, its address beside it small and muted; the value at the end in tabular digits, right-aligned in a slot of its own so the values of the rows above and below line up digit under digit, its unit after it in a slot of its own; a chevron at the end. A second, smaller line only when there is more to say: *not refreshed*, *on the chart*, the decoded text (an enum's name, the bit fields) or the error. In Arabic the row mirrors (the name at the right, the value at the left by the chevron, the values lined up at their left edge, each unit right after its value), the value and its unit stay left to right. A press tints the row's rectangle at once (no ripple's circle); a tap opens the register's sheet. In landscape the rows keep a phone's width (640) in the middle |
+  | **A&nbsp;group** | its name in the accent on the window's background, over its rows; it scrolls with them (a header kept at the top lay over the rows passing under it and cut their values on a phone, so none is kept). The rows are on the surface, so each group reads as a panel of its own. (Part D, the owner's wish) the header folds the group: the whole header, 48 dp, is the target, a drawn chevron at its end (down while open, pointing to the end when folded: right, left in Arabic), the press a flat tint; a tap folds its rows away with a short fold of their height (none with Android's animations removed) and the header stays where it was, *Sensors · 2* saying what it holds; a tap opens it. The folds are kept per map (`phone/foldedGroups/<the map's device>`, `PhoneSession::foldedGroups`) and come back at the next start; a folded group's registers are polled as any. While a search is typed the headers are headers alone and the matches show in every group; cleared, the folds are back |
+  | **A&nbsp;row** | 52 dp (at least 48; across one line 42 high, the second line's words between the address and the value: a full-width target, so five rows and their groups' headers show at 760 x 384, the search 40 high), a thin line under it: the name, its address beside it small and muted; the value at the end in tabular digits, right-aligned in a slot of its own so the values of the rows above and below line up digit under digit, its unit after it in a slot of its own; a chevron at the end. A second, smaller line only when there is more to say: *not refreshed*, *on the chart*, the decoded text (an enum's name, the bit fields) or the error. In Arabic the row mirrors (the name at the right, the value at the left by the chevron, the values lined up at their left edge, each unit right after its value), the value and its unit stay left to right. A press tints the row's rectangle at once (no ripple's circle); a tap opens the register's sheet. In landscape the rows keep a phone's width (640) in the middle |
   | **The&nbsp;glow** | a value that changes after holding still 2 s glows as on the desktop: the row tinted toward the accent and a bar at its start edge, with an arrow up or down before a plain number, fading over 1.5 s |
   | **Stale,&nbsp;error** | a value not refreshed for a while (polling off, the link down) greys and its second line says *not refreshed* in amber; a register the device refused, or a read that failed, shows its value and why in red, a red bar at its start edge |
   | **Not&nbsp;connected** | a slim strip over the list (56 dp): *Not connected*, *The values show once the link is up.*, and **Connect…**, which opens the drawer. With no map the screen says *No registers* with **Open the Connect drawer** |
@@ -8407,7 +8409,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 133 (26.11), 1247. The
+the phone test's 134 (26.11), 1248. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8986,11 +8988,11 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | frame&nbsp;sheet | a tap on a READ_RESP opens its sheet: START to END in order, FUNCTION READ_RESP, OFFSET with a register's name, CRC OK, the Dump's words under each; back closes it; an ERROR_RESP's *ERROR 4 offset out of range*, a READ's *0xD000 · UPTIME* and computed CRC, a wrong CRC not spelled out |
 | motion | a tab's screen fades and slides in (under way 40 ms after, done after), the register sheet slides up; with the animator scale 0 (a stand-in for Android) `motion` off, both there at once |
 | haptics | through the stand-in: one buzz when the link comes up, one when the device takes a write, none for a write not sent (writes off) |
-| rail | at 760 x 384, English and Arabic, connected: the rail at the start edge (the right in Arabic) with the menu, the four tabs and the link's state, each 48 dp or more; no header nor tab bar; the screens beside it from the top; the Registers 7 rows or more whole, one line each (42 dp; STATUS's decoded text on it); the rail's Log and menu work |
+| rail | at 760 x 384, English and Arabic, connected: the rail at the start edge (the right in Arabic) with the menu, the four tabs and the link's state, each 48 dp or more; no header nor tab bar; the screens beside it from the top; the Registers 5 rows or more whole (7 before the headers became 48 dp fold buttons), one line each (42 dp; STATUS's decoded text on it); the rail's Log and menu work |
 | sheet&nbsp;across | at 760 x 384, English and Arabic: FAN_SPEED's sheet in two columns side by side, nothing to scroll, its name, value, trend, Plot, Copy, limits, field, Write and close cross in view; no text cut |
 | Arabic&nbsp;runs | in Arabic a number and its unit one isolated left-to-right run: the sheet's limits keep *100 %*, the trend's span, the pill's rate upright and the rail's across |
 | shapes | (part D) upright (384 x 832) and across (760 x 384), on every screen (the Registers connected and not, a register's sheet and an enum's, the Chart with six lines and the cursors, the Lines and Measure sheets, a chip's menu, the window's menu, the Monitor, a frame's sheet, the Log, the drawer's top and foot, the language list, the Help): no Rectangle drawn with a corner's radius half its smaller side or more, but a Switch's parts, the busy indicator, an icon's strokes and lens and the radio; the window's `Material.roundedScale` SmallScale |
-| a&nbsp;press | a finger held 1 s on a register's row, a Button, a ToolButton, a tab, a filter chip, a Switch, USB / TCP, a ComboBox, a sheet's Plot and a menu's item: no Ripple pressed (no wave), no Switch's halo, not a pixel changed outside the item; the row's tint at its far corner 60 ms in (a circle from the finger would not be there yet) and gone 600 ms after the release |
+| a&nbsp;press | a finger held 1 s on a register's row, a group's header, a Button, a ToolButton, a tab, a filter chip, a Switch, USB / TCP, a ComboBox, a sheet's Plot and a menu's item: no Ripple pressed (no wave), no Switch's halo, not a pixel changed outside the item; the row's tint at its far corner 60 ms in (a circle from the finger would not be there yet) and gone 600 ms after the release |
 | drawer&nbsp;names | across and upright, English and Arabic: no switch's name cut (*Keep the screen on while connected* on two lines across), each row 48 dp or more, the switch in the middle of its name's lines |
 | Restart&nbsp;now | another language chosen: **Restart now** under the note (48 dp), a tap restarts (a stand-in: `PhoneLanguage::setRestartForTests`); gone when the language is chosen back |
 | drawer&nbsp;at&nbsp;its&nbsp;top | left scrolled to its foot, the drawer opens again at its top with Connect in sight; `openAtWrites` still opens it at Allow writes |
@@ -8999,9 +9001,10 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | Lines&nbsp;names | the Lines sheet's names by their dots at the start edge: at the right in Arabic (a Latin name sat at the left of its room, in the row's middle) |
 | drawer&nbsp;across | at 760 x 384, TCP and USB, English and Arabic: the drawer opens with Connect in sight (no title over its sections there; upright the title stays) |
 | chips&nbsp;still | across and upright, four lines, one value alternating between *0 V* and *-12345 V*: the chips shown, their places and widths stay the same (each value's room the widest the legend writes, from the start) |
+| group&nbsp;folds | upright and across, English and Arabic: a group's header 48 dp with its chevron (down open; folded next, back in Arabic); a tap folds it (its rows gone, *· 3* beside its name, the header where it was) and opens it; two folds kept for the map in a new window, the folded registers still polled; a search finds a folded group's register, the fold back when it is cleared |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (133 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (134 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `help` (its topics), `helppage` (the phone's own topic; `helppage2` a screen down, `helppage_end`
@@ -9019,7 +9022,7 @@ in two columns), `chart760_two` (the whole window), `chart760_bars` (the bars ba
 link through the bunching proxy: the break, then the slope after the reconnect), `monitor760`, `monitor760_rx` (TX off)
 and `frame760` (a READ_RESP's sheet); upright `chart_portrait`, `log_levels`, `log_filtered` (Info off) and
 `frame_portrait` (a READ's sheet); and part D's, `d11_<name>_<upright|across>` at the owner's phone upright (384 x
-832) and across (760 x 384): `registers`, `hold` (a finger held 1 s on a row), `drawer`, `display` (another language
+832) and across (760 x 384): `registers`, `hold` (a finger held 1 s on a row), `folds` (Protocol and System folded), `drawer`, `display` (another language
 chosen: the note and Restart now), `language` (its list open), `connected`, `sheet`, `enum`, `chart` (three lines, the
 cursors on), `lines`, `measure`, `chipmenu`, `monitor`, `frame`, `log` and `help` (the same code at the commit before
 gives the pictures before). With `EVRE_PHONE_ONLY=shots` it saves them without running the checks
