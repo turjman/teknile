@@ -6688,6 +6688,31 @@ bool rowShown(const Phone &phone, const QString &reg) {
  * go, the header says "· 3", the header stays where it was) and opens it again; the folds kept for the map (a new
  * window, as after a restart, has them; a folded group's registers still polled); a search finds a folded group's
  * register and the fold comes back when it is cleared */
+/* a row through a fold or an opening, sampled every few ms for 700 ms: a step where it is shown while cut (its height
+ * between none and its full one, its content not faded out) is a fault; so is no step between (nothing moved) */
+void foldWatch(const Phone &phone, const QString &name, const QString &where, QStringList &bad) {
+	QElapsedTimer since;
+	since.start();
+	int between = 0, cut = 0;
+	QString first;
+	while (since.elapsed() < 700) {
+		QQuickItem *row = regRow(phone, name);
+		const QQuickItem *panel = within(row, QStringLiteral("rowPanel"));
+		if (row && panel) {
+			const double full = row->implicitHeight(), h = row->height(), o = panel->opacity();
+			const bool partHigh = h > 0.5 && h < full - 0.5;
+			if (partHigh || (o > 0.02 && o < 0.98)) ++between;
+			if (partHigh && o > 0.02 && !cut++)
+				first = QStringLiteral("%1 px of %2 at opacity %3 (%4 ms)").arg(h, 0, 'f', 1).arg(full, 0, 'f', 1)
+								.arg(o, 0, 'f', 2).arg(since.elapsed());
+		}
+		QTest::qWait(4);
+	}
+	if (cut || !between)
+		bad << QStringLiteral("%1: %2 shown while cut %3 times (first %4), %5 steps between").arg(where, name).arg(cut)
+					   .arg(first.isEmpty() ? QStringLiteral("none") : first).arg(between);
+}
+
 void checkGroupFolds() {
 	QStringList seen, bad;
 	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
@@ -6713,9 +6738,10 @@ void checkGroupFolds() {
 				const QQuickItem *chevron = within(head, QStringLiteral("groupChevron"));
 				const bool open = chevron && chevron->isVisible() && chevron->property("kind").toString() == QLatin1String("down")
 						&& head->height() >= 47.5 && rowShown(phone, first);
-				/* a tap without the settling after it, then the fold's two steps (the owner's phone: every row shrinking at
-				 * once showed thin slices of each, cut through the letters): 60 ms in, the first row fading at its full
-				 * height; 200 ms in, faded out while its room closes, its content its full height, cut by the row */
+				/* a tap without the settling after it, then the fold watched to its end, every few ms (the owner's phone:
+				 * every row shrinking at once showed thin slices of each, cut through the letters): the first row never
+				 * shown while cut (a height between none and its full one with its content not faded out), and moving
+				 * (a step between). Not at fixed times: a slow machine's animations run ahead of its timers */
 				{
 					static QPointingDevice *finger = QTest::createTouchDevice();
 					const QPoint c = head->mapToScene(QPointF(head->width() / 2, head->height() / 2)).toPoint();
@@ -6723,26 +6749,7 @@ void checkGroupFolds() {
 					QTest::qWait(30);
 					QTest::touchEvent(phone.window, finger).release(0, c, phone.window.data());
 				}
-				{
-					QElapsedTimer since;
-					since.start();
-					QTest::qWait(60);
-					QQuickItem *row = regRow(phone, first);
-					const QQuickItem *panel = within(row, QStringLiteral("rowPanel"));
-					const double full = row ? row->implicitHeight() : 0;
-					const double h1 = row ? row->height() : 0, o1 = panel ? panel->opacity() : -1;
-					const bool fading = row && std::fabs(h1 - full) < 0.5 && o1 > 0.02 && o1 < 0.95;
-					QTest::qWait(int(std::max<qint64>(0, 200 - since.elapsed())));
-					const double h2 = row ? row->height() : 0, o2 = panel ? panel->opacity() : -1;
-					const bool closing = row && h2 > 0.5 && h2 < full - 0.5 && o2 < 0.02 && panel
-							&& std::fabs(panel->height() - full) < 0.5 && panel->y() == 0 && row->clip();
-					if (!fading || !closing)
-						bad << QStringLiteral("%1: %2 at 60 ms %3 of %4 px, opacity %5; at 200 ms %6 px, opacity %7, its content "
-											  "%8 px, clipped %9")
-									   .arg(where, first).arg(h1, 0, 'f', 1).arg(full, 0, 'f', 1).arg(o1, 0, 'f', 2)
-									   .arg(h2, 0, 'f', 1).arg(o2, 0, 'f', 2).arg(panel ? panel->height() : -1, 0, 'f', 1)
-									   .arg(row && row->clip());
-				}
+				foldWatch(phone, first, where + QStringLiteral(" folding"), bad);
 				phone.settle(400);
 				const QQuickItem *count = within(head, QStringLiteral("regGroupCount"));
 				const QString countText = count && count->isVisible() ? count->property("text").toString() : QString();
@@ -6750,23 +6757,15 @@ void checkGroupFolds() {
 						&& chevron->property("kind").toString() == QLatin1String(rtl ? "back" : "next")
 						&& countText.contains(size_) && countText.contains(QChar(0x00b7));
 				const double y1 = sceneRect(head).top();
-				/* opening the other way round: 100 ms in, the first row's room opening and the row not yet shown (it
-				 * fades in once its room is open) */
+				/* opening the other way round, watched the same way */
 				{
 					static QPointingDevice *finger = QTest::createTouchDevice();
 					const QPoint c = head->mapToScene(QPointF(head->width() / 2, head->height() / 2)).toPoint();
 					QTest::touchEvent(phone.window, finger).press(0, c, phone.window.data());
 					QTest::qWait(30);
 					QTest::touchEvent(phone.window, finger).release(0, c, phone.window.data());
-					QTest::qWait(100);
-					QQuickItem *row = regRow(phone, first);
-					const QQuickItem *panel = within(row, QStringLiteral("rowPanel"));
-					const double full = row ? row->implicitHeight() : 0, h = row ? row->height() : 0;
-					const double o = panel ? panel->opacity() : -1;
-					if (!row || h < 0.5 || h > full - 0.5 || o > 0.02)
-						bad << QStringLiteral("%1: opening, %2 at 100 ms %3 of %4 px, opacity %5").arg(where, first)
-									   .arg(h, 0, 'f', 1).arg(full, 0, 'f', 1).arg(o, 0, 'f', 2);
 				}
+				foldWatch(phone, first, where + QStringLiteral(" opening"), bad);
 				phone.settle(500);
 				const bool openAgain = rowShown(phone, first) && count && !count->isVisible();
 				seen << QStringLiteral("%1: header %2 dp at %3, folded at %4 (\"%5\")").arg(where).arg(head->height()).arg(y0)
