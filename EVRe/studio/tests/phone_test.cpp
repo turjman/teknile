@@ -5637,6 +5637,53 @@ QStringList sheetMeasure(const Phone &phone, const QString &name) {
 /* Measure, as the desktop's table: the button opens its sheet (not modal: the chart stays live beside it), its title
  * says the view and its length; per line min, max, mean, RMS, std dev and peak-peak equal to the desktop's statsOf over
  * the view. The cursors placed: the title says A to B, the values are statsOf over A..B. Closed: no more measuring */
+/* the Measure sheet open across (part D's pictures: in Arabic a chip read "SURE 0.620 bar", its start under the sheet's
+ * edge; in English TEMPERATURE's end): at 760 x 384 with six lines, English and Arabic, the sheet open at the window's
+ * end, every chip shown and the "+N" lie beside it, none under it; at least one chip shown and "+N" the others */
+void checkLegendBesideSheet() {
+	QStringList seen, bad;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		Phone phone(QSize(760, 384));
+		ChartItem *chart = chartWithFedLines(phone, 6);
+		if (chart) chart->setLive(false);
+		chartFrame(phone, chart, 3);
+		phone.tap(phone.item("measureButton"));
+		QObject *sheet = phone.object("measureSheet");
+		const bool opened = sheet && QTest::qWaitFor([&] { return sheet->property("opened").toBool(); }, 3000);
+		phone.settle(400);
+		const QRectF cover = sheet ? QRectF(sheet->property("x").toDouble(), sheet->property("y").toDouble(),
+												  sheet->property("width").toDouble(), sheet->property("height").toDouble())
+								   : QRectF();
+		const QList<QQuickItem *> chips = shownChips(phone);
+		QStringList under;
+		for (QQuickItem *chip : chips) {
+			const QRectF r = sceneRect(chip);
+			if (r.right() > cover.left() + 0.5 && r.left() < cover.right() - 0.5)
+				under << QStringLiteral("a chip %1..%2").arg(r.left(), 0, 'f', 1).arg(r.right(), 0, 'f', 1);
+		}
+		QQuickItem *more = phone.item("legendMore");
+		const bool moreShown = more && more->isVisible();
+		if (moreShown) {
+			const QRectF r = sceneRect(more);
+			if (r.right() > cover.left() + 0.5 && r.left() < cover.right() - 0.5)
+				under << QStringLiteral("\"+N\" %1..%2").arg(r.left(), 0, 'f', 1).arg(r.right(), 0, 'f', 1);
+		}
+		const QString moreText = phone.text("legendMoreText");
+		const int notShown = 6 - int(chips.size());
+		seen << QStringLiteral("%1: sheet %2..%3, %4 chips and \"%5\"").arg(code).arg(cover.left(), 0, 'f', 1)
+						.arg(cover.right(), 0, 'f', 1).arg(chips.size()).arg(moreShown ? moreText : QString());
+		if (!opened || cover.isEmpty() || !under.isEmpty() || chips.isEmpty() || (notShown > 0) != moreShown
+				|| (moreShown && moreText != QStringLiteral("+%1").arg(notShown)))
+			bad << seen.last() + (under.isEmpty() ? QString() : QStringLiteral(", under the sheet: ") + under.join(QStringLiteral(", ")));
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, legend beside the Measure sheet: across with six lines, the sheet open at the "
+										"window's end (English and Arabic), every chip shown and the \"+N\" beside it, none "
+										"under its edge; \"+N\" counts the others (%1) %2")
+								 .arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
+}
+
 void checkChartMeasure() {
 	QStringList bad;
 	Phone phone(PORTRAIT);
@@ -7165,6 +7212,7 @@ int main(int argc, char **argv) {
 	RUN(checkLinesSheetNamesAtStart);
 	RUN(checkDrawerConnectAcross);
 	RUN(checkChipsStill);
+	RUN(checkLegendBesideSheet);
 	RUN(checkGroupFolds);
 	RUN(checkFoldedFits);
 #undef RUN

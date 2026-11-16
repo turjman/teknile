@@ -384,9 +384,18 @@ Item {
                 objectName: "legendStrip"
                 visible: chart.lineCount > 0
                 // across the chart's whole width: over the value labels' column too (none is that high), so a narrow
-                // phone has room for one more chip
-                x: 8
-                width: Math.max(0, chart.width - 16)
+                // phone has room for one more chip. Not under the Measure sheet across (at the window's end: the right,
+                // the left in Arabic): the legend keeps to the plot beside it, so no chip lies under its edge cut
+                // mid-word ("SURE 0.620 bar"), and the "+N" counts the ones it leaves out
+                readonly property real sheetCover: measureSheet.side && measureSheet.visible
+                                                   ? measureSheet.width * measureSheet.position : 0
+                readonly property real chartLeft: chart.width >= 0 && screen.width >= 0 ? chart.mapToItem(null, 0, 0).x : 0
+                readonly property real coverStart: screen.rtl ? Math.max(0, sheetCover - chartLeft) : 0
+                readonly property real coverEnd: screen.rtl ? 0
+                    : Math.max(0, chartLeft + chart.width
+                                  - ((measureSheet.parent ? measureSheet.parent.width : chart.width) - sheetCover))
+                x: 8 + (coverStart > 0 ? coverStart + 8 : 0)
+                width: Math.max(0, chart.width - 16 - (coverStart > 0 ? coverStart + 8 : 0) - (coverEnd > 0 ? coverEnd + 8 : 0))
                 height: screen.legendHeight
                 // the chips shown (the first `shown`), set by fit()
                 property int shown: 0
