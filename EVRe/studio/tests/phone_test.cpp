@@ -6713,9 +6713,9 @@ void checkGroupFolds() {
 				const QQuickItem *chevron = within(head, QStringLiteral("groupChevron"));
 				const bool open = chevron && chevron->isVisible() && chevron->property("kind").toString() == QLatin1String("down")
 						&& head->height() >= 47.5 && rowShown(phone, first);
-				/* a tap without the settling after it: mid-fold (200 ms), the first row's height on its way, its content its
-				 * full height, cut by the row, and fading (the owner's phone: the rows' text squeezed onto lines a few
-				 * pixels apart) */
+				/* a tap without the settling after it, then the fold's two steps (the owner's phone: every row shrinking at
+				 * once showed thin slices of each, cut through the letters): 60 ms in, the first row fading at its full
+				 * height; 200 ms in, faded out while its room closes, its content its full height, cut by the row */
 				{
 					static QPointingDevice *finger = QTest::createTouchDevice();
 					const QPoint c = head->mapToScene(QPointF(head->width() / 2, head->height() / 2)).toPoint();
@@ -6723,19 +6723,25 @@ void checkGroupFolds() {
 					QTest::qWait(30);
 					QTest::touchEvent(phone.window, finger).release(0, c, phone.window.data());
 				}
-				QTest::qWait(70);
 				{
+					QElapsedTimer since;
+					since.start();
+					QTest::qWait(60);
 					QQuickItem *row = regRow(phone, first);
 					const QQuickItem *panel = within(row, QStringLiteral("rowPanel"));
-					const double h = row ? row->height() : 0, full = row ? row->implicitHeight() : 0;
-					const bool moving = row && h > 0.5 && h < full - 0.5;
-					const bool cut = moving && panel && std::fabs(panel->height() - full) < 0.5 && panel->y() == 0
-							&& row->clip() && panel->opacity() < 0.95;
-					if (!cut)
-						bad << QStringLiteral("%1: mid-fold %2 at %3 of %4 px, its content %5 px, clipped %6, opacity %7")
-									   .arg(where, first).arg(h, 0, 'f', 1).arg(full, 0, 'f', 1)
-									   .arg(panel ? panel->height() : -1, 0, 'f', 1).arg(row && row->clip())
-									   .arg(panel ? panel->opacity() : -1, 0, 'f', 2);
+					const double full = row ? row->implicitHeight() : 0;
+					const double h1 = row ? row->height() : 0, o1 = panel ? panel->opacity() : -1;
+					const bool fading = row && std::fabs(h1 - full) < 0.5 && o1 > 0.02 && o1 < 0.95;
+					QTest::qWait(int(std::max<qint64>(0, 200 - since.elapsed())));
+					const double h2 = row ? row->height() : 0, o2 = panel ? panel->opacity() : -1;
+					const bool closing = row && h2 > 0.5 && h2 < full - 0.5 && o2 < 0.02 && panel
+							&& std::fabs(panel->height() - full) < 0.5 && panel->y() == 0 && row->clip();
+					if (!fading || !closing)
+						bad << QStringLiteral("%1: %2 at 60 ms %3 of %4 px, opacity %5; at 200 ms %6 px, opacity %7, its content "
+											  "%8 px, clipped %9")
+									   .arg(where, first).arg(h1, 0, 'f', 1).arg(full, 0, 'f', 1).arg(o1, 0, 'f', 2)
+									   .arg(h2, 0, 'f', 1).arg(o2, 0, 'f', 2).arg(panel ? panel->height() : -1, 0, 'f', 1)
+									   .arg(row && row->clip());
 				}
 				phone.settle(400);
 				const QQuickItem *count = within(head, QStringLiteral("regGroupCount"));
@@ -6744,8 +6750,24 @@ void checkGroupFolds() {
 						&& chevron->property("kind").toString() == QLatin1String(rtl ? "back" : "next")
 						&& countText.contains(size_) && countText.contains(QChar(0x00b7));
 				const double y1 = sceneRect(head).top();
-				phone.tap(head);
-				phone.settle(400);
+				/* opening the other way round: 100 ms in, the first row's room opening and the row not yet shown (it
+				 * fades in once its room is open) */
+				{
+					static QPointingDevice *finger = QTest::createTouchDevice();
+					const QPoint c = head->mapToScene(QPointF(head->width() / 2, head->height() / 2)).toPoint();
+					QTest::touchEvent(phone.window, finger).press(0, c, phone.window.data());
+					QTest::qWait(30);
+					QTest::touchEvent(phone.window, finger).release(0, c, phone.window.data());
+					QTest::qWait(100);
+					QQuickItem *row = regRow(phone, first);
+					const QQuickItem *panel = within(row, QStringLiteral("rowPanel"));
+					const double full = row ? row->implicitHeight() : 0, h = row ? row->height() : 0;
+					const double o = panel ? panel->opacity() : -1;
+					if (!row || h < 0.5 || h > full - 0.5 || o > 0.02)
+						bad << QStringLiteral("%1: opening, %2 at 100 ms %3 of %4 px, opacity %5").arg(where, first)
+									   .arg(h, 0, 'f', 1).arg(full, 0, 'f', 1).arg(o, 0, 'f', 2);
+				}
+				phone.settle(500);
 				const bool openAgain = rowShown(phone, first) && count && !count->isVisible();
 				seen << QStringLiteral("%1: header %2 dp at %3, folded at %4 (\"%5\")").arg(where).arg(head->height()).arg(y0)
 								.arg(y1).arg(countText);
@@ -6788,13 +6810,13 @@ void checkGroupFolds() {
 	}
 	language::apply(*qApp, QStringLiteral("en"));
 	check(bad.isEmpty(), QStringLiteral("phone, Registers: a group's header (48 dp, its chevron) folds it and opens it, in "
-										"place, its rows cut and fading while they fold (not squeezed), its count shown folded; kept for the map in a new window, still polled; a "
+										"place, its rows faded out before their room closes and faded in once it is open (never cut through their letters), its count shown folded; kept for the map in a new window, still polled; a "
 										"search finds a folded group's register (%1) %2")
 								 .arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
 }
 
-/* every group folded (the owner's phone: a scroll indicator stayed shown, a fifth of the track, over a list of five
- * headers that fits): folded in a window, then a new window opened with the folds kept, as the app starts. Each time
+/* every group folded (a grey bar seen at the owner's phone's right edge was Samsung's Edge panel handle, not the
+ * list's; this guards the list's own): folded in a window, then a new window opened with the folds kept, as the app starts. Each time
  * the list is still, its content the headers and the foot (no estimate of rows it does not show), its scroll
  * indicator not active and sized by that content; upright and across */
 void checkFoldedFits() {

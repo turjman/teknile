@@ -45,13 +45,36 @@ Item {
 
     objectName: "row_" + name
     implicitHeight: compact ? 42 : Math.max(52, body.implicitHeight + 14)
-    height: folded ? 0 : implicitHeight
+    height: implicitHeight
     visible: height > 0
     clip: height < implicitHeight
-    Behavior on height {
-        enabled: row.foldMotion
-        NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+    // folded: no height, its content faded. A tap's fold in two steps, so no row is ever seen cut through its letters
+    // (the owner's phone: every row of the group shrinking at once showed thin slices of each): folding, the rows fade
+    // out and then their room closes; opening, their room opens and then they fade in. A transition per way (a
+    // Behavior's durations bound to `folded` were read before it changed, the steps the other way round)
+    states: State {
+        name: "folded"
+        when: row.folded
+        PropertyChanges { row.height: 0; panel.opacity: 0 }
     }
+    transitions: [
+        Transition {
+            to: "folded"
+            enabled: row.foldMotion
+            SequentialAnimation {
+                NumberAnimation { target: panel; property: "opacity"; duration: 110; easing.type: Easing.InOutQuad }
+                NumberAnimation { target: row; property: "height"; duration: 180; easing.type: Easing.OutCubic }
+            }
+        },
+        Transition {
+            from: "folded"
+            enabled: row.foldMotion
+            SequentialAnimation {
+                NumberAnimation { target: row; property: "height"; duration: 180; easing.type: Easing.OutCubic }
+                NumberAnimation { target: panel; property: "opacity"; duration: 160; easing.type: Easing.InOutQuad }
+            }
+        }
+    ]
 
     readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
     readonly property bool failed: error.length > 0
@@ -190,15 +213,6 @@ Item {
         anchors.right: parent.right
         anchors.top: parent.top
         height: row.implicitHeight
-        // out faster than the height folds, in slower than it opens: a row mostly cut is mostly faded
-        opacity: row.folded ? 0 : 1
-        Behavior on opacity {
-            enabled: row.foldMotion
-            NumberAnimation {
-                duration: row.folded ? 120 : 220
-                easing.type: row.folded ? Easing.OutQuad : Easing.InQuad
-            }
-        }
         color: PhoneTheme.surface
 
         PressTint {
