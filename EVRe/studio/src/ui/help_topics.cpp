@@ -902,7 +902,8 @@ sent and received, the timeouts, the error answers and the bad frames. While tim
 amber and a line says why; after a quiet while it is green again.</li>
 <li><b>Device</b>: the map (<b>Open…</b> chooses another <code>.json</code>) and <b>Allow writes</b>. <b>Polling</b>: on
 or off, and its interval (0 ms: as fast as the device answers).</li>
-<li>At the drawer's foot: the dark theme, the language (applied when the app is opened again) and <b>Help</b>.</li>
+<li>At the drawer's foot: the dark theme, the language (applied when the app is opened again; <b>Restart now</b> under it
+does that at once) and <b>Help</b>.</li>
 </ul>
 <h3>Registers</h3>
 <ul>
@@ -937,8 +938,8 @@ switch to show it. <b>Clear</b> empties the chart.</li>
 <li><b>Measure</b> shows, per line, its min, max, mean, RMS, std dev and peak-peak over the view, or between A and B
 once the cursors are placed, as the desktop's table under its chart. The chart stays usable beside it; the columns
 scroll sideways when they do not fit.</li>
-<li><b>Cursors</b> puts A and B on the view and holds it; drag each by its round handle (A's at the top, B's at the
-foot). Beside the plot (under it, upright): the times of A and B and B − A, and per line its values at A and B,
+<li><b>Cursors</b> puts A and B on the view and holds it; drag each by its handle, a rounded square with its letter (A's at
+the top, B's at the foot). Beside the plot (under it, upright): the times of A and B and B − A, and per line its values at A and B,
 B − A, and the min, max and mean between them. <b>Cursors</b> again takes them off.</li>
 </ul>
 <h3>Monitor and Log</h3>

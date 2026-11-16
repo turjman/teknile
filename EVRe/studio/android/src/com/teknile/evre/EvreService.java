@@ -7,7 +7,8 @@
 // (a USB link's permission request is one too). Also the screen kept on while connected (A-5), the orientation a screen
 // asks for (A-16) and the task moved to the background by a back at the root, on the activity's thread; a short buzz
 // (the view's haptic feedback, which follows the phone's touch feedback setting) and the animator scale (0: Remove
-// animations). Called by src/phone/phone_system.cpp.
+// animations), and the app opened again for a new language (restart). Called by src/phone/phone_system.cpp and
+// src/phone/phone_language.cpp.
 package com.teknile.evre;
 
 import android.app.Activity;
@@ -100,6 +101,17 @@ public final class EvreService extends Service {
             view.performHapticFeedback(Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.CONFIRM
                                                                    : HapticFeedbackConstants.VIRTUAL_KEY);
         });
+    }
+
+    // the app opened again (the drawer's Restart now, a new language): the launcher's activity started as a new task and
+    // this process ended, so the next one starts with the language chosen; the link's service ends with it
+    public static void restart(Context context) {
+        Context app = context.getApplicationContext();
+        Intent launch = app.getPackageManager().getLaunchIntentForPackage(app.getPackageName());
+        if (launch == null || launch.getComponent() == null) return;
+        release(app);
+        app.startActivity(Intent.makeRestartActivityTask(launch.getComponent()));
+        Runtime.getRuntime().exit(0);
     }
 
     // the animator duration scale: 0 when the phone's animations are removed (Accessibility, or Developer options)

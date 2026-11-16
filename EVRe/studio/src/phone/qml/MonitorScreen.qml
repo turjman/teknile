@@ -85,7 +85,9 @@ Item {
                 text: qsTr("paused")
                 color: PhoneTheme.warn
                 font.pixelSize: 13
-                elide: Text.ElideRight
+                // whole or not at all (upright the chips leave too little room: it read "paus…"); Resume, lit, says it
+                // too. Its room kept either way, so the row does not move
+                opacity: implicitWidth <= width + 0.5 ? 1 : 0
             }
             Item {
                 Layout.fillWidth: true
@@ -93,6 +95,7 @@ Item {
             }
             Button {
                 objectName: "monitorPause"
+                Material.roundedScale: Material.SmallScale
                 text: screen.paused ? qsTr("Resume") : qsTr("Pause")
                 flat: true
                 highlighted: screen.paused
@@ -101,6 +104,7 @@ Item {
             }
             Button {
                 objectName: "monitorClear"
+                Material.roundedScale: Material.SmallScale
                 text: qsTr("Clear")
                 flat: true
                 Material.foreground: PhoneTheme.accent
@@ -274,6 +278,7 @@ Item {
         }
         Button {
             objectName: "monitorConnect"
+            Material.roundedScale: Material.SmallScale
             Layout.alignment: Qt.AlignHCenter
             visible: !PhoneSession.connected
             text: qsTr("Connect…")

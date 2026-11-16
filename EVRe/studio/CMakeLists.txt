@@ -285,6 +285,7 @@ if(EVRE_PHONE)
             src/phone/qml/PhoneMenu.qml
             src/phone/qml/FilterChip.qml
             src/phone/qml/FrameSheet.qml
+            src/phone/qml/PressTint.qml
         SOURCES
             src/phone/phone_theme.h     src/phone/phone_theme.cpp
             src/phone/phone_language.h  src/phone/phone_language.cpp

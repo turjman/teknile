@@ -10,14 +10,14 @@
 // A changed value glows as on the desktop: the row tinted toward the accent and a bar at its start edge, fading over
 // GLOW_MS (RegisterModel), with an arrow up or down for a plain number before the value. A value not refreshed for a
 // while is greyed and the second line says so; a register the device refused, or a read that failed, shows its value
-// and its error in red with a red bar at its start edge. A press shows Material's ripple.
+// and its error in red with a red bar at its start edge. A press tints the row's own rectangle at once and fades on
+// the release (PressTint): no ripple's circle (an unclipped one grew over the rows around a long press).
 // The value and its unit run left to right in Arabic too (10.5): the row mirrors (the name at the right, the value at
 // the left, by the chevron), and the values line up at their left edge there, the unit right after each. The map's
 // names (Latin) are aligned to the start edge by hand: a text left to its own letters would sit at the left.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
-import QtQuick.Controls.Material.impl
 import QtQuick.Layouts
 import EVRe.Phone
 
@@ -98,7 +98,7 @@ Item {
         property alias textName: tagText.objectName
         implicitWidth: tagRow.implicitWidth + 12
         implicitHeight: 18
-        radius: 9
+        radius: 6
         Row {
             id: tagRow
             anchors.centerIn: parent
@@ -108,7 +108,7 @@ Item {
                 visible: parent.parent.dot.a > 0
                 width: 6
                 height: 6
-                radius: 3
+                radius: 1.5
                 color: parent.parent.dot
             }
             Label {
@@ -175,13 +175,8 @@ Item {
         anchors.fill: parent
         color: PhoneTheme.surface
 
-        Ripple {
-            anchors.fill: parent
-            clipRadius: 0
+        PressTint {
             pressed: tap.pressed
-            anchor: panel
-            active: tap.pressed
-            color: panel.Material.rippleColor
         }
         Rectangle {
             id: tint

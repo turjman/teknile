@@ -8,6 +8,8 @@
 #include <QSettings>
 #include <QPointer>
 #include <QQmlApplicationEngine>
+#include <QQmlProperty>
+#include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QVariantMap>
@@ -63,6 +65,43 @@ protected:
 	}
 };
 
+/* No circle on a press (the owner: "so much circles, I hate that"). Material's controls draw a press as a ripple: a
+ * circle growing from the finger inside their background (a Button's, a ToolButton's, an ItemDelegate's, a MenuItem's,
+ * a TabButton's, a SpinBox's buttons), and a round halo around a Switch's thumb. Before a press reaches the window's
+ * items, every Ripple in the window is told it is never pressed (its binding to the control's pressed let go, so the
+ * write holds): the wave never starts, and what stays is the Ripple's flat tint over the control's own rounded shape
+ * while the control is down (its `active`), in at once and fading out on the release, as the phone's own controls draw
+ * it (PressTint.qml). A Switch's halo goes altogether (its thumb moving says the tap). Items made after (a list's rows, a
+ * popup's) are met at the next press, before it is delivered. */
+class NoRippleWave : public QObject {
+public:
+	using QObject::QObject;
+
+	static void calm(QQuickItem *item) {
+		if (item->inherits("QQuickMaterialRipple") && !item->property("evrePressShape").toBool()) {
+			item->setProperty("evrePressShape", true);
+			QQmlProperty::write(item, QStringLiteral("pressed"), false);
+			/* the Switch's: its indicator's child */
+			const QQuickItem *indicator = item->parentItem();
+			if (indicator && indicator->parentItem() && indicator->parentItem()->inherits("QQuickSwitch"))
+				QQmlProperty::write(item, QStringLiteral("active"), false);
+		}
+		for (QQuickItem *child : item->childItems()) calm(child);
+	}
+
+protected:
+	bool eventFilter(QObject *watched, QEvent *event) override {
+		const QEvent::Type type = event->type();
+		if (type == QEvent::TouchBegin || type == QEvent::MouseButtonPress)
+			if (auto *window = qobject_cast<QQuickWindow *>(watched)) {
+				QQuickItem *top = window->contentItem();
+				while (top && top->parentItem()) top = top->parentItem();
+				if (top) calm(top);
+			}
+		return false;
+	}
+};
+
 /* a test aid asked for: its variable =1, or on Android the start intent's extra of that name */
 bool asked(const char *variable, const char *extra) {
 	if (qEnvironmentVariableIntValue(variable) == 1) return true;
@@ -109,6 +148,7 @@ QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size, bool 
 	if (window)
 		if (auto *session = engine.singletonInstance<PhoneSession *>("EVRe.Phone", "PhoneSession")) session->attachWindow(window);
 	if (window) window->installEventFilter(new BackKey(window));
+	if (window) window->installEventFilter(new NoRippleWave(window));
 	return window;
 }
 

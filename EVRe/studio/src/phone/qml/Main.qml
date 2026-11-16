@@ -18,7 +18,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
-import QtQuick.Controls.Material.impl
 import QtQuick.Layouts
 import QtQuick.Window
 import EVRe.Phone
@@ -78,6 +77,8 @@ ApplicationWindow {
     Material.accent: PhoneTheme.accent
     Material.background: PhoneTheme.bg
     Material.foreground: PhoneTheme.text
+    // the controls' corners small (the owner: rounded squares, not pills or circles), as the desktop's buttons
+    Material.roundedScale: Material.SmallScale
     color: PhoneTheme.bg
 
     // Behind a modal (the drawer, a register's sheet) the screen darkens in both themes: Material's own dimming is a grey
@@ -118,6 +119,16 @@ ApplicationWindow {
             // three bars drawn, not a character: a phone's font may have no "☰" (a Samsung phone's had none)
             ToolButton {
                 id: menuButton
+                // a press: a rounded square's flat tint, not Material's circle
+                background: Item {
+                    implicitWidth: 48
+                    implicitHeight: 48
+                    PressTint {
+                        anchors.margins: 4
+                        radius: 8
+                        pressed: parent.parent ? parent.parent.down : false
+                    }
+                }
                 // the rail's is the menu button across
                 objectName: header.visible ? "menuButton" : "headerMenuButton"
                 Layout.preferredWidth: 48
@@ -165,7 +176,8 @@ ApplicationWindow {
         }
     }
 
-    // the tabs: an icon over each name (beside it in landscape); the chosen one in the accent, its icon on a pill
+    // the tabs: an icon over each name (beside it in landscape); the chosen one in the accent, its icon on a rounded
+    // square
     footer: TabBar {
         id: tabBar
         objectName: "tabBar"
@@ -185,7 +197,7 @@ ApplicationWindow {
                 color: PhoneTheme.border
             }
         }
-        // Material's line under the chosen tab goes: the pill marks it
+        // Material's line under the chosen tab goes: the rounded square behind its icon marks it
         contentItem: ListView {
             model: tabBar.contentModel
             currentIndex: tabBar.currentIndex
@@ -209,7 +221,7 @@ ApplicationWindow {
                 readonly property color tone: checked ? PhoneTheme.accent : PhoneTheme.muted
                 background: Item {}
                 contentItem: Item {
-                    // the icon's pill, then the name: under it, or beside it in landscape
+                    // the icon's rounded square, then the name: under it, or beside it in landscape
                     Rectangle {
                         id: pill
                         objectName: "tabPill"
@@ -217,15 +229,10 @@ ApplicationWindow {
                         y: root.wide ? (parent.height - height) / 2 : 9
                         width: 56
                         height: 30
-                        radius: height / 2
+                        radius: 8
                         color: tab.checked ? PhoneTheme.accentSoft : "transparent"
-                        Ripple {
-                            anchors.fill: parent
-                            clipRadius: pill.radius
+                        PressTint {
                             pressed: tab.pressed
-                            anchor: tab
-                            active: tab.pressed
-                            color: tab.Material.rippleColor
                         }
                         PhoneIcon {
                             objectName: "tabIcon"
@@ -269,6 +276,16 @@ ApplicationWindow {
         ToolButton {
             id: railMenu
             objectName: rail.visible ? "menuButton" : "railMenuButton"
+            // a press: a rounded square's flat tint, not Material's circle
+            background: Item {
+                implicitWidth: 48
+                implicitHeight: 48
+                PressTint {
+                    anchors.margins: 4
+                    radius: 8
+                    pressed: parent.parent ? parent.parent.down : false
+                }
+            }
             x: (parent.width - width) / 2
             y: 4
             width: 48
@@ -317,15 +334,10 @@ ApplicationWindow {
                             y: 6
                             width: 56
                             height: 30
-                            radius: height / 2
+                            radius: 8
                             color: railTab.checked ? PhoneTheme.accentSoft : "transparent"
-                            Ripple {
-                                anchors.fill: parent
-                                clipRadius: railPill.radius
+                            PressTint {
                                 pressed: railTab.pressed
-                                anchor: railTab
-                                active: railTab.pressed
-                                color: railTab.Material.rippleColor
                             }
                             PhoneIcon {
                                 objectName: "tabIcon"
@@ -362,7 +374,7 @@ ApplicationWindow {
             Accessible.name: PhoneSession.pillText
             onClicked: drawer.open()
             background: Rectangle {
-                radius: 12
+                radius: 8
                 color: railLink.pressed ? PhoneTheme.border
                        : root.linkTone === "good" ? PhoneTheme.goodSoft : root.linkTone === "bad" ? PhoneTheme.badSoft
                        : root.linkTone === "busy" ? PhoneTheme.warnSoft : PhoneTheme.surface2
@@ -374,7 +386,7 @@ ApplicationWindow {
                     y: 8
                     width: 10
                     height: 10
-                    radius: 5
+                    radius: 2.5
                     color: root.linkTone === "good" ? PhoneTheme.good : root.linkTone === "bad" ? PhoneTheme.bad
                            : root.linkTone === "busy" ? PhoneTheme.warn : PhoneTheme.muted
                 }

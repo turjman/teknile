@@ -71,7 +71,7 @@ Item {
             Layout.topMargin: screen.wide ? 4 : 8
             Layout.bottomMargin: 4
             implicitHeight: screen.wide ? 40 : 48
-            radius: implicitHeight / 2
+            radius: 8
             color: PhoneTheme.surface2
             border.color: searchField.activeFocus ? PhoneTheme.accent : PhoneTheme.border
             border.width: searchField.activeFocus ? 2 : 1
@@ -121,6 +121,16 @@ Item {
             ToolButton {
                 id: clearButton
                 objectName: "searchClear"
+                // a press: a rounded square's flat tint, not Material's circle
+                background: Item {
+                    implicitWidth: 48
+                    implicitHeight: 48
+                    PressTint {
+                        anchors.margins: 4
+                        radius: 8
+                        pressed: parent.parent ? parent.parent.down : false
+                    }
+                }
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: 48
@@ -179,7 +189,7 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     implicitWidth: 8
                     implicitHeight: 8
-                    radius: 4
+                    radius: 2
                     color: PhoneTheme.muted
                 }
                 ColumnLayout {
@@ -207,6 +217,7 @@ Item {
                 }
                 Button {
                     objectName: "registersConnect"
+                    Material.roundedScale: Material.SmallScale
                     Layout.preferredHeight: 48
                     text: qsTr("Connect…")
                     highlighted: true

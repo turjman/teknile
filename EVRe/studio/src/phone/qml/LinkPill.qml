@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-// The link's state in the header, as a pill: a dot in the state's colour (PhoneSession: grey off, amber on the way,
+// The link's state in the header, on a rounded square: a dot in the state's colour (PhoneSession: grey off, amber on the way,
 // green connected, red closed with a reason) and a short text in the text colour, on the state's soft tone (PhoneTheme),
-// so it reads in both themes; while connected the text has the poll rate (Main.qml). The pill is 32 high in a 48 high
+// so it reads in both themes; while connected the text has the poll rate (Main.qml). It is 32 high in a 48 high
 // target, a chevron at its end says it opens something: a tap opens the Connect drawer, where the whole story is.
 import QtQuick
 import QtQuick.Controls
@@ -32,7 +32,7 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         height: 32
-        radius: height / 2
+        radius: 8
         color: tap.pressed ? PhoneTheme.border : pill.softColor
         border.color: pill.tone === "off" ? PhoneTheme.border : "transparent"
 
@@ -51,7 +51,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 8
                 height: 8
-                radius: 4
+                radius: 2
                 color: pill.dotColor
             }
             Label {

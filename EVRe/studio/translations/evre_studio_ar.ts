@@ -2151,6 +2151,10 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
         <translation>تتغيّر اللغة عند فتح التطبيق مرة أخرى.</translation>
     </message>
     <message>
+        <source>Restart now</source>
+        <translation>إعادة التشغيل الآن</translation>
+    </message>
+    <message>
         <source>Open map</source>
         <translation>فتح خريطة</translation>
     </message>
@@ -4826,7 +4830,8 @@ sent and received, the timeouts, the error answers and the bad frames. While tim
 amber and a line says why; after a quiet while it is green again.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Device&lt;/b&gt;: the map (&lt;b&gt;Open…&lt;/b&gt; chooses another &lt;code&gt;.json&lt;/code&gt;) and &lt;b&gt;Allow writes&lt;/b&gt;. &lt;b&gt;Polling&lt;/b&gt;: on
 or off, and its interval (0 ms: as fast as the device answers).&lt;/li&gt;
-&lt;li&gt;At the drawer&apos;s foot: the dark theme, the language (applied when the app is opened again) and &lt;b&gt;Help&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;At the drawer&apos;s foot: the dark theme, the language (applied when the app is opened again; &lt;b&gt;Restart now&lt;/b&gt; under it
+does that at once) and &lt;b&gt;Help&lt;/b&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;Registers&lt;/h3&gt;
 &lt;ul&gt;
@@ -4861,8 +4866,8 @@ switch to show it. &lt;b&gt;Clear&lt;/b&gt; empties the chart.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Measure&lt;/b&gt; shows, per line, its min, max, mean, RMS, std dev and peak-peak over the view, or between A and B
 once the cursors are placed, as the desktop&apos;s table under its chart. The chart stays usable beside it; the columns
 scroll sideways when they do not fit.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Cursors&lt;/b&gt; puts A and B on the view and holds it; drag each by its round handle (A&apos;s at the top, B&apos;s at the
-foot). Beside the plot (under it, upright): the times of A and B and B − A, and per line its values at A and B,
+&lt;li&gt;&lt;b&gt;Cursors&lt;/b&gt; puts A and B on the view and holds it; drag each by its handle, a rounded square with its letter (A&apos;s at
+the top, B&apos;s at the foot). Beside the plot (under it, upright): the times of A and B and B − A, and per line its values at A and B,
 B − A, and the min, max and mean between them. &lt;b&gt;Cursors&lt;/b&gt; again takes them off.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;Monitor and Log&lt;/h3&gt;
@@ -4914,7 +4919,7 @@ both go on; with no link it closes the app.&lt;/p&gt;
 السبب؛ وبعد فترة هدوء تعود خضراء.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;الجهاز&lt;/b&gt;: الخريطة (&lt;b&gt;فتح…&lt;/b&gt; يختار ملف &lt;code&gt;.json&lt;/code&gt; آخر) و&lt;b&gt;السماح بالكتابة&lt;/b&gt;. &lt;b&gt;الاستطلاع&lt;/b&gt;: تشغيله
 أو إيقافه، وفاصله (القيمة ⁦0&#xa0;ms⁩: بأسرع ما يجيب الجهاز).&lt;/li&gt;
-&lt;li&gt;في أسفل لوحة الاتصال: السمة الداكنة، واللغة (تُطبَّق حين يُفتح التطبيق مرة أخرى)، و&lt;b&gt;مساعدة&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;في أسفل لوحة الاتصال: السمة الداكنة، واللغة (تُطبَّق حين يُفتح التطبيق مرة أخرى؛ و&lt;b&gt;إعادة التشغيل الآن&lt;/b&gt; تحتها تفعل ذلك في الحال)، و&lt;b&gt;مساعدة&lt;/b&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;المسجّلات&lt;/h3&gt;
 &lt;ul&gt;
@@ -4949,7 +4954,7 @@ both go on; with no link it closes the app.&lt;/p&gt;
 &lt;li&gt;&lt;b&gt;القياسات&lt;/b&gt; تعرض لكل خط الأدنى والأعلى والمتوسط وRMS والانحراف المعياري وقمة–قمة على المعروض، أو بين A وB
 بعد وضع المؤشرين، كجدول سطح المكتب تحت مخططه. ويبقى المخطط قابلًا للاستخدام بجانبها؛ وتنزلق الأعمدة جانبيًا حين
 لا تتسع.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;المؤشران&lt;/b&gt; يضع A وB على العرض ويثبّته؛ اسحب كلًّا منهما من مقبضه المستدير (مقبض A في الأعلى، ومقبض B في
+&lt;li&gt;&lt;b&gt;المؤشران&lt;/b&gt; يضع A وB على العرض ويثبّته؛ اسحب كلًّا منهما من مقبضه، وهو مربعٌ مستدير الحواف يحمل حرفه (مقبض A في الأعلى، ومقبض B في
 الأسفل). بجانب الرسم (وتحته بالطول): زمنا A وB و⁦B&#xa0;−&#xa0;A⁩، ولكل خط قيمتاه عند A وB، و⁦B&#xa0;−&#xa0;A⁩، والأدنى
 والأعلى والمتوسط بينهما. &lt;b&gt;المؤشران&lt;/b&gt; مرة أخرى يزيلهما.&lt;/li&gt;
 &lt;/ul&gt;

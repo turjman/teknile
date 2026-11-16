@@ -68,6 +68,7 @@ Item {
     // a button of the controls: flat, in its row's middle; across, as narrow as its text allows (Material's are 64 dp
     // at least) and 48 dp high (Material's 52: its face 40 and 6 above and under), 48 dp to the touch either way
     component BarButton: Button {
+        Material.roundedScale: Material.SmallScale
         flat: true
         anchors.verticalCenter: parent.verticalCenter
         topInset: screen.wide ? 4 : 6
@@ -180,6 +181,16 @@ Item {
                     ToolButton {
                         id: barsButton
                         objectName: "barsButton"
+                        // a press: a rounded square's flat tint, not Material's circle
+                        background: Item {
+                            implicitWidth: 48
+                            implicitHeight: 48
+                            PressTint {
+                                anchors.margins: 4
+                                radius: 8
+                                pressed: parent.parent ? parent.parent.down : false
+                            }
+                        }
                         visible: screen.wide
                         anchors.verticalCenter: parent.verticalCenter
                         width: 48
@@ -206,7 +217,7 @@ Item {
                                 y: parent.height / 2 - 13
                                 width: 9
                                 height: 9
-                                radius: 4.5
+                                radius: 2.25
                                 border.width: 1.5
                                 border.color: PhoneTheme.bg
                                 color: PhoneSession.state === PhoneSession.Connected
@@ -429,13 +440,24 @@ Item {
                             required property int lineId
                             required property string name
                             required property string value
+                            required property string unit
                             required property color colour
                             required property bool shown
                             objectName: "legendChip"
                             visible: index < legendStrip.shown
-                            // the value's room only grows: a value that changes does not move the chips, nor hide one
+                            // the value's room: from the start the widest the legend writes but its rare exponents
+                            // (ChartData::number: five figures and a sign, "-12345", "-0.123", in figures of one
+                            // width) with the unit, and it only grows: a live value that gets longer does not widen
+                            // the chip, so the chips shown change only with the lines or the width (the owner's
+                            // phone: four chips, then three and "+1" as a value grew, and back)
                             property real valueRoom: 0
-                            implicitWidth: 10 + 10 + 6 + chipName.implicitWidth + (valueRoom > 0 ? 6 + valueRoom : 0)
+                            readonly property real valueWidth: Math.max(valueRoom, Math.ceil(valueMetrics.advanceWidth))
+                            TextMetrics {
+                                id: valueMetrics
+                                font: chipValue.font
+                                text: "-00000" + (chip.unit.length > 0 ? " " + chip.unit : "")
+                            }
+                            implicitWidth: 10 + 10 + 6 + chipName.implicitWidth + 6 + valueWidth
                                            + 6 + chipArrowRoom
                             readonly property real chipArrowRoom: 28
                             width: implicitWidth
@@ -447,7 +469,7 @@ Item {
                                 y: 3
                                 width: parent.width
                                 height: 28
-                                radius: 14
+                                radius: 8
                                 color: chipToggle.pressed ? PhoneTheme.surface2 : PhoneTheme.surface
                                 // a hidden line's chip: its border and text muted, its dot hollow
                                 border.width: 1
@@ -478,7 +500,7 @@ Item {
                                 y: 3 + 14 - 5
                                 width: 10
                                 height: 10
-                                radius: 5
+                                radius: 2.5
                                 color: chip.shown ? chip.colour : "transparent"
                                 border.width: 2
                                 border.color: chip.colour
@@ -498,13 +520,14 @@ Item {
                                 objectName: "chipValue"
                                 x: chipName.x + chipName.implicitWidth + 6
                                 y: 3 + 14 - height / 2
-                                width: chip.valueRoom
+                                width: chip.valueWidth
                                 horizontalAlignment: Text.AlignRight
                                 text: chip.value
                                 visible: text.length > 0
                                 color: chip.shown ? PhoneTheme.text : PhoneTheme.muted
                                 font.pixelSize: 13
                                 font.bold: true
+                                font.features: { "tnum": 1 }
                                 onImplicitWidthChanged: if (implicitWidth > chip.valueRoom) chip.valueRoom = Math.ceil(implicitWidth)
                                 Component.onCompleted: chip.valueRoom = Math.ceil(implicitWidth)
                             }
@@ -526,8 +549,8 @@ Item {
                                     y: 4
                                     width: chip.chipArrowRoom - 1
                                     height: 26
-                                    topRightRadius: 13
-                                    bottomRightRadius: 13
+                                    topRightRadius: 7
+                                    bottomRightRadius: 7
                                     color: chipMore.pressed ? PhoneTheme.border : "transparent"
                                 }
                                 PhoneIcon {
@@ -559,7 +582,7 @@ Item {
                             y: 3
                             width: parent.width
                             height: 28
-                            radius: 14
+                            radius: 8
                             color: legendMore.pressed ? PhoneTheme.border : PhoneTheme.surface2
                             border.width: 1
                             border.color: PhoneTheme.control
@@ -645,7 +668,8 @@ Item {
                 onDoubleTapped: chart.live = true
             }
 
-            // the cursors: a line over the plot and a round handle to drag it (A's at the top, B's at the foot)
+            // the cursors: a line over the plot and a handle to drag it, a rounded square with the cursor's letter (A's at
+            // the top, B's at the foot), 48 dp to the touch
             Repeater {
                 id: cursorRepeater
                 model: 2
@@ -674,9 +698,10 @@ Item {
                         y: cursor.index === 0 ? chart.plotRect.y : chart.plotRect.y + chart.plotRect.height - 48
                         Rectangle {
                             anchors.centerIn: parent
+                            objectName: "cursorFace"
                             width: 28
                             height: 28
-                            radius: 14
+                            radius: 7
                             color: PhoneTheme.accent
                             border.width: 2
                             border.color: PhoneTheme.bg
@@ -826,7 +851,7 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 10
                                     height: 10
-                                    radius: 5
+                                    radius: 2.5
                                     color: readout.colour
                                 }
                                 Text {
@@ -927,7 +952,7 @@ Item {
             y: 10
             width: 32
             height: 4
-            radius: 2
+            radius: 1
             color: PhoneTheme.control
         }
     }
@@ -952,6 +977,16 @@ Item {
         }
         ToolButton {
             objectName: sheetTitle.prefix + "Close"
+            // a press: a rounded square's flat tint, not Material's circle
+            background: Item {
+                implicitWidth: 48
+                implicitHeight: 48
+                PressTint {
+                    anchors.margins: 4
+                    radius: 8
+                    pressed: parent.parent ? parent.parent.down : false
+                }
+            }
             Layout.preferredWidth: 48
             Layout.preferredHeight: 48
             Accessible.name: qsTr("Close")
@@ -1025,7 +1060,7 @@ Item {
                             objectName: "linesSheetDot"
                             width: 12
                             height: 12
-                            radius: 6
+                            radius: 3
                             color: lineRow.shown ? lineRow.colour : "transparent"
                             border.width: 2
                             border.color: lineRow.colour
@@ -1034,6 +1069,9 @@ Item {
                         Text {
                             objectName: "linesSheetName"
                             Layout.fillWidth: true
+                            // at the start edge, by the dot (a Latin name alone sat at the left of its room in Arabic,
+                            // in the row's middle)
+                            horizontalAlignment: Text.AlignLeft
                             text: lineRow.name
                             color: lineRow.shown ? PhoneTheme.text : PhoneTheme.muted
                             font.pixelSize: 15
@@ -1056,6 +1094,16 @@ Item {
                         ToolButton {
                             id: lineMore
                             objectName: "linesSheetMore"
+                            // a press: a rounded square's flat tint, not Material's circle
+                            background: Item {
+                                implicitWidth: 48
+                                implicitHeight: 48
+                                PressTint {
+                                    anchors.margins: 4
+                                    radius: 8
+                                    pressed: parent.parent ? parent.parent.down : false
+                                }
+                            }
                             Layout.preferredWidth: 48
                             Layout.preferredHeight: 48
                             Accessible.name: qsTr("More: Hide, Take off the chart")
@@ -1229,7 +1277,7 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 10
                                     height: 10
-                                    radius: 5
+                                    radius: 2.5
                                     color: nameCell.colour
                                 }
                                 Text {
@@ -1395,6 +1443,7 @@ Item {
             delegate: MenuItem {
                 required property var modelData
                 objectName: "fastChannel"
+                LayoutMirroring.enabled: fastMenu.rtl
                 text: modelData.unit.length > 0 ? modelData.name + " (" + modelData.unit + ")" : modelData.name
                 checkable: true
                 checked: modelData.plotted
@@ -1517,6 +1566,7 @@ Item {
                 // Auto: the values in view again, at once
                 Button {
                     objectName: "ySheetAuto"
+                    Material.roundedScale: Material.SmallScale
                     text: qsTr("Auto")
                     flat: true
                     highlighted: chart.yAuto
@@ -1528,12 +1578,14 @@ Item {
                 Item { Layout.fillWidth: true }
                 Button {
                     objectName: "ySheetCancel"
+                    Material.roundedScale: Material.SmallScale
                     text: qsTr("Cancel")
                     flat: true
                     onClicked: ySheet.close()
                 }
                 Button {
                     objectName: "ySheetApply"
+                    Material.roundedScale: Material.SmallScale
                     text: qsTr("Apply")
                     highlighted: true
                     onClicked: ySheet.apply()
