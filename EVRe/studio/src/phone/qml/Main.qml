@@ -362,14 +362,15 @@ ApplicationWindow {
             }
         }
         // the link's state at the foot: its dot, then the poll rate (connected) or its word, two lines at most; a tap
-        // opens the drawer, as the header's pill does
+        // opens the drawer, as the header's pill does; 8 above the window's foot, where a phone's rounded screen corner
+        // cut into it at 4 (the owner's phone)
         AbstractButton {
             id: railLink
             objectName: rail.visible ? "linkPill" : "railLinkPill"
             x: 4
             width: parent.width - 8
             height: 56
-            y: parent.height - height - 4
+            y: parent.height - height - 8
             Accessible.role: Accessible.Button
             Accessible.name: PhoneSession.pillText
             onClicked: drawer.open()

@@ -180,10 +180,25 @@ Item {
         }
     }
 
+    // its full height, from the row's top, whatever the row's: while a fold moves the row's height the row cuts it
+    // (clip) and it fades, so the rows of a folding group slide under one another instead of squeezing their text
+    // onto lines a few pixels apart (the owner's phone)
     Rectangle {
         id: panel
         objectName: "rowPanel"
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: row.implicitHeight
+        // out faster than the height folds, in slower than it opens: a row mostly cut is mostly faded
+        opacity: row.folded ? 0 : 1
+        Behavior on opacity {
+            enabled: row.foldMotion
+            NumberAnimation {
+                duration: row.folded ? 120 : 220
+                easing.type: row.folded ? Easing.OutQuad : Easing.InQuad
+            }
+        }
         color: PhoneTheme.surface
 
         PressTint {
