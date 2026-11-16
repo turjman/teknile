@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!-- EVRe Studio on Android (EVReStudioPhone, the phone's interface in Qt Quick): Qt's template (Qt 6.8,
-     src/android/templates) with the package's name and USB host. The activity turns with the phone, as each screen
+     src/android/templates) with the package's name, USB host and the launcher icon (res/, the desktop's mark). The activity turns with the phone, as each screen
      asks (A-16: EvreService.orientation). The window is made smaller over the soft keyboard
      (adjustResize): left unset, Qt 6.8 picks adjustPan for a field one line high, and the pan left the write sheet's
      field under the keyboard on a Samsung phone (Main.qml's keyboardLift covers what is left). -->
@@ -29,6 +29,8 @@
         android:name="org.qtproject.qt.android.bindings.QtApplication"
         android:hardwareAccelerated="true"
         android:label="EVRe Studio"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="true"
         android:fullBackupOnly="false">

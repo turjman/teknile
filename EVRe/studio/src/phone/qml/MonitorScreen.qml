@@ -70,6 +70,8 @@ Item {
                     // the protocol's words, as the frames write them
                     label: index === 0 ? "TX" : "RX"
                     count: index === 0 ? PhoneSession.frames.sentCount : PhoneSession.frames.receivedCount
+                    // the counts run on: room for six digits keeps both chips still
+                    countDigits: 6
                     checked: sides.shown.indexOf(index) >= 0
                     onToggled: sides.setValueShown(index, checked)
                 }

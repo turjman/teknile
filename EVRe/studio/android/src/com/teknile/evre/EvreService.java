@@ -120,7 +120,8 @@ public final class EvreService extends Service {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(context, CHANNEL)
                                                                    : new Notification.Builder(context);
         Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-        int icon = context.getApplicationInfo().icon;
+        // the mark in white (res/drawable/ic_stat_evre.xml): a status bar icon is drawn from its shape alone
+        int icon = context.getResources().getIdentifier("ic_stat_evre", "drawable", context.getPackageName());
         builder.setContentTitle(title)
                 .setContentText(text)
                 .setSmallIcon(icon != 0 ? icon : android.R.drawable.stat_notify_sync)

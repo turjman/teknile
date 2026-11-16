@@ -28,7 +28,21 @@ Drawer {
     exit: Transition {
         NumberAnimation { duration: PhoneSession.motion ? 220 : 0; easing.type: Easing.OutCubic }
     }
-    onAboutToShow: PhoneSession.refreshPorts()
+    onAboutToShow: {
+        PhoneSession.refreshPorts()
+        if (!atWrites) return
+        // a register's sheet asked for writes: open at Allow writes, its row lit for a moment (across, the switch was
+        // a long scroll down from the top)
+        atWrites = false
+        const most = Math.max(0, flick.contentHeight - flick.height)
+        flick.contentY = Math.max(0, Math.min(column.y + writesRow.y - (flick.height - writesRow.height) / 2, most))
+        writesGlow.flash()
+    }
+    property bool atWrites: false
+    function openAtWrites() {
+        atWrites = true
+        open()
+    }
 
     // a board plugged in or out shows in the list while the drawer is open on USB
     Timer {
@@ -196,6 +210,27 @@ Drawer {
         // a popup is not a child of the window's items: it mirrors by its own
         LayoutMirroring.enabled: drawer.rtl
         LayoutMirroring.childrenInherit: true
+
+        // the light behind Allow writes when the drawer opens at it (openAtWrites)
+        Rectangle {
+            id: writesGlow
+            objectName: "writesGlow"
+            x: column.x - 10
+            y: column.y + writesRow.y - 2
+            width: column.width + 20
+            height: writesRow.height + 4
+            radius: 12
+            color: PhoneTheme.accentSoft
+            border.color: PhoneTheme.accent
+            opacity: 0
+            function flash() { glowMotion.restart() }
+            SequentialAnimation {
+                id: glowMotion
+                NumberAnimation { target: writesGlow; property: "opacity"; to: 1; duration: PhoneSession.motion ? 250 : 0 }
+                PauseAnimation { duration: 1600 }
+                NumberAnimation { target: writesGlow; property: "opacity"; to: 0; duration: PhoneSession.motion ? 700 : 0 }
+            }
+        }
 
         ColumnLayout {
             id: column
@@ -414,14 +449,46 @@ Drawer {
                 font.pixelSize: 13
             }
             // the link's health, live, as the desktop's status bar: latency, frames each way, timeouts, error
-            // answers and bad frames (the counters are numbers and names: one line that wraps between its parts)
-            Note {
+            // answers and bad frames. Its parts wrap whole, a dot between two on one line and none at a line's start
+            // or end (wrapped as a sentence, a line began or ended with the dot)
+            Flow {
+                id: healthFlow
                 objectName: "linkHealth"
+                Layout.fillWidth: true
                 Layout.leftMargin: 20
                 visible: PhoneSession.state === PhoneSession.Connected && text.length > 0
-                text: PhoneSession.healthText
-                color: PhoneTheme.muted
-                font.pixelSize: 13
+                property string text: PhoneSession.healthText
+                readonly property var parts: text.length > 0 ? text.split(" · ") : []
+                Repeater {
+                    id: healthParts
+                    // a count, not the texts: the parts stay as their numbers change
+                    model: healthFlow.parts.length
+                    Row {
+                        id: healthPart
+                        required property int index
+                        objectName: "linkHealthPart"
+                        Text {
+                            text: healthFlow.parts[healthPart.index] || ""
+                            color: PhoneTheme.muted
+                            font.pixelSize: 13
+                            font.features: { "tnum": 1 }
+                        }
+                        // the dot after this part, shown while the next one is on the same line
+                        Text {
+                            objectName: "linkHealthDot"
+                            leftPadding: 6
+                            rightPadding: 6
+                            horizontalAlignment: Text.AlignHCenter
+                            text: "·"
+                            color: PhoneTheme.muted
+                            font.pixelSize: 13
+                            opacity: {
+                                const next = healthParts.count > 0 ? healthParts.itemAt(healthPart.index + 1) : null
+                                return next && Math.abs(next.y - healthPart.y) < 0.5 ? 1 : 0
+                            }
+                        }
+                    }
+                }
             }
             // while timeouts, errors or bad frames rise: why the pill is amber, with the warning's mark
             RowLayout {
@@ -514,6 +581,7 @@ Drawer {
                 font.pixelSize: 13
             }
             SwitchRow {
+                id: writesRow
                 text: qsTr("Allow writes")
                 switchName: "writesSwitch"
                 checked: PhoneSession.writesEnabled

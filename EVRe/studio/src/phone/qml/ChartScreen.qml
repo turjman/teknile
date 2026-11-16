@@ -628,8 +628,11 @@ Item {
                 maximumPointCount: 1
                 yAxis.enabled: false
                 property real lastX: 0
-                // a cursor's handle keeps its finger: the view is not taken from it, nor moved under it
-                grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.ApprovesTakeOverByAnything
+                // a cursor's handle keeps its finger: the view is not taken from it, nor moved under it. While the
+                // Measure sheet is open it takes nothing from an item either: the sheet lies over the plot, and the
+                // drag took the finger from its columns (they never scrolled, the chart panned and held)
+                grabPermissions: measureSheet.opened ? PointerHandler.ApprovesTakeOverByAnything
+                                                     : PointerHandler.CanTakeOverFromItems | PointerHandler.ApprovesTakeOverByAnything
                 onActiveChanged: lastX = 0
                 onActiveTranslationChanged: {
                     if (!active || screen.cursorDragging) return
@@ -1084,7 +1087,9 @@ Item {
         edge: side ? (screen.rtl ? Qt.LeftEdge : Qt.RightEdge) : Qt.BottomEdge
         modal: false
         dim: false
-        interactive: opened
+        // upright it is pulled down to close; across a sideways drag is the columns' (an interactive side drawer took it
+        // to drag itself, so the columns never scrolled and the chart beside panned and held): there its cross closes it
+        interactive: opened && !side
         closePolicy: Popup.CloseOnEscape
         width: side ? Math.min(460, (parent ? parent.width : 760) * 0.62) : (parent ? parent.width : 400)
         // across, under the controls' row: Cursors, Hold and the rest stay in reach beside it
@@ -1149,7 +1154,8 @@ Item {
                     objectName: "measureTable"
                     Layout.fillWidth: true
                     Layout.leftMargin: 16
-                    Layout.rightMargin: 8
+                    // clear of the sheet's scroll bar, which stays when the rows are taller than the sheet
+                    Layout.rightMargin: 16
                     Layout.topMargin: 4
                     Layout.bottomMargin: 12
                     implicitHeight: headerHeight + measureRepeater.count * rowHeight + 10
