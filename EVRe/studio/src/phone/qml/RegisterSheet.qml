@@ -347,12 +347,19 @@ Drawer {
                     }
                 }
 
-                // the value large and its unit, left to right in every language, at the start edge
+                // the value large and its unit, left to right in every language, at the start edge; "not refreshed" and
+                // "on the chart" right after them when they fit there, else on a line of their own under them. Beside
+                // the value, Plot adds no line: the sheet keeps its height and its close cross stays under the finger
                 Item {
+                    id: valueLine
                     Layout.fillWidth: true
                     Layout.topMargin: -6
-                    implicitHeight: valueText.implicitHeight
+                    readonly property bool tagsBeside: !tags.visible
+                                                       || valueRow.implicitWidth + 12 + tags.implicitWidth <= width
+                    implicitHeight: tagsBeside ? valueText.implicitHeight
+                                               : valueText.implicitHeight + 10 + tags.implicitHeight
                     Row {
+                        id: valueRow
                         objectName: "sheetValueRow"
                         LayoutMirroring.enabled: false
                         LayoutMirroring.childrenInherit: true
@@ -379,27 +386,30 @@ Drawer {
                             font.pixelSize: 18
                         }
                     }
-                }
-                Flow {
-                    Layout.fillWidth: true
-                    visible: sheet.entry.stale === true || sheet.entry.plotted === true
-                    spacing: 8
-                    Tag {
-                        objectName: "sheetStaleTag"
-                        visible: sheet.entry.stale === true
-                        color: PhoneTheme.warnSoft
-                        text: qsTr("not refreshed")
-                        textColor: PhoneTheme.warn
-                        textName: "sheetStale"
-                    }
-                    Tag {
-                        objectName: "sheetPlottedTag"
-                        visible: sheet.entry.plotted === true
-                        color: PhoneTheme.accentSoft
-                        dot: PhoneTheme.accent
-                        text: qsTr("on the chart")
-                        textColor: PhoneTheme.text
-                        textName: "sheetPlotted"
+                    Row {
+                        id: tags
+                        visible: sheet.entry.stale === true || sheet.entry.plotted === true
+                        spacing: 8
+                        x: valueLine.tagsBeside ? (sheet.rtl ? valueRow.x - 12 - width : valueRow.width + 12)
+                                                : (sheet.rtl ? parent.width - width : 0)
+                        y: valueLine.tagsBeside ? (valueText.implicitHeight - height) / 2 : valueText.implicitHeight + 10
+                        Tag {
+                            objectName: "sheetStaleTag"
+                            visible: sheet.entry.stale === true
+                            color: PhoneTheme.warnSoft
+                            text: qsTr("not refreshed")
+                            textColor: PhoneTheme.warn
+                            textName: "sheetStale"
+                        }
+                        Tag {
+                            objectName: "sheetPlottedTag"
+                            visible: sheet.entry.plotted === true
+                            color: PhoneTheme.accentSoft
+                            dot: PhoneTheme.accent
+                            text: qsTr("on the chart")
+                            textColor: PhoneTheme.text
+                            textName: "sheetPlotted"
+                        }
                     }
                 }
                 Label {
@@ -520,9 +530,25 @@ Drawer {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
+                    // Plot's room is that of its longer words from the start: the buttons do not move when it turns
+                    // into Take off the chart. Both measured, not from their implicit widths (a button's label is cut
+                    // to its width, so a narrow start stayed narrow)
+                    TextMetrics {
+                        id: plotRoom
+                        font.pixelSize: 14
+                        font.weight: Font.Medium
+                        text: qsTr("Take off the chart")
+                    }
+                    TextMetrics {
+                        id: copyRoom
+                        font.pixelSize: 14
+                        font.weight: Font.Medium
+                        text: qsTr("Copy")
+                    }
                     SheetAction {
                         objectName: "sheetPlot"
                         Layout.fillWidth: true
+                        Layout.preferredWidth: Math.ceil(plotRoom.advanceWidth) + 18 + 8 + 32
                         visible: sheet.entry.plottable === true
                         glyph: "chart"
                         text: sheet.entry.plotted === true ? qsTr("Take off the chart") : qsTr("Plot")
@@ -531,17 +557,18 @@ Drawer {
                     SheetAction {
                         objectName: "sheetCopy"
                         Layout.fillWidth: true
+                        Layout.preferredWidth: Math.ceil(copyRoom.advanceWidth) + 18 + 8 + 32
                         glyph: "copy"
                         text: qsTr("Copy")
                         onClicked: sheet.copy()
                     }
                 }
+                // its line kept while empty: what Plot or Copy did does not grow the sheet under the finger
                 Label {
                     objectName: "sheetDone"
                     Layout.fillWidth: true
                     Layout.topMargin: -4
                     horizontalAlignment: Text.AlignLeft
-                    visible: text.length > 0
                     text: sheet.done
                     color: sheet.doneOk ? PhoneTheme.muted : PhoneTheme.warn
                     font.pixelSize: 13

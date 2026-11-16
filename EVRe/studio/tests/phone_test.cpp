@@ -1731,11 +1731,33 @@ void checkWritesOff() {
 	(void) QTest::qWaitFor([&] { return phone.drawerOpen(); }, 3000);
 	const bool drawer = phone.drawerOpen() && !sheetOpen(phone);
 	const bool themeKept = QSettings().value(QStringLiteral("ui/dark"), true).toBool(); /* the tap reached nothing in it */
-	check(themeKept && offlineShown && offline == QLatin1String("Not connected: connect in the Connect drawer first.") && writesOffShown
-					&& writesOff == QLatin1String("Writes are off: turn on Allow writes in the Connect drawer.") && drawer,
-			QStringLiteral("phone, register sheet: with no link it says \"%1\", connected with Allow writes off \"%2\", no field and "
-					"no Apply; its button opens the Connect drawer").arg(offline, writesOff));
 	if (session) session->disconnectLink();
+	/* across, where the drawer scrolls: it opens at Allow writes, the switch whole in its view and its row lit */
+	QStringList atWrites;
+	{
+		Phone across(LANDSCAPE);
+		PhoneSession *link = connectFake(across);
+		if (link) link->setWritesEnabled(false);
+		openSheet(across, QStringLiteral("SETPOINT"));
+		across.tap(across.item("sheetConnect"));
+		(void) QTest::qWaitFor([&] { return across.drawerOpen(); }, 3000);
+		QTest::qWait(400);
+		const QQuickItem *flick = across.item("drawerFlick"), *toggle = across.item("writesSwitch");
+		const QQuickItem *glow = across.item("writesGlow");
+		const QRectF view = sceneRect(flick), at = sceneRect(toggle);
+		const double contentY = flick ? flick->property("contentY").toDouble() : 0;
+		if (!flick || !toggle || contentY < 1 || at.top() < view.top() - 0.5 || at.bottom() > view.bottom() + 0.5)
+			atWrites << QStringLiteral("the switch at %1..%2 in the view %3..%4 (scrolled %5)").arg(at.top()).arg(at.bottom())
+							.arg(view.top()).arg(view.bottom()).arg(contentY);
+		if (!glow || glow->opacity() < 0.5) atWrites << QStringLiteral("its row not lit (%1)").arg(glow ? glow->opacity() : -1);
+		if (link) link->disconnectLink();
+	}
+	check(themeKept && offlineShown && offline == QLatin1String("Not connected: connect in the Connect drawer first.") && writesOffShown
+					&& writesOff == QLatin1String("Writes are off: turn on Allow writes in the Connect drawer.") && drawer
+					&& atWrites.isEmpty(),
+			QStringLiteral("phone, register sheet: with no link it says \"%1\", connected with Allow writes off \"%2\", no field and "
+					"no Apply; its button opens the Connect drawer, across at Allow writes with its row lit %3")
+					.arg(offline, writesOff, atWrites.join(QStringLiteral(", "))));
 }
 
 /* a change glows (the bar and the tint in the picture) and fades */
@@ -1822,7 +1844,15 @@ void checkRegisterPlot() {
 	openSheet(phone, QStringLiteral("SUPPLY_V"));
 	const bool opened = sheetOpen(phone);
 	const QString plotText = phone.text("sheetPlot");
+	/* the sheet holds still: its height and both buttons where they were (the owner's next tap hit Copy, not the cross) */
+	QObject *sheetObject = phone.object("registerSheet");
+	const double heightBefore = sheetObject ? sheetObject->property("height").toDouble() : -1;
+	const QRectF plotBefore = sceneRect(phone.item("sheetPlot")), copyBefore = sceneRect(phone.item("sheetCopy"));
 	phone.tap(phone.item("sheetPlot"));
+	phone.settle(300);
+	const double heightAfter = sheetObject ? sheetObject->property("height").toDouble() : -2;
+	const bool still = std::fabs(heightAfter - heightBefore) < 0.5 && plotBefore == sceneRect(phone.item("sheetPlot"))
+			&& copyBefore == sceneRect(phone.item("sheetCopy"));
 	const int row = modelRow(session, QStringLiteral("SUPPLY_V"));
 	const bool plotted = model && row >= 0 && model->rows()[row].plot;
 	const QString plotDone = phone.text("sheetDone");
@@ -1849,11 +1879,12 @@ void checkRegisterPlot() {
 	const QString copyDone = phone.text("sheetDone");
 	closeSheet(phone);
 	check(opened && plotText == QLatin1String("Plot") && plotted && sheetMarked && offText == QLatin1String("Take off the chart")
-					&& marked && plotDone == QLatin1String("SUPPLY_V on the chart") && refused && doneShown
+					&& marked && plotDone == QLatin1String("SUPPLY_V on the chart") && refused && doneShown && still
 					&& limitDone == QLatin1String("At most 1 registers on the chart at 10 samples a second: take one off first"),
 			QStringLiteral("phone, Plot: a row's sheet has Plot; it marks SUPPLY_V plotted (\"%1\", the button now \"%2\", \"on "
-					"the chart\" on the sheet and the row); with a limit of one line the next is refused in the sheet: \"%3\"")
-					.arg(plotDone, offText, limitDone));
+					"the chart\" on the sheet and the row), the sheet as high as before (%4 -> %5) and its buttons where "
+					"they were; with a limit of one line the next is refused in the sheet: \"%3\"")
+					.arg(plotDone, offText, limitDone).arg(heightBefore).arg(heightAfter));
 	check(copied == QStringLiteral("SUPPLY_I = %1 A").arg(modelValue(session, QStringLiteral("SUPPLY_I")))
 					&& copyDone == QStringLiteral("Copied: ") + copied,
 			QStringLiteral("phone, Copy: the sheet's Copy puts \"%1\" on the clipboard and says so").arg(copied));
@@ -4826,9 +4857,19 @@ void checkMonitorKinds() {
 	phone.tap(tx);
 	phone.tap(rx);
 	if (session) session->disconnectLink();
+	/* the counts run on: a count of six digits leaves both chips where they were (the owner saw them move) */
+	if (tx && rx) {
+		const qreal txWidth = tx->width(), rxLeft = sceneRect(rx).left();
+		tx->setProperty("count", 123456);
+		phone.settle(100);
+		if (!qFuzzyCompare(tx->width(), txWidth) || qAbs(sceneRect(rx).left() - rxLeft) > 0.5)
+			bad << QStringLiteral("a six-digit count moved the chips (TX %1 -> %2 wide, RX at %3 -> %4)")
+					.arg(txWidth).arg(tx->width()).arg(rxLeft).arg(sceneRect(rx).left());
+	}
 	QSettings().remove(QStringLiteral("phone/monitorSides"));
 	check(bad.isEmpty(), QStringLiteral("phone, Monitor: each frame's function a label in its kind's colour (%1), the bytes "
-			"clear of the chevron, TX and RX chips with their counts filter the frames and are kept, both off it says so %2")
+			"clear of the chevron, TX and RX chips with their counts filter the frames and are kept and stay still as the "
+			"counts grow, both off it says so %2")
 			.arg(QStringList(named.begin(), named.end()).join(QStringLiteral(", ")), bad.join(QStringLiteral(" | "))));
 }
 
@@ -5677,11 +5718,29 @@ void checkChartMeasureColumns() {
 				bad << QStringLiteral("%1 across: the sheet %2..%3, the plot beside it %4 wide").arg(code).arg(r.left())
 							   .arg(r.right()).arg(plotBeside);
 			seen << QStringLiteral("%1 across: the sheet %2..%3").arg(code).arg(r.left(), 0, 'f', 0).arg(r.right(), 0, 'f', 0);
+			/* a finger across the columns scrolls them and nothing else: the sheet stays open and the chart beside it
+			 * live (on the owner's phone the drawer took the drag, the columns stayed and the chart panned and held) */
+			QQuickItem *values = phone.item("measureValues");
+			const double width = values ? values->property("contentWidth").toDouble() : 0;
+			const bool overflows = values && width > values->width() + 0.5;
+			const double before = values ? values->property("contentX").toDouble() : 0;
+			const bool wasLive = chart && chart->live();
+			if (values) dragBy(phone, values, rtl ? 160 : -160);
+			phone.settle(300);
+			const double moved = values ? std::fabs(values->property("contentX").toDouble() - before) : 0;
+			/* to the other end, or 40 px when there is more: across the columns may overflow by a few px only */
+			const double room = std::max(0.0, width - (values ? values->width() : 0));
+			const bool open = sheet && sheet->property("opened").toBool();
+			if (!overflows || moved < std::min(40.0, room - 0.5) || !wasLive || !chart->live() || !open)
+				bad << QStringLiteral("%1 across, a finger on the columns: overflows %2, scrolled %3, chart live %4 -> %5, "
+									  "sheet open %6").arg(code).arg(overflows).arg(moved).arg(wasLive)
+							   .arg(chart && chart->live()).arg(open);
 		}
 	}
 	language::apply(*qApp, QStringLiteral("en"));
 	check(bad.isEmpty(), QStringLiteral("phone, Measure's columns: upright they scroll sideways under the names, which stay, "
-			"a scroll bar shown, the last reached whole, no text cut; across the sheet at the end, the plot beside it (%1) %2")
+			"a scroll bar shown, the last reached whole, no text cut; across the sheet at the end, the plot beside it, a finger "
+			"scrolls the columns and leaves the chart live (%1) %2")
 			.arg(seen.join(QStringLiteral("; ")), bad.join(QStringLiteral(" | "))));
 }
 
@@ -5729,6 +5788,18 @@ void checkLinkHealth() {
 			&& b.captured(2).toLongLong() > 0;
 	const QQuickItem *state = phone.item("linkText");
 	const bool under = health && state && sceneRect(health).top() >= sceneRect(state).bottom() - 0.5;
+	/* its parts wrap whole: a dot shown only between two parts on one line, never at a line's start or end */
+	const QList<QQuickItem *> parts = visibleNamed(const_cast<QQuickItem *>(health), QStringLiteral("linkHealthPart"));
+	QStringList dots;
+	int lines = parts.isEmpty() ? 0 : 1;
+	for (int i = 0; i < parts.size(); ++i) {
+		const QQuickItem *dot = within(parts[i], QStringLiteral("linkHealthDot"));
+		const bool shown = dot && dot->opacity() > 0.5;
+		const bool sameLine = i + 1 < parts.size() && std::fabs(parts[i + 1]->y() - parts[i]->y()) < 0.5;
+		if (i + 1 < parts.size() && !sameLine) ++lines;
+		if (shown != sameLine) dots << QStringLiteral("part %1: dot %2, next on the same line %3").arg(i).arg(shown).arg(sameLine);
+	}
+	const bool wrapsWhole = parts.size() == 6 && dots.isEmpty();
 	const QQuickItem *trouble = phone.item("linkTroubleRow");
 	const bool calm = trouble && !trouble->isVisible() && session && !session->linkTroubled()
 			&& phone.window->property("linkTone").toString() == QLatin1String("good");
@@ -5738,9 +5809,11 @@ void checkLinkHealth() {
 	phone.openDrawer();
 	const bool goneOff = health && !health->isVisible();
 	phone.closeDrawer();
-	check(grows && under && calm && goneOff,
+	check(grows && under && wrapsWhole && calm && goneOff,
 			QStringLiteral("phone, link health: the drawer's line under the state as the desktop's status bar, live (\"%1\" "
-					"then \"%2\"), the pill green with nothing rising, gone when not connected (%3)").arg(first, later).arg(goneOff));
+					"then \"%2\"), its parts wrapped whole on %3 lines with a dot only between two on one line %4, the pill "
+					"green with nothing rising, gone when not connected (%5)").arg(first, later).arg(lines)
+					.arg(dots.join(QStringLiteral(", "))).arg(goneOff));
 }
 
 /* timeouts rising: the pill in the warning's colour and the drawer saying why ("Timeouts +n in the last 5 s", amber, its

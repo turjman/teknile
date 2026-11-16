@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon's mark (the adaptive icon's foreground, ic_launcher.xml): the teknile mark of
+     packaging/icons/evre-studio.svg, its 100 x 100 drawing scaled into the middle of the 108 dp layer and inside the 66 dp
+     circle every launcher's mask keeps. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="21" android:translateY="20.34" android:scaleX="0.66" android:scaleY="0.66">
+        <path android:pathData="M50,86.4C50,80 38,79 38,70C38,60 62,58 62,48C62,38 50,36 50,32" android:strokeWidth="9"
+            android:strokeLineCap="round" android:strokeLineJoin="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient android:type="linear" android:startX="50" android:startY="97" android:endX="50" android:endY="3"
+                    android:startColor="#FF8FA2AB" android:endColor="#FF4FD3F5" />
+            </aapt:attr>
+        </path>
+        <path android:pathData="M48.5,33C44.5,28 34,26.5 26.4,22.6" android:strokeWidth="6.5"
+            android:strokeLineCap="round" android:strokeLineJoin="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient android:type="linear" android:startX="50" android:startY="97" android:endX="50" android:endY="3"
+                    android:startColor="#FF8FA2AB" android:endColor="#FF4FD3F5" />
+            </aapt:attr>
+        </path>
+        <path android:pathData="M51.5,33C55.5,28 66,26.5 73.6,22.6" android:strokeWidth="6.5"
+            android:strokeLineCap="round" android:strokeLineJoin="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient android:type="linear" android:startX="50" android:startY="97" android:endX="50" android:endY="3"
+                    android:startColor="#FF8FA2AB" android:endColor="#FF4FD3F5" />
+            </aapt:attr>
+        </path>
+        <path android:pathData="M50,33V16.4" android:strokeWidth="6.5"
+            android:strokeLineCap="round" android:strokeLineJoin="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient android:type="linear" android:startX="50" android:startY="97" android:endX="50" android:endY="3"
+                    android:startColor="#FF8FA2AB" android:endColor="#FF4FD3F5" />
+            </aapt:attr>
+        </path>
+        <path android:fillType="evenOdd" android:fillColor="#FF4FD3F5" android:pathData="M15.8,20a6.2,6.2 0 1,0 12.4,0a6.2,6.2 0 1,0 -12.4,0M19.3,20a2.7,2.7 0 1,0 5.4,0a2.7,2.7 0 1,0 -5.4,0" />
+        <path android:fillType="evenOdd" android:fillColor="#FF4FD3F5" android:pathData="M71.8,20a6.2,6.2 0 1,0 12.4,0a6.2,6.2 0 1,0 -12.4,0M75.3,20a2.7,2.7 0 1,0 5.4,0a2.7,2.7 0 1,0 -5.4,0" />
+        <path android:fillType="evenOdd" android:fillColor="#FFE4B44A" android:pathData="M43.8,10a6.2,6.2 0 1,0 12.4,0a6.2,6.2 0 1,0 -12.4,0M47.3,10a2.7,2.7 0 1,0 5.4,0a2.7,2.7 0 1,0 -5.4,0" />
+        <path android:fillType="evenOdd" android:fillColor="#FF8FA2AB" android:pathData="M44,92a6,6 0 1,0 12,0a6,6 0 1,0 -12,0M47.6,92a2.4,2.4 0 1,0 4.8,0a2.4,2.4 0 1,0 -4.8,0" />
+        <path android:fillType="evenOdd" android:fillColor="#FFE4B44A" android:pathData="M33.6,70a4.4,4.4 0 1,0 8.8,0a4.4,4.4 0 1,0 -8.8,0M35.6,70a2.4,2.4 0 1,0 4.8,0a2.4,2.4 0 1,0 -4.8,0" />
+        <path android:fillType="evenOdd" android:fillColor="#FFE4B44A" android:pathData="M57.6,48a4.4,4.4 0 1,0 8.8,0a4.4,4.4 0 1,0 -8.8,0M59.6,48a2.4,2.4 0 1,0 4.8,0a2.4,2.4 0 1,0 -4.8,0" />
+    </group>
+</vector>

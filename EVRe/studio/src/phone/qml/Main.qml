@@ -561,7 +561,8 @@ ApplicationWindow {
         width: root.width
         interactive: opened
         keyboardLift: root.keyboardLift
-        onConnectAsked: drawer.open()
+        // its button is "Open the Connect drawer" for writes: the drawer opens at Allow writes
+        onConnectAsked: PhoneSession.connected ? drawer.openAtWrites() : drawer.open()
         Overlay.modal: root.scrim
         Overlay.modeless: root.scrim
     }
