@@ -675,35 +675,25 @@ Drawer {
                                 Accessible.role: Accessible.RadioButton
                                 Accessible.name: modelData.text
                                 Accessible.checked: picked
-                                // a radio drawn: a ring, its dot when chosen. Kept round: a radio's circle says one of
-                                // many (a rounded square reads as a check box, many of many)
-                                Rectangle {
-                                    id: ring
-                                    objectName: "radioRing"
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 14
+                                // the chosen one: its row tinted and a drawn tick at its end, as a phone's own lists of
+                                // one of many (no radio's circle: the owner's rule, no circles; a rounded square would
+                                // read as a check box, many of many)
+                                PhoneIcon {
+                                    id: tick
+                                    objectName: "choiceCheck"
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 14
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: 20
-                                    height: 20
-                                    radius: 10
-                                    color: "transparent"
-                                    border.width: 2
-                                    border.color: choice.picked ? PhoneTheme.accent : PhoneTheme.control
-                                    Rectangle {
-                                        objectName: "radioDot"
-                                        anchors.centerIn: parent
-                                        width: 10
-                                        height: 10
-                                        radius: 5
-                                        visible: choice.picked
-                                        color: PhoneTheme.accent
-                                    }
+                                    kind: "check"
+                                    size: 20
+                                    color: PhoneTheme.accent
+                                    visible: choice.picked
                                 }
                                 Label {
-                                    anchors.left: ring.right
-                                    anchors.right: parent.right
-                                    anchors.leftMargin: 14
-                                    anchors.rightMargin: 14
+                                    anchors.left: parent.left
+                                    anchors.right: tick.left
+                                    anchors.leftMargin: 16
+                                    anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     horizontalAlignment: Text.AlignLeft
                                     text: choice.modelData.text

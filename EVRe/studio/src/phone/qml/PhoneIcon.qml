@@ -147,6 +147,13 @@ Item {
         Stroke { x1: 6; y1: 9.5; x2: 12; y2: 15.5 }
         Stroke { x1: 12; y1: 15.5; x2: 18; y2: 9.5 }
     }
+    // check: a tick, the chosen one of a list
+    Item {
+        anchors.fill: parent
+        visible: icon.kind === "check"
+        Stroke { x1: 5; y1: 12.5; x2: 10; y2: 17.5 }
+        Stroke { x1: 10; y1: 17.5; x2: 19; y2: 7 }
+    }
     // copy: a sheet over another
     Item {
         anchors.fill: parent

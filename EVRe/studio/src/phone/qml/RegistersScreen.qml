@@ -33,7 +33,7 @@ Item {
     property bool foldMoving: false
     Timer {
         id: foldMotion
-        interval: 300
+        interval: 450
         onTriggered: screen.foldMoving = false
     }
     function toggleFold(group) {
