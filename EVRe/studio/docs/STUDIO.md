@@ -7056,7 +7056,7 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   | **Map** | the maps that come with the app (`example_device.json` first) or **Open…** (Android's picker); the number of registers under it. The last one opens at the next start |
   | **Connect** | Connect, then *Cancel* while it connects, *Stop reconnecting* while a try waits, *Disconnect* once connected. Under it what the link is or why it is down; connected, the link's health as the desktop's status bar, live (twice a second): *Latency 0.8 ms · TX 271 · RX 271 · Timeouts 0 · Errors 0 · Bad frames 0*, the engine's own counters (`evre::Master::Stats`), its parts wrapped whole with a dot only between two on one line (never at a line's start or end); while timeouts, error answers or bad frames rise (any in the last 5 s, `PhoneSession::QUIET_MS`) the state and the pill turn amber and a line with the warning's mark says why (*The link is struggling: Timeouts +6 in the last 5 s*), gone again after 5 s with none; then the device's ID (*Device ID 0x1001 · protocol rev 1*; *last seen: ...* once the link is down; a warning when the map is for another device). A device ID read that gets no answer (a board still booting when the link comes back) is tried again three times, a second apart, *reading the device ID…* meanwhile; a refusal (permission denied) is the token's and is not tried again |
   | **Reconnect&nbsp;by&nbsp;itself** | after a lost link a try 0.5 s later, after a failed try every 2 s, as on the desktop. A USB board that comes back under another name (reset, plugged in again: Android numbers it anew) is found by the USB IDs it had at Connect, and Android asks its permission again. A refused token, a device that wants a token, and a USB permission refused stop the tries: the same try would be refused again (the permission asked again every 2 s) |
-  | **Polling** | on or off, and its interval in ms (0: as fast as the device answers); the polls a second measured under it while connected |
+  | **Polling** | on or off, and its interval in ms (0: as fast as the device answers): by its − and + or typed, a typed number taken once the typing rests (0.6 s; a phone's keyboard gives no Enter to a number box); the polls a second measured under it while connected |
   | **Allow&nbsp;writes** | off at every start, as on the desktop |
   | **Record** | a CSV of the registers ticked Log, one row a poll, into the app's own folder (A-8): `recordings` in Android's folder for the app (`Android/data/com.teknile.evrestudio/files`, reached by a file manager and by a PC over USB), on a desktop in the app's data folder. The file's name is the time (`evre_20261113_140312.csv`); *Stop recording* closes it and says how many rows it holds |
 
@@ -8410,7 +8410,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 137 (26.11), 1251. The
+the phone test's 138 (26.11), 1252. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8913,6 +8913,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | chart&nbsp;across | at 760 x 384 (the owner's phone beside its navigation buttons), 832 x 384, 755 x 354 and 915 x 412, English and Arabic, two lines: no header nor tab bar; the chart's area at least 75 % of the window's height (88 % at 760 x 384); every button shown whole inside the window, 48 x 48 dp or more, none over another or the legend; the legend beside them with room for a chip, its first value in it; no text cut; the gesture line hidden across; upright the header, the tab bar and the gesture line shown, no bars button |
 | whole&nbsp;window | across, the bars button (four corners in, its tooltip, the link's dot grey with no link): a tap brings the rail back (the plot narrower, the icon four corners out), a second hides them; a back brings them back; the Chart chosen again is the whole window |
 | legend&nbsp;over&nbsp;plot | (part C) at 760 x 384 and 384 x 832, English and Arabic, two and six lines: the legend's row inside the chart's area, under the controls and over the plot's top; every chip shown whole inside it; *+N* shown with N the lines not shown (none for two lines across); each chip's "▾" 48 x 48; no text cut; the chart's area 75 % of the height across or more |
+| interval&nbsp;typed | connected, the drawer open: *4* then *40* typed into the interval's field, its focus kept: still 100 ms 300 ms later (not 4 on the way), 40 once the typing rests, no other button; *4x* leaves 40 |
 | legend&nbsp;beside&nbsp;sheet | at 760 x 384 with six lines, English and Arabic, the Measure sheet open at the window's end (right, left in Arabic): every chip shown and the *+N* beside it, none under its edge; at least one chip, *+N* the others |
 | Lines&nbsp;sheet | six lines across: *+N* opens the sheet, every line in order with the legend's value; a line's switch hides it and shows it again; its "▾" opens the chip's menu; back closes it |
 | Measure | two fed lines upright, held: the sheet not modal, *Measure: the view (10 s)*, each line's min, max, mean, RMS, std dev and peak-peak equal to `statsOf` over the view as the legend writes a value; with the cursors at 2 s and 7 s *Measure: A to B (5 s)* and `statsOf` over A..B; the cross closes it and the measuring stops |
@@ -9008,7 +9009,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | group&nbsp;folds | upright and across, English and Arabic: a group's header 48 dp with its chevron (down open; folded next, back in Arabic); a tap folds it (the first row watched every few ms through the fold and through the opening: never shown while cut, its height part way with its content not faded out, and moving; then its rows gone, *· 3* beside its name, the header where it was) and opens it; two folds kept for the map in a new window, the folded registers still polled; a search finds a folded group's register, the fold back when it is cleared |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (137 checks); the exit code is 0 when all pass, 1 on a failure. On Linux a crash prints
+It ends with "N passed, 0 failed" (138 checks); the exit code is 0 when all pass, 1 on a failure. On Linux a crash prints
 *CRASH in <the check under way>* and the stack with the functions' names (the test is linked with `-rdynamic`), then
 ends as the signal would, so the run still fails.
 

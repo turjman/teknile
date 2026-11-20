@@ -5642,6 +5642,42 @@ QStringList sheetMeasure(const Phone &phone, const QString &name) {
 /* Measure, as the desktop's table: the button opens its sheet (not modal: the chart stays live beside it), its title
  * says the view and its length; per line min, max, mean, RMS, std dev and peak-peak equal to the desktop's statsOf over
  * the view. The cursors placed: the title says A to B, the values are statsOf over A..B. Closed: no more measuring */
+/* the polling interval typed (the owner: 10 typed over 100 kept polling at 100 until another button was pressed): in
+ * the drawer, connected, "4" then "40" typed into the interval's field at once (as a keyboard would, the field's focus
+ * kept): nothing taken 300 ms later (not 4 on the way), 40 taken by itself once the typing rests; a text that is not
+ * a number leaves it as it was */
+void checkIntervalTyped() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	phone.openDrawer();
+	QQuickItem *box = phone.item("intervalBox");
+	QQuickItem *field = box ? box->property("contentItem").value<QQuickItem *>() : nullptr;
+	const int before = session ? session->intervalMs() : -1;
+	if (field) {
+		phone.reveal(box);
+		field->forceActiveFocus();
+		field->setProperty("text", QStringLiteral("4"));
+		QTest::qWait(100);
+		field->setProperty("text", QStringLiteral("40"));
+	}
+	QTest::qWait(300);
+	const int midway = session ? session->intervalMs() : -1;
+	const bool taken = session && QTest::qWaitFor([&] { return session->intervalMs() == 40; }, 2000);
+	const bool focusKept = field && field->hasActiveFocus();
+	if (field) field->setProperty("text", QStringLiteral("4x"));
+	QTest::qWait(1000);
+	const int afterJunk = session ? session->intervalMs() : -1;
+	check(field && before == 100 && midway == 100 && taken && focusKept && afterJunk == 40,
+			QStringLiteral("phone, interval typed: \"4\" then \"40\" in the drawer's interval field, its focus kept: still "
+					"%1 ms 300 ms later (want 100, not 4 on the way), %2 once the typing rests (no other button), focus "
+					"kept %3; \"4x\" leaves %4 (want 40)")
+					.arg(midway).arg(session ? session->intervalMs() : -1).arg(focusKept).arg(afterJunk));
+	if (session) {
+		session->setIntervalMs(100);
+		session->disconnectLink();
+	}
+}
+
 /* the Measure sheet open across (part D's pictures: in Arabic a chip read "SURE 0.620 bar", its start under the sheet's
  * edge; in English TEMPERATURE's end): at 760 x 384 with six lines, English and Arabic, the sheet open at the window's
  * end, every chip shown and the "+N" lie beside it, none under it; at least one chip shown and "+N" the others */
@@ -7240,6 +7276,7 @@ int main(int argc, char **argv) {
 	RUN(checkDrawerConnectAcross);
 	RUN(checkChipsStill);
 	RUN(checkLegendBesideSheet);
+	RUN(checkIntervalTyped);
 	RUN(checkGroupFolds);
 	RUN(checkFoldedFits);
 #undef RUN

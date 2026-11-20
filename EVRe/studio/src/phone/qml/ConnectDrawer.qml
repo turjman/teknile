@@ -651,6 +651,27 @@ Drawer {
                     onValueModified: PhoneSession.intervalMs = value
                     // milliseconds stay left to right, as every number
                     LayoutMirroring.enabled: false
+                    // a typed number taken once the typing rests (the owner: 10 typed over 100 polled at 100 until
+                    // another button was pressed: a SpinBox takes its text only on Enter or when its focus goes, and a
+                    // phone's keyboard gives neither). The rest, so "10" is not polled at 1 ms on its way
+                    Timer {
+                        id: intervalTyped
+                        interval: 600
+                        onTriggered: {
+                            const typed = intervalBox.valueFromText(intervalBox.contentItem.text, intervalBox.locale)
+                            if (!isNaN(typed) && typed >= intervalBox.from && typed <= intervalBox.to
+                                    && typed !== PhoneSession.intervalMs)
+                                PhoneSession.intervalMs = typed
+                        }
+                    }
+                    Connections {
+                        target: intervalBox.contentItem
+                        // not the box's own writing of its value: a text typed
+                        function onTextChanged() {
+                            if (intervalBox.contentItem.text !== intervalBox.textFromValue(intervalBox.value, intervalBox.locale))
+                                intervalTyped.restart()
+                        }
+                    }
                 }
             }
             Note {
