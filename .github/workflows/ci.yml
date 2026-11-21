@@ -58,16 +58,19 @@ jobs:
         run: python3 studio/tests/device_table_test.py build
       - name: Python package
         run: EVRE_BUILD=build python3 -m unittest discover -s studio/python/tests
+      # its fake device ended with the step: the phone test's step starts its own on the same port (left running, it
+      # made that one's start fail with "Address already in use" in every run's log)
       - name: GUI test (against the fake device, on a virtual screen)
         run: |
           python3 studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
+          FAKE=$!
           sleep 2
-          cd build && QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_gui_test example_device.json
+          (cd build && QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_gui_test example_device.json)
+          kill $FAKE
       - name: Login of the fake devices
         run: python3 studio/tests/fake_login_test.py build
       # Qt Quick through OpenGL on Mesa's llvmpipe, not the software adaptation: that one would not draw the chart's
-      # own geometry nodes (STUDIO.md 26.11). The link's checks connect to the fake device (one still running from the
-      # GUI test's step serves as well)
+      # own geometry nodes (STUDIO.md 26.11). The link's checks connect to the fake device started here
       - name: Phone test (Qt Quick, on a virtual screen, against the fake device)
         run: |
           python3 studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
