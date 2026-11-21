@@ -793,7 +793,7 @@ Item {
             readonly property bool beside: plotAndReadouts.columns === 2
             Layout.fillWidth: !beside
             Layout.fillHeight: beside
-            Layout.preferredWidth: beside ? 290 : -1
+            Layout.preferredWidth: beside ? 320 : -1
             Layout.preferredHeight: beside ? -1 : Math.min(readoutColumn.implicitHeight + 16, screen.height * 0.4)
             color: PhoneTheme.surface
             // the panel apart from the plot
@@ -884,13 +884,22 @@ Item {
                                 font.pixelSize: 13
                                 wrapMode: Text.Wrap
                             }
+                            // the cursors' values on one row, the statistics on the next (each wraps on its own when
+                            // narrow): upright one flow put min and max beside B - A and left "mean" alone below
                             Flow {
+                                objectName: "readoutAtCursors"
                                 Layout.fillWidth: true
                                 visible: !readout.empty
                                 spacing: 2
                                 Pair { label: "A"; symbol: true; labelName: "cursorName"; valueName: "readoutA"; value: readout.atA }
                                 Pair { label: "B"; symbol: true; labelName: "cursorName"; valueName: "readoutB"; value: readout.atB }
                                 Pair { label: "B \u2212 A"; symbol: true; labelName: "cursorName"; valueName: "readoutDelta"; value: readout.delta }
+                            }
+                            Flow {
+                                objectName: "readoutStats"
+                                Layout.fillWidth: true
+                                visible: !readout.empty
+                                spacing: 2
                                 Pair { label: qsTr("min"); valueName: "readoutMin"; value: readout.min }
                                 Pair { label: qsTr("max"); valueName: "readoutMax"; value: readout.max }
                                 Pair { label: qsTr("mean"); valueName: "readoutMean"; value: readout.mean }

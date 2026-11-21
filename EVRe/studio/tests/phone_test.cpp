@@ -3619,6 +3619,41 @@ void checkCursorLateData() {
 					.arg(a, 0, 'f', 3).arg(b, 0, 'f', 3).arg(empty.isEmpty() ? QStringLiteral("none") : empty.join(QStringLiteral(", "))));
 }
 
+/* a line's readout in two rows, upright and across, English and Arabic: A, B and B - A on the first, min, max and mean
+ * on the next (upright one flow put min and max beside B - A and left "mean" alone on a row of its own) */
+void checkReadoutRowsSplit() {
+	QStringList seen;
+	bool ok = true;
+	for (const char *code : { "en", "ar" }) {
+		language::apply(*qApp, QLatin1String(code));
+		for (QSize size : { PORTRAIT, LANDSCAPE }) {
+			Phone phone(size);
+			ChartItem *chart = chartWithLines(phone, 2, { 0, 0 }, { 10, 10 });
+			for (const QString &name : { QStringLiteral("SINE"), QStringLiteral("DOUBLE") }) {
+				QQuickItem *row = readoutRow(phone, name);
+				QRectF r[6];
+				int i = 0;
+				bool all = row != nullptr;
+				for (const char *part : { "readoutA", "readoutB", "readoutDelta", "readoutMin", "readoutMax", "readoutMean" }) {
+					const QQuickItem *item = within(row, QLatin1String(part));
+					all = all && item && item->isVisible();
+					r[i++] = item ? sceneRect(item) : QRectF();
+				}
+				const auto same = [](const QRectF &a, const QRectF &b) { return std::fabs(a.top() - b.top()) <= 0.5; };
+				const bool fine = chart && all && same(r[0], r[1]) && same(r[0], r[2]) && same(r[3], r[4]) && same(r[3], r[5])
+						&& r[3].top() >= r[0].bottom() - 0.5;
+				seen << QStringLiteral("%1 %2 %3: A/B/B-A at %4, %5, %6; min/max/mean at %7, %8, %9").arg(QLatin1String(code),
+						sizeText(size), name).arg(r[0].top()).arg(r[1].top()).arg(r[2].top()).arg(r[3].top())
+						.arg(r[4].top()).arg(r[5].top());
+				ok = ok && fine;
+			}
+		}
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(ok, QStringLiteral("phone, cursors: each line's readout in two rows, A, B and B - A on the first, min, max and "
+			"mean on the next, upright and across, English and Arabic (%1)").arg(seen.join(QStringLiteral("; "))));
+}
+
 /* the cursors where a line has no sample (the owner's phone, after Clear: A and B before the line's first sample): its
  * readout is one muted line, "No samples between A and B", not six dashes; a line with a sample in the range keeps its
  * pairs. SINE from 6 s, DOUBLE from 7 s: A, B at 1 s and 3 s (neither has one), then at 1 s and 6.5 s (SINE has) */
@@ -7195,6 +7230,7 @@ int main(int argc, char **argv) {
 	RUN(checkCursorReadouts);
 	RUN(checkCursorLateData);
 	RUN(checkCursorNoSamples);
+	RUN(checkReadoutRowsSplit);
 	RUN(checkCursorPanelScroll);
 	RUN(checkCursorPairs);
 	RUN(checkMonitorFrames);

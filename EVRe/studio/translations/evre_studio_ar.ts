@@ -707,15 +707,15 @@ Double-click to edit</source>
     </message>
     <message>
         <source>min</source>
-        <translation>الأدنى</translation>
+        <translation>أدنى</translation>
     </message>
     <message>
         <source>max</source>
-        <translation>الأعلى</translation>
+        <translation>أعلى</translation>
     </message>
     <message>
         <source>mean</source>
-        <translation>المتوسط</translation>
+        <translation>متوسط</translation>
     </message>
     <message>
         <source>No samples between A and B</source>
