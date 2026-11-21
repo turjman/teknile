@@ -9012,7 +9012,10 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 
 It ends with "N passed, 0 failed" (139 checks); the exit code is 0 when all pass, 1 on a failure. On Linux a crash prints
 *CRASH in <the check under way>* and the stack with the functions' names (the test is linked with `-rdynamic`), then
-ends as the signal would, so the run still fails.
+ends as the signal would, so the run still fails. The one crash it caught (in *checkChartUnplot*) was the test's own: a
+`QSignalSpy` on `frameSwapped`, which comes on the render thread, was called there while its function was ending it;
+the test counts the window's frames through a queued connection now (`SwapCounter`), so a call still on its way is
+dropped with the counter.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `help` (its topics), `helppage` (the phone's own topic; `helppage2` a screen down, `helppage_end`
