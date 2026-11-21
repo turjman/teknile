@@ -166,6 +166,19 @@ const QSize PORTRAIT(412, 915), LANDSCAPE(915, 412);
 
 QString sizeText(QSize size) { return QStringLiteral("%1 x %2").arg(size.width()).arg(size.height()); }
 
+/* a window's frames swapped, counted on this thread. frameSwapped comes on the render thread (the threaded render loop),
+ * and a QSignalSpy's direct connection ran the spy there: a spy ended by its function while the render thread was still
+ * calling it was the Linux CI's crash ("CRASH in checkChartUnplot", the render thread in QMetaObject::metacall). Queued
+ * to an object of this thread, a call still on its way when the object ends is dropped with it */
+struct SwapCounter {
+	QObject context;
+	int count = 0;
+	explicit SwapCounter(QQuickWindow *window) {
+		if (window)
+			QObject::connect(window, &QQuickWindow::frameSwapped, &context, [this] { ++count; }, Qt::QueuedConnection);
+	}
+};
+
 /* Main.qml in an engine of its own, as main_phone.cpp loads it, shown and drawn once; its QML warnings kept */
 struct Phone {
 	std::unique_ptr<QQmlApplicationEngine> engine;
@@ -178,11 +191,11 @@ struct Phone {
 		});
 		window = phone::loadMain(*engine, p9, size, perf, chartDemo);
 		if (!window) return;
-		QSignalSpy frames(window.data(), &QQuickWindow::frameSwapped);
+		SwapCounter frames(window.data());
 		window->show();
 		/* both may time out on a slow machine: the checks then see what is there */
 		(void) QTest::qWaitForWindowExposed(window);
-		(void) QTest::qWaitFor([&] { return frames.count() > 0; }, 5000);
+		(void) QTest::qWaitFor([&] { return frames.count > 0; }, 5000);
 		settle();
 	}
 	~Phone() {
@@ -635,9 +648,9 @@ QRectF areaInPicture(const Phone &phone, const QImage &image) {
 void chartFrame(const Phone &phone, ChartItem *chart, int frames = 2) {
 	if (!chart || !phone.window) return;
 	QSignalSpy made(chart, &ChartItem::framed);
-	QSignalSpy swapped(phone.window.data(), &QQuickWindow::frameSwapped);
+	SwapCounter swapped(phone.window.data());
 	chart->polish();
-	(void) QTest::qWaitFor([&] { return made.count() >= frames && swapped.count() >= frames; }, 3000);
+	(void) QTest::qWaitFor([&] { return made.count() >= frames && swapped.count >= frames; }, 3000);
 }
 
 /* a sine of `hz` sampled at 1 kHz from 0 to `seconds`, as a polled line would come */
