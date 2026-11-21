@@ -40,15 +40,15 @@ jobs:
         run: |
           cmake -S studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DEVRE_PHONE=ON
           cmake --build build
-      # CRASH HUNT (not for merging): the phone test 8 times; a segfault prints "CRASH in <check>" and its stack
-      - name: Phone test 8 times (crash hunt)
+      # CRASH HUNT (not for merging): the phone test 16 times; a segfault prints "CRASH in <check>" and its stack
+      - name: Phone test 16 times (crash hunt)
         run: |
           python3 studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
           sleep 2
           cd build
           set +e
           fails=0
-          for i in 1 2 3 4 5 6 7 8; do
+          for i in $(seq 1 16); do
             echo "=== run $i"
             QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_phone_test > run$i.txt 2>&1
             code=$?
