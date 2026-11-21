@@ -40,7 +40,7 @@ jobs:
         run: |
           cmake -S studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DEVRE_PHONE=ON
           cmake --build build
-      # CRASH HUNT (not for merging): the phone test 16 times; a segfault prints "CRASH in <check>" and its stack
+      # CRASH HUNT (not for merging): the phone test 16 times, each at most 15 min (a hang aborts: its stack); a segfault prints "CRASH in <check>" and its stack
       - name: Phone test 16 times (crash hunt)
         run: |
           python3 studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
@@ -50,11 +50,11 @@ jobs:
           fails=0
           for i in $(seq 1 16); do
             echo "=== run $i"
-            QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_phone_test > run$i.txt 2>&1
+            QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl xvfb-run -a -s '-screen 0 1920x1200x24' timeout -s ABRT 900 ./evre_phone_test > run$i.txt 2>&1
             code=$?
             tail -1 run$i.txt
             echo "exit $code"
-            if [ $code -ne 0 ]; then fails=$((fails+1)); grep -A40 "CRASH in" run$i.txt || tail -30 run$i.txt; fi
+            if [ $code -ne 0 ]; then fails=$((fails+1)); tail -4 run$i.txt | cut -c1-300; grep -A40 "CRASH in" run$i.txt || tail -30 run$i.txt; fi
           done
           echo "runs failed: $fails"
 
