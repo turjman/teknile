@@ -40,41 +40,26 @@ jobs:
         run: |
           cmake -S studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DEVRE_PHONE=ON
           cmake --build build
-      - name: Map files and exports
-        run: ./build/evre_map_test
-      - name: Fast EVRe without a window
-        run: ./build/evre_fast_test
-      - name: Listen's capture decoders without a window
-        run: ./build/evre_listen_test
-      - name: Fast EVRe's device helper, compiled with lib/EVRe.cpp
-        run: python3 studio/tests/fast_lib_test.py build
-      - name: JSON Schema
-        run: python3 studio/tests/schema_test.py
-      - name: evre command line
-        run: python3 studio/tests/cli_test.py build
-      - name: evre-sim
-        run: python3 studio/tests/sim_test.py build
-      - name: Device table, compiled with lib/EVRe.cpp
-        run: python3 studio/tests/device_table_test.py build
-      - name: Python package
-        run: EVRE_BUILD=build python3 -m unittest discover -s studio/python/tests
-      - name: GUI test (against the fake device, on a virtual screen)
+      # CRASH HUNT (not for merging): the phone test 8 times; a segfault prints "CRASH in <check>" and its stack
+      - name: Phone test 8 times (crash hunt)
         run: |
           python3 studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
           sleep 2
-          cd build && QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_gui_test example_device.json
-      - name: Login of the fake devices
-        run: python3 studio/tests/fake_login_test.py build
-      # Qt Quick through OpenGL on Mesa's llvmpipe, not the software adaptation: that one would not draw the chart's
-      # own geometry nodes (STUDIO.md 26.11). The link's checks connect to the fake device (one still running from the
-      # GUI test's step serves as well)
-      - name: Phone test (Qt Quick, on a virtual screen, against the fake device)
-        run: |
-          python3 studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
-          sleep 2
-          cd build && QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_phone_test
+          cd build
+          set +e
+          fails=0
+          for i in 1 2 3 4 5 6 7 8; do
+            echo "=== run $i"
+            QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_phone_test > run$i.txt 2>&1
+            code=$?
+            tail -1 run$i.txt
+            echo "exit $code"
+            if [ $code -ne 0 ]; then fails=$((fails+1)); grep -A40 "CRASH in" run$i.txt || tail -30 run$i.txt; fi
+          done
+          echo "runs failed: $fails"
 
   windows:
+    if: false
     runs-on: windows-2022
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -119,6 +104,7 @@ jobs:
   # emulator); its window's checks run in the Linux and Windows jobs' phone test, the USB link's in the GUI test with a
   # fake USB bridge
   android:
+    if: false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
