@@ -4,9 +4,10 @@
 // without its colour too), its time in the monospaced font, then its text, the text coloured as the desktop's Log
 // colours it (the text colour, amber, red). Above: a filter chip per level with its count, on or off (RowFilter over the
 // level; kept in phone/logLevels), then Copy (the lines shown, each with its level as the desktop's log file writes it)
-// and Clear. The list follows the newest line while it is at its end; scrolled up, it stays where it is. Empty, it shows
-// the Log's icon, says what comes here and has a button to the Connect drawer (a link is what fills it); every line
-// filtered out, it says so and offers to show them all.
+// and Clear, on one row when they fit, else Copy and Clear on the next at its end. The list follows the newest line
+// while it is at its end; scrolled up, it stays where it is. Empty, it shows the Log's icon, says what comes here and
+// has a button to the Connect drawer (a link is what fills it); every line filtered out, it says so and offers to show
+// them all.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -42,19 +43,36 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        RowLayout {
+        // the levels' chips and Copy and Clear on one row when they fit (across); upright the chips take a row of
+        // their own and Copy and Clear the next at its end: the filters together, the actions together (one flow
+        // left "Errors" alone under the others, beside nothing)
+        GridLayout {
+            id: logBar
+            objectName: "logBar"
+            readonly property real chipsWidth: {
+                let w = 0
+                for (let i = 0; i < chipRepeater.count; ++i) {
+                    const chip = chipRepeater.itemAt(i)
+                    if (chip) w += chip.implicitWidth
+                }
+                return w + chips.spacing * Math.max(0, chipRepeater.count - 1)
+            }
+            readonly property bool oneRow: chipsWidth + columnSpacing + actions.implicitWidth <= width
             Layout.fillWidth: true
             Layout.leftMargin: 8
             Layout.rightMargin: 8
-            spacing: 4
+            columns: oneRow ? 2 : 1
+            columnSpacing: 4
+            rowSpacing: 0
 
-            // the levels' chips: wrap onto a second row when the screen is narrow
+            // the levels' chips: wrap only when even their own row is too narrow
             Flow {
                 id: chips
                 objectName: "logLevelChips"
                 Layout.fillWidth: true
                 spacing: 4
                 Repeater {
+                    id: chipRepeater
                     model: 3
                     FilterChip {
                         required property int index
@@ -69,33 +87,37 @@ Item {
                     }
                 }
             }
-            Button {
-                objectName: "logCopy"
-                Material.roundedScale: Material.SmallScale
-                Layout.alignment: Qt.AlignTop
-                // as narrow as its word (Material's are 64 dp at least): the chips and both buttons on one row upright
-                leftPadding: 8
-                rightPadding: 8
-                implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
-                text: qsTr("Copy")
-                flat: true
-                Material.foreground: PhoneTheme.accent
-                enabled: screen.shownLines > 0
-                onClicked: PhoneSession.log.copy(levels.shown)
-            }
-            Button {
-                objectName: "logClear"
-                Material.roundedScale: Material.SmallScale
-                Layout.alignment: Qt.AlignTop
-                // as narrow as its word (Material's are 64 dp at least): the chips and both buttons on one row upright
-                leftPadding: 8
-                rightPadding: 8
-                implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
-                text: qsTr("Clear")
-                flat: true
-                Material.foreground: PhoneTheme.accent
-                enabled: screen.lines > 0
-                onClicked: PhoneSession.log.clear()
+            Row {
+                id: actions
+                objectName: "logActions"
+                Layout.alignment: Qt.AlignRight | Qt.AlignTop
+                spacing: 4
+                Button {
+                    objectName: "logCopy"
+                    Material.roundedScale: Material.SmallScale
+                    // as narrow as its word (Material's are 64 dp at least)
+                    leftPadding: 8
+                    rightPadding: 8
+                    implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
+                    text: qsTr("Copy")
+                    flat: true
+                    Material.foreground: PhoneTheme.accent
+                    enabled: screen.shownLines > 0
+                    onClicked: PhoneSession.log.copy(levels.shown)
+                }
+                Button {
+                    objectName: "logClear"
+                    Material.roundedScale: Material.SmallScale
+                    // as narrow as its word (Material's are 64 dp at least)
+                    leftPadding: 8
+                    rightPadding: 8
+                    implicitWidth: Math.max(48, implicitContentWidth + leftPadding + rightPadding)
+                    text: qsTr("Clear")
+                    flat: true
+                    Material.foreground: PhoneTheme.accent
+                    enabled: screen.lines > 0
+                    onClicked: PhoneSession.log.clear()
+                }
             }
         }
         // the buttons apart from the lines

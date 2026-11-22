@@ -42,6 +42,7 @@ const QString KEY_POLLING = QStringLiteral("phone/polling");
 const QString KEY_INTERVAL = QStringLiteral("phone/interval");
 const QString KEY_MAP = QStringLiteral("phone/map");
 const QString KEY_SCREEN_ON = QStringLiteral("android/keepScreenOn"); /* the plan's A-5 */
+const QString KEY_HINT_SEEN = QStringLiteral("phone/chartHintSeen");
 /* + the map's device name, its slashes made underscores (a key's "/" is a group of the settings) */
 const QString KEY_FOLDS = QStringLiteral("phone/foldedGroups/");
 
@@ -73,6 +74,7 @@ PhoneSession::PhoneSession(QObject *parent)
 	polling_ = settings.value(KEY_POLLING, true).toBool();
 	intervalMs_ = settings.value(KEY_INTERVAL, 100).toInt();
 	keepScreenOn_ = settings.value(KEY_SCREEN_ON, true).toBool();
+	chartHintSeen_ = settings.value(KEY_HINT_SEEN, false).toBool();
 	serviceTimer_.setInterval(1000);
 	connect(&serviceTimer_, &QTimer::timeout, this, &PhoneSession::updateSystem);
 	connect(this, &PhoneSession::linkChanged, this, &PhoneSession::updateSystem);
@@ -424,6 +426,13 @@ void PhoneSession::setKeepScreenOn(bool on) {
 	keepScreenOn_ = on;
 	QSettings().setValue(KEY_SCREEN_ON, on);
 	updateSystem();
+	emit settingsChanged();
+}
+
+void PhoneSession::setChartHintSeen(bool seen) {
+	if (seen == chartHintSeen_) return;
+	chartHintSeen_ = seen;
+	QSettings().setValue(KEY_HINT_SEEN, seen);
 	emit settingsChanged();
 }
 

@@ -334,10 +334,11 @@ Item {
                 }
             }
             // what a finger does on the plot (no hover on a phone: said where it is seen); upright only, the
-            // plot's height goes first across (Help says it too)
+            // plot's height goes first across (Help says it too); once a finger has pinched, dragged or double tapped
+            // the plot the row goes to the plot for good (PhoneSession.chartHintSeen)
             Label {
                 objectName: "chartHint"
-                visible: !screen.wide
+                visible: !screen.wide && !PhoneSession.chartHintSeen
                 Layout.fillWidth: true
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
@@ -645,7 +646,10 @@ Item {
                 objectName: "chartPinch"
                 target: null
                 property real lastScale: 1
-                onActiveChanged: lastScale = 1
+                onActiveChanged: {
+                    lastScale = 1
+                    if (active && !screen.demo) PhoneSession.chartHintSeen = true
+                }
                 onActiveScaleChanged: {
                     if (!active) return
                     chart.zoomTime(activeScale / lastScale)
@@ -666,7 +670,10 @@ Item {
                 // drag took the finger from its columns (they never scrolled, the chart panned and held)
                 grabPermissions: measureSheet.opened ? PointerHandler.ApprovesTakeOverByAnything
                                                      : PointerHandler.CanTakeOverFromItems | PointerHandler.ApprovesTakeOverByAnything
-                onActiveChanged: lastX = 0
+                onActiveChanged: {
+                    lastX = 0
+                    if (active && !screen.cursorDragging && !screen.demo) PhoneSession.chartHintSeen = true
+                }
                 onActiveTranslationChanged: {
                     if (!active || screen.cursorDragging) return
                     chart.panPixels(activeTranslation.x - lastX)
@@ -675,7 +682,10 @@ Item {
             }
             TapHandler {
                 objectName: "chartTap"
-                onDoubleTapped: chart.live = true
+                onDoubleTapped: {
+                    chart.live = true
+                    if (!screen.demo) PhoneSession.chartHintSeen = true
+                }
             }
 
             // the cursors: a line over the plot and a handle to drag it, a rounded square with the cursor's letter (A's at
