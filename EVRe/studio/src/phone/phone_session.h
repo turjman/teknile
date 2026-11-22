@@ -124,6 +124,7 @@ class PhoneSession : public QObject {
 	Q_PROPERTY(bool monitoring READ monitoring NOTIFY monitorChanged)
 	Q_PROPERTY(QVariantList fastChannels READ fastChannels NOTIFY fastChanged)
 	Q_PROPERTY(bool keepScreenOn READ keepScreenOn WRITE setKeepScreenOn NOTIFY settingsChanged)
+	Q_PROPERTY(bool chartHintSeen READ chartHintSeen WRITE setChartHintSeen NOTIFY settingsChanged)
 	Q_PROPERTY(QString serviceText READ serviceText NOTIFY systemChanged)
 	Q_PROPERTY(bool screenKeptOn READ screenKeptOn NOTIFY systemChanged)
 	Q_PROPERTY(QString orientation READ orientation WRITE setOrientation NOTIFY systemChanged)
@@ -245,6 +246,10 @@ public:
 	/* the screen kept on while connected (A-5): saved, on by default */
 	bool keepScreenOn() const { return keepScreenOn_; }
 	void setKeepScreenOn(bool on);
+	/* the Chart's gesture line upright (pinch, drag, double tap) until the finger has used one on the plot: then the
+	 * row goes to the plot for good (saved; Help keeps the gestures) */
+	bool chartHintSeen() const { return chartHintSeen_; }
+	void setChartHintSeen(bool seen);
 	/* the service's notification text while a link is wanted; empty: the service is not up */
 	QString serviceText() const { return serviceText_; }
 	bool screenKeptOn() const { return screenKeptOn_; }
@@ -356,6 +361,7 @@ private:
 	QTimer serviceTimer_;        /* the notification's recording time, once a second */
 	QElapsedTimer recordClock_;
 	bool keepScreenOn_ = true;
+	bool chartHintSeen_ = false;
 	QStringList foldedGroups_;
 	bool screenKeptOn_ = false;
 	bool motion_ = true;

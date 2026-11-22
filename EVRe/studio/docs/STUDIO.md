@@ -3449,6 +3449,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `phone/map` | empty | on&nbsp;change | The map the phone opens at start: a path, or Android's `content://` one; empty or gone: the app's first map. |
 | `phone/logLevels` | `0,&nbsp;1,&nbsp;2` | on&nbsp;change | The levels the phone's Log shows (0 info, 1 warning, 2 error: its filter chips, 25.6). |
 | `phone/monitorSides` | `0,&nbsp;1,&nbsp;2` | on&nbsp;change | The frames the phone's Monitor shows (0 sent, TX; 1 received, RX; 2 its notes, always: its TX and RX chips). |
+| `phone/chartHintSeen` | `false` | on&nbsp;change | The Chart's gesture line upright (*Pinch: zoom the time · Drag: look back · Double tap: live*) is gone for good once a finger has pinched, dragged or double tapped the plot (25.6). |
 | `phone/foldedGroups/<device>` | empty | on&nbsp;change | The groups folded on the phone's Registers screen, for the map of that device name (its `/` and `\` made `_`): their headers' fold (25.6). |
 | `android/keepScreenOn` | `true` | on&nbsp;change | The phone keeps its screen on while connected (25.6). |
 | `ui/dark` | `true` | on&nbsp;close | Dark theme. |
@@ -7080,7 +7081,9 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   level with its count (*Info 12*, *Warnings 1*, *Errors 0*; the desktop's Log has *Show info*): a tap shows or hides
   that level's lines, the chip struck through while off, the choice kept (`phone/logLevels`). **Copy** puts the lines
   shown on the clipboard, each with its level as the desktop's log file writes it (*14:03:12  WARN   ...*), **Clear**
-  empties it; the newest 2000 lines are kept. Every level off, it says *No line of the levels chosen* with **Show all
+  empties it; the newest 2000 lines are kept. The chips and Copy and Clear share one row when they fit (always
+  across, upright in English); when not (upright in Arabic) the three chips keep a row of their own and Copy and
+  Clear sit on the next at its end: the filters together, the actions together. Every level off, it says *No line of the levels chosen* with **Show all
   levels**. Empty, it shows the Log's icon, *Nothing logged yet*, what comes there, and
   (not connected) **Open the Connect drawer**: a link is what fills it. The Chart with no line and the Registers with
   no map or no match have the same empty state (`EmptyState.qml`): the screen's icon, a short title, a line, one
@@ -7168,8 +7171,9 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   fewer and no two labels touch. **Live** follows now,
   **Hold** keeps the view; the window's button shows its length with a drawn chevron (*1 min*, a pinch's *27.3 s*) and
   opens its menu, **10&nbsp;s**, **1&nbsp;min** or **5&nbsp;min** (the desktop's *View* box). A pinch zooms the time, a drag looks
-  back and holds, a double tap goes live again; upright, a line under the buttons says so (Help says it too). The plot
-  is not mirrored in Arabic: time runs left to right.
+  back and holds, a double tap goes live again; upright, a line under the buttons says so until a finger has used the
+  plot once, then its row goes to the plot for good (`phone/chartHintSeen`; Help says it too). The plot is not
+  mirrored in Arabic: time runs left to right.
 
   **Across** (the Chart turns the phone to landscape) the chart has the whole window (`Main.qml`'s `chartFull`): the
   rail goes (`Main.qml`'s `railShown`), and one 48 dp row holds the controls over the plot. The chart's area is
@@ -7223,7 +7227,7 @@ across: a rail at the start edge (the right in Arabic), no header and no tab bar
   +--------------------------------------------+
   | Live  Hold | 1 min v | Y auto v            |   Live / Hold, the window, Y (each a menu or sheet)
   | Cursors  Measure  Clear  Fast lines        |   the cursors, Measure, Clear, a stream's lines
-  | Pinch: zoom the time . Drag: look back ... |   what a finger does
+  | Pinch: zoom the time . Drag: look back ... |   what a finger does, until one is used
   | (* SUPPLY_V 13.9 V|v) (* TEMP 25.1 C|v) +4 |   the legend: whole chips, "v" a menu, +N
   |  2.5 +---------------------------------+   |
   |      |  the lines (GPU), the grid      |   |   the value labels left of the plot
@@ -8410,7 +8414,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 139 (26.11), 1253. The
+the phone test's 141 (26.11), 1255. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8989,6 +8993,8 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | empty&nbsp;search | *No match* with **Clear the search**, which shows every register again |
 | headers&nbsp;over&nbsp;rows | the list scrolled down a step at a time, connected: no group header lies over a row in view (a header kept at the top cut a row's value on a phone) |
 | Log&nbsp;levels | (part B) a line of each level: its icon (info, warn, error) and text in the level's colours, the time in the fixed-pitch family beside the text; the chips' counts; Info off hides its lines (struck through, kept, back in a new window); Copy the lines shown with WARN and ERROR; every level off says so, Show all levels |
+| Log&nbsp;bar | English and Arabic, upright and across: the three level chips on one row; Copy and Clear beside them when they fit (always across), else on the row under them at its end |
+| gesture&nbsp;line | upright: shown at first; a drag on the plot takes it away (the plot taller by its row), still away in a new window; a double tap alone takes it away too |
 | Monitor&nbsp;kinds | READ labelled in the accent, READ_RESP in green; the bytes wrap before the chevron; the TX and RX chips' counts the model's; TX off leaves the RX frames alone and is kept; both off says so; a six-digit count leaves the TX chip as wide and the RX chip where they were |
 | frame&nbsp;sheet | a tap on a READ_RESP opens its sheet: START to END in order, FUNCTION READ_RESP, OFFSET with a register's name, CRC OK, the Dump's words under each; back closes it; an ERROR_RESP's *ERROR 4 offset out of range*, a READ's *0xD000 · UPTIME* and computed CRC, a wrong CRC not spelled out |
 | motion | a tab's screen fades and slides in (under way 40 ms after, done after), the register sheet slides up; with the animator scale 0 (a stand-in for Android) `motion` off, both there at once |
@@ -9010,7 +9016,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | group&nbsp;folds | upright and across, English and Arabic: a group's header 48 dp with its chevron (down open; folded next, back in Arabic); a tap folds it (the first row watched every few ms through the fold and through the opening: never shown while cut, its height part way with its content not faded out, and moving; then its rows gone, *· 3* beside its name, the header where it was) and opens it; two folds kept for the map in a new window, the folded registers still polled; a search finds a folded group's register, the fold back when it is cleared |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (139 checks); the exit code is 0 when all pass, 1 on a failure. On Linux a crash prints
+It ends with "N passed, 0 failed" (141 checks); the exit code is 0 when all pass, 1 on a failure. On Linux a crash prints
 *CRASH in <the check under way>* and the stack with the functions' names (the test is linked with `-rdynamic`), then
 ends as the signal would, so the run still fails. The one crash it caught (in *checkChartUnplot*) was the test's own: a
 `QSignalSpy` on `frameSwapped`, which comes on the render thread, was called there while its function was ending it;

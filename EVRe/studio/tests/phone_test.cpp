@@ -4245,6 +4245,7 @@ void checkChartLandscapeRoom() {
 							.arg(area ? area->height() : 0).arg(size.height()).arg(share * 100, 0, 'f', 0)
 							.arg(widths.join(QLatin1Char('+'))).arg(legend.width(), 0, 'f', 0).arg(top ? top->height() : 0);
 		}
+		QSettings().remove(QStringLiteral("phone/chartHintSeen")); /* an earlier check's drag on the plot saw it */
 		Phone upright(PORTRAIT);
 		chartWithFedLines(upright, 2);
 		const QQuickItem *hint = upright.item("chartHint");
@@ -4826,6 +4827,90 @@ QList<QQuickItem *> visibleNamed(QQuickItem *root, const QString &name) {
  * fixed-pitch family; a filter chip per level with its count. Info's chip off: its lines go (the list the warnings and
  * errors), the chip struck through, the choice kept (phone/logLevels) and back in a new window; Copy then puts the
  * lines shown with their levels (WARN, ERROR); every level off: "No line of the levels chosen" and Show all levels */
+/* the Chart's gesture line upright until a finger has used the plot: shown at first; a drag on the plot takes it away
+ * (the plot taller by its row) and it stays away in a new window; a double tap alone does it too */
+void checkChartHintOnce() {
+	const QString key = QStringLiteral("phone/chartHintSeen");
+	QSettings().remove(key);
+	bool first = false, gone = false, taller = false, kept = false, byTap = false;
+	double before = 0, after = 0;
+	{
+		Phone phone(PORTRAIT);
+		ChartItem *chart = chartWithFedLines(phone, 2);
+		PhoneSession *session = phone.session();
+		const QQuickItem *hint = phone.item("chartHint");
+		QQuickItem *area = phone.item("chartArea");
+		first = hint && hint->isVisible() && session && !session->chartHintSeen();
+		before = area ? area->height() : 0;
+		if (area) dragBy(phone, area, 120);
+		chartFrame(phone, chart);
+		phone.settle();
+		after = area ? area->height() : 0;
+		gone = hint && !hint->isVisible() && session && session->chartHintSeen();
+		taller = after > before + 0.5;
+	}
+	{
+		Phone again(PORTRAIT);
+		chartWithFedLines(again, 1);
+		const QQuickItem *hint = again.item("chartHint");
+		kept = hint && !hint->isVisible();
+	}
+	QSettings().remove(key);
+	{
+		Phone tapped(PORTRAIT);
+		chartWithFedLines(tapped, 1);
+		if (QQuickItem *area = tapped.item("chartArea")) doubleTap(tapped, area);
+		const QQuickItem *hint = tapped.item("chartHint");
+		byTap = tapped.session() && tapped.session()->chartHintSeen() && hint && !hint->isVisible();
+	}
+	QSettings().remove(key);
+	check(first && gone && taller && kept && byTap,
+			QStringLiteral("phone, chart: the gesture line shows upright until a finger has used the plot: shown at first "
+					"(%1), gone after a drag (%2; the plot %3 -> %4 high), still gone in a new window (%5), a double tap "
+					"alone takes it away too (%6)")
+					.arg(first).arg(gone).arg(before).arg(after).arg(kept).arg(byTap));
+}
+
+/* the Log's bar: the levels' chips and Copy and Clear on one row when they fit (always across); when not (upright in
+ * Arabic), the three chips on a row of their own and Copy and Clear under them at its end (one flow left "Errors"
+ * alone on a second row upright), English and Arabic */
+void checkLogBar() {
+	QStringList seen;
+	bool ok = true;
+	for (const char *code : { "en", "ar" }) {
+		language::apply(*qApp, QLatin1String(code));
+		for (QSize size : { PORTRAIT, LANDSCAPE }) {
+			Phone phone(size);
+			if (QObject *tabs = phone.object("tabBar")) tabs->setProperty("currentIndex", 3);
+			phone.settle();
+			QRectF chip[3];
+			bool shown = true;
+			for (int i = 0; i < 3; ++i) {
+				const QQuickItem *item = phone.item(QStringLiteral("logLevel%1").arg(i).toLatin1().constData());
+				shown = shown && item && item->isVisible();
+				chip[i] = item ? sceneRect(item) : QRectF();
+			}
+			const QQuickItem *actions = phone.item("logActions"), *bar = phone.item("logBar");
+			const QRectF a = actions ? sceneRect(actions) : QRectF(), b = bar ? sceneRect(bar) : QRectF();
+			const bool chipsOneRow = std::fabs(chip[0].top() - chip[1].top()) <= 0.5 && std::fabs(chip[0].top() - chip[2].top()) <= 0.5;
+			/* the end edge: the one the chips do not start from */
+			const bool rtl = chip[0].left() > chip[2].left();
+			const bool atEnd = rtl ? std::fabs(a.left() - b.left()) <= 1 : std::fabs(a.right() - b.right()) <= 1;
+			const bool oneRow = bar && bar->property("oneRow").toBool();
+			const bool rows = oneRow ? std::fabs(a.top() - chip[0].top()) <= 8 : a.top() >= chip[0].bottom() - 0.5;
+			const bool fine = shown && actions && bar && chipsOneRow && atEnd && rows && (oneRow || size == PORTRAIT);
+			seen << QStringLiteral("%1 %2: %11, chips at %3, %4, %5; Copy and Clear at %6 (%7 .. %8 of %9 .. %10)")
+							.arg(QLatin1String(code), sizeText(size)).arg(chip[0].top()).arg(chip[1].top()).arg(chip[2].top())
+							.arg(a.top()).arg(a.left()).arg(a.right()).arg(b.left()).arg(b.right())
+							.arg(oneRow ? QStringLiteral("one row") : QStringLiteral("two rows"));
+			ok = ok && fine;
+		}
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(ok, QStringLiteral("phone, Log: the three level chips on one row, Copy and Clear beside them when they fit "
+			"(always across), else on the row under them at its end, English and Arabic (%1)").arg(seen.join(QStringLiteral("; "))));
+}
+
 void checkLogLevels() {
 	QSettings().remove(QStringLiteral("phone/logLevels"));
 	QStringList bad;
@@ -7299,6 +7384,8 @@ int main(int argc, char **argv) {
 	RUN(checkSearchEmpty);
 	RUN(checkHeadersOverRows);
 	RUN(checkLogLevels);
+	RUN(checkLogBar);
+	RUN(checkChartHintOnce);
 	RUN(checkMonitorKinds);
 	RUN(checkFrameSheet);
 	RUN(checkMotion);
