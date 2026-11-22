@@ -11,8 +11,11 @@
 #   evre_fake_fast   a fake EVRe device fast enough to measure the Studio
 #   evre_fast_test   Fast EVRe without a window: the block's rules, the clock's fit, the source
 #   evre_listen_test Listen without a window or a USB device: the two capture decoders on replayed captures
+#   EVReStudioPhone  the phone's interface in Qt Quick (src/phone), with EVRE_PHONE (always on Android)
+#   evre_phone_test  the phone's window driven by QtTest, with EVRE_PHONE
 #
-# On Android only EVReStudio is built, as an APK (the target apk; android/ holds its manifest and the Java USB layer).
+# On Android only EVReStudioPhone is built, as an APK (the target apk; android/ holds its manifest and the Java USB
+# layer).
 cmake_minimum_required(VERSION 3.21)
 project(EVReStudio VERSION 1.5.0 LANGUAGES CXX)
 
@@ -21,6 +24,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Network SerialPort Test LinguistTools)
+# The phone's interface (Qt Quick, STUDIO.md 25.6): off on a desktop unless asked for, always on Android, where it is
+# the only program
+option(EVRE_PHONE "Build the phone program EVReStudioPhone (Qt Quick) and its test" OFF)
+if(ANDROID)
+    set(EVRE_PHONE ON)
+endif()
+if(EVRE_PHONE)
+    find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2)
+endif()
 
 # Warnings on for all our code (GCC and Clang; MSVC keeps its defaults).
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -65,29 +77,56 @@ if(WIN32)
     target_link_libraries(evre_protocol PRIVATE setupapi cfgmgr32)
 endif()
 
-# The rest of the Studio without main(): the program and the GUI test are both
-# built on it, so a new source file is one more line here (or in
-# evre_protocol above) and nowhere else.
-qt_add_library(evre_studio_core STATIC
+# The engine, the API and the models without Qt Widgets (Qt Gui only: QColor, QFont, QUndoStack): both interfaces,
+# the desktop's and the phone's, are built on it. The theme's colours and the language are here too, and the
+# translations' .qm with them, so each program has it at :/i18n.
+qt_add_library(evre_engine STATIC
     src/model/expr.h            src/model/expr.cpp
     src/model/math_lines.h      src/model/math_lines.cpp
     src/model/recording_file.h  src/model/recording_file.cpp
     src/model/analysis.h        src/model/analysis.cpp
     src/model/register_model.h  src/model/register_model.cpp
     src/model/map_document.h    src/model/map_document.cpp
+    src/io/reg_table.h
+    src/io/engine.h             src/io/engine.cpp
+    src/api/api_server.h        src/api/api_server.cpp
+    src/ui/value_pace.h         src/ui/value_pace.cpp
+    src/ui/theme.h              src/ui/theme_colors.cpp
+    src/ui/language.h           src/ui/language.cpp
+)
+target_include_directories(evre_engine PUBLIC src)
+target_compile_definitions(evre_engine PUBLIC EVRE_STUDIO_VERSION="${PROJECT_VERSION}")
+target_link_libraries(evre_engine PUBLIC evre_protocol Qt6::Gui)
+if(WIN32)
+    target_link_libraries(evre_engine PRIVATE winmm) # timeBeginPeriod: 1 ms timers for the poll loop
+endif()
+# The translations: every text of src/ through tr() and qsTr() (English is the source), the .qm built into the engine
+# at :/i18n (language.h), so into both programs. `cmake --build . --target update_translations` brings the .ts files
+# up to the sources (translations/README.md); the phone's .qml files are read too, also when EVRE_PHONE is off.
+file(GLOB_RECURSE STUDIO_TEXT_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.h src/*.qml)
+qt_add_translations(evre_engine
+    TS_FILES translations/evre_studio_ar.ts
+    SOURCES ${STUDIO_TEXT_SOURCES}
+    LUPDATE_OPTIONS -no-obsolete -locations none
+    RESOURCE_PREFIX /i18n)
+
+# The desktop's programs: on Android each qt_add_executable would be an APK of its own, and the phone has an interface
+# of its own (EVReStudioPhone, at the end)
+if(NOT ANDROID)
+
+# The rest of the Studio without main(): the program and the GUI test are both
+# built on it, so a new source file is one more line here (or in
+# evre_engine or evre_protocol above) and nowhere else.
+qt_add_library(evre_studio_core STATIC
     src/ui/bulk_write_dialog.h  src/ui/bulk_write_dialog.cpp
     src/ui/bus_panel.h          src/ui/bus_panel.cpp
     src/ui/bus_device_dialog.h  src/ui/bus_device_dialog.cpp
     src/ui/bus_preset_dialog.h  src/ui/bus_preset_dialog.cpp
-    src/io/reg_table.h
-    src/io/engine.h             src/io/engine.cpp
-    src/api/api_server.h        src/api/api_server.cpp
     src/ui/theme.h              src/ui/theme.cpp
     src/ui/ui_helpers.h         src/ui/ui_helpers.cpp
     src/ui/limit_spin_box.h     src/ui/limit_spin_box.cpp
     src/ui/elided_label.h       src/ui/elided_label.cpp
     src/ui/touch_scroll.h       src/ui/touch_scroll.cpp
-    src/ui/value_pace.h         src/ui/value_pace.cpp
     src/ui/value_delegate.h     src/ui/value_delegate.cpp
     src/ui/event_log.h          src/ui/event_log.cpp
     src/ui/bit_view.h           src/ui/bit_view.cpp
@@ -114,28 +153,17 @@ qt_add_library(evre_studio_core STATIC
     src/ui/fold_button.h        src/ui/fold_button.cpp
     src/ui/help_dialog.h        src/ui/help_dialog.cpp
     src/ui/frame_clock.h        src/ui/frame_clock.cpp
-    src/ui/language.h           src/ui/language.cpp
     src/ui/main_window.h        src/ui/main_window.cpp
     src/ui/main_window_bus.cpp
 )
 target_include_directories(evre_studio_core PUBLIC src)
-# The translations: every text of src/ through tr() (English is the source), the .qm built into the core at :/i18n
-# (language.h). `cmake --build . --target update_translations` brings the .ts files up to the sources
-# (translations/README.md).
-file(GLOB_RECURSE STUDIO_TEXT_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.h)
-qt_add_translations(evre_studio_core
-    TS_FILES translations/evre_studio_ar.ts
-    SOURCES ${STUDIO_TEXT_SOURCES}
-    LUPDATE_OPTIONS -no-obsolete -locations none
-    RESOURCE_PREFIX /i18n)
 # The Studio's icon, the teknile mark (packaging/icons, made from its SVG): every window's, from the core's resources
 # at :/icons; the programs' on Windows (packaging/windows/evre_studio.rc.in)
 qt_add_resources(evre_studio_core studio_icons PREFIX /icons BASE packaging/icons FILES
     packaging/icons/evre-studio-16.png packaging/icons/evre-studio-24.png packaging/icons/evre-studio-32.png
     packaging/icons/evre-studio-48.png packaging/icons/evre-studio-64.png packaging/icons/evre-studio-128.png
     packaging/icons/evre-studio-256.png)
-target_compile_definitions(evre_studio_core PUBLIC EVRE_STUDIO_VERSION="${PROJECT_VERSION}")
-target_link_libraries(evre_studio_core PUBLIC evre_protocol Qt6::Widgets)
+target_link_libraries(evre_studio_core PUBLIC evre_engine Qt6::Widgets)
 if(WIN32)
     # timeBeginPeriod: 1 ms timers; DwmFlush: frames at the display refresh; Direct3D 11 and DirectComposition:
     # the chart's plot on a GPU, a layer of the window
@@ -160,24 +188,6 @@ endfunction()
 qt_add_executable(EVReStudio WIN32 src/main.cpp)
 target_link_libraries(EVReStudio PRIVATE evre_studio_core)
 evre_version_info(EVReStudio "EVRe Studio")
-# On Android the program is an APK (the target EVReStudio_make_apk, or apk): the manifest and the Java USB layer from
-# android/, arm64-v8a, Android 9 (API 28) and newer, the version code from the version (1.5.0 -> 10500)
-if(ANDROID)
-    math(EXPR EVRE_ANDROID_VERSION_CODE
-        "${PROJECT_VERSION_MAJOR} * 10000 + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
-    set_target_properties(EVReStudio PROPERTIES
-        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
-        QT_ANDROID_MIN_SDK_VERSION 28
-        QT_ANDROID_TARGET_SDK_VERSION 34
-        QT_ANDROID_VERSION_CODE ${EVRE_ANDROID_VERSION_CODE}
-        QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}")
-    # the maps go into the APK's assets (assets:/maps, ui_helpers.cpp mapsFolder), copied into the package's build
-    # folder before androiddeployqt makes the APK
-    add_custom_target(evre_android_maps ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/maps
-            ${CMAKE_CURRENT_BINARY_DIR}/android-build/assets/maps)
-    add_dependencies(EVReStudio evre_android_maps)
-endif()
 
 # The maps travel with the programs: maps/ is copied beside them at every
 # build, so an edited map is there even when no program had to be linked
@@ -185,9 +195,6 @@ endif()
 add_custom_target(evre_maps ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/maps $<TARGET_FILE_DIR:EVReStudio>/maps)
 add_dependencies(EVReStudio evre_maps)
-
-# The other programs are for a desktop: on Android each qt_add_executable would be an APK of its own
-if(NOT ANDROID)
 
 # The real window driven by QtTest against tests/fake_device.py (it writes: the
 # fake device only). It opens the maps copied beside it.
@@ -240,3 +247,66 @@ target_link_libraries(evre_fake_fast PRIVATE evre_protocol)
 add_dependencies(evre_fake_fast evre_maps)
 
 endif() # NOT ANDROID
+
+# The phone's interface in Qt Quick (src/phone, STUDIO.md 25.6): the screens (src/phone/qml) and their C++ classes are
+# the QML module EVRe.Phone, a static library that the program and its test both link (its plugin imported by
+# Q_IMPORT_QML_PLUGIN); the program sets the Material style and loads Main.qml (phone_app.cpp)
+if(EVRE_PHONE)
+    # the screens at the module's root (qrc:/qt/qml/EVRe/Phone/Main.qml), where they find each other by name
+    foreach(screen Main ConnectDrawer LinkPill PlaceholderScreen P9Screen)
+        set_source_files_properties(src/phone/qml/${screen}.qml PROPERTIES QT_RESOURCE_ALIAS ${screen}.qml)
+    endforeach()
+    qt_add_library(evre_phone_qml STATIC)
+    qt_add_qml_module(evre_phone_qml
+        URI EVRe.Phone
+        VERSION 1.0
+        RESOURCE_PREFIX /qt/qml
+        OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/qml/EVRe/Phone
+        PLUGIN_TARGET evre_phone_qmlplugin
+        CLASS_NAME EVRePhonePlugin
+        QML_FILES
+            src/phone/qml/Main.qml
+            src/phone/qml/ConnectDrawer.qml
+            src/phone/qml/LinkPill.qml
+            src/phone/qml/PlaceholderScreen.qml
+            src/phone/qml/P9Screen.qml
+        SOURCES
+            src/phone/phone_theme.h     src/phone/phone_theme.cpp
+            src/phone/phone_language.h  src/phone/phone_language.cpp
+            src/phone/phone_app.h       src/phone/phone_app.cpp
+            src/phone/p9_proof.h        src/phone/p9_proof.cpp)
+    # src/phone too: the generated type registrations include the classes' headers by their bare names
+    target_include_directories(evre_phone_qml PUBLIC src PRIVATE src/phone)
+    target_link_libraries(evre_phone_qml PUBLIC evre_engine Qt6::Quick Qt6::QuickControls2)
+
+    qt_add_executable(EVReStudioPhone WIN32 src/phone/main_phone.cpp)
+    target_link_libraries(EVReStudioPhone PRIVATE evre_phone_qml evre_phone_qmlplugin)
+    if(ANDROID)
+        target_link_libraries(EVReStudioPhone PRIVATE log) # P-9's lines go to logcat under a tag of their own
+        # The APK (the target EVReStudioPhone_make_apk, or apk), package com.teknile.evrestudio: the manifest and the
+        # Java USB layer from android/, arm64-v8a, Android 9 (API 28) and newer, the version code from the version
+        # (1.5.0 -> 10500)
+        math(EXPR EVRE_ANDROID_VERSION_CODE
+            "${PROJECT_VERSION_MAJOR} * 10000 + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
+        set_target_properties(EVReStudioPhone PROPERTIES
+            QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
+            QT_ANDROID_MIN_SDK_VERSION 28
+            QT_ANDROID_TARGET_SDK_VERSION 34
+            QT_ANDROID_VERSION_CODE ${EVRE_ANDROID_VERSION_CODE}
+            QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}")
+        # the maps go into the APK's assets (assets:/maps, phone_app.cpp mapsFolder), copied into the package's build
+        # folder before androiddeployqt makes the APK
+        add_custom_target(evre_android_maps ALL
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/maps
+                ${CMAKE_CURRENT_BINARY_DIR}/android-build/assets/maps)
+        add_dependencies(EVReStudioPhone evre_android_maps)
+    else()
+        # on a desktop for checks and trying (a 412 x 915 window), with maps/ beside it
+        add_dependencies(EVReStudioPhone evre_maps)
+        evre_version_info(EVReStudioPhone "EVRe Studio for phones")
+        # the phone's window driven by QtTest (tests/phone_test.cpp, STUDIO.md 26.11)
+        qt_add_executable(evre_phone_test tests/phone_test.cpp)
+        target_link_libraries(evre_phone_test PRIVATE evre_phone_qml evre_phone_qmlplugin Qt6::Test)
+        add_dependencies(evre_phone_test evre_maps)
+    endif()
+endif()
