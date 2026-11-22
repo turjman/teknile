@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Help (F1): topics on the left, the page on the right. The pages live in help_dialog.cpp. */
+/* Help (F1): topics on the left, the page on the right. The pages live in help_topics.cpp (shared with the phone). */
 #pragma once
 
 #include <QDialog>

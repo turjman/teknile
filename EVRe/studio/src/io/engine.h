@@ -79,6 +79,9 @@
 
 class ApiServer;
 class QFile;
+namespace evre {
+class UsbBridge;
+}
 namespace fast {
 class RecordingWriter;
 }
@@ -272,6 +275,8 @@ public:
 	/* baudLimited: the baud rate is the link's real speed (a UART, a USB-to-UART bridge); false on USB CDC, which runs
 	 * at USB's speed whatever the rate says (Sidebar::serialBaudLimited) */
 	void connectSerial(const QString &port, qint32 baud, bool baudLimited);
+	/* the phone's USB CDC device (link_android.h) through this bridge: the phone's program and its test */
+	void connectUsb(const QString &device, qint32 baud, evre::UsbBridge *bridge);
 	/* Listen: hear what another program says on this port; nothing is sent until another link replaces it */
 	/* pressed: a person asked for this, so a UAC prompt may come; a try by itself must not raise one. known: what the
 	 * window's lookup found on the port, not asked again here (it costs the device a request); a test's port needs none */
@@ -292,6 +297,11 @@ public:
 	/* inFlight as the user set it; a bus on a serial link (RS-485: one transmitter at a time) always gets 1 */
 	void setLinkOptions(int slave, int timeoutMs, int inFlight);
 	void setPolling(bool on, double intervalMs); /* 0 = as fast as possible: the next poll when one ends */
+	/* a poll's samples (the chart's, a recording's row) timed when its (last) request went out, not when its last
+	 * answer came: a link that hands the answers over in bunches (a phone's TCP through a port forward, after a
+	 * reconnect) gave several polls one time, and a slope drawn from them went up in stairs. Off (the desktop's): the
+	 * answer's time, as before */
+	void setSampleAtRequest(bool on) { sampleAtRequest_ = on; }
 	/* AUTO_SEND on or off at 8000 / (prescaler + 1) Hz, on the one device (never on a bus). Kept: switched on
 	 * again after a reconnect, once the device's STATUS says it can. Answered by autoSendSet. */
 	void setAutoSend(bool on, int prescaler);
@@ -389,7 +399,7 @@ private:
 	void storeBlock(const Block &block, const QByteArray &data);
 	void onBlockRefused(const Block &block, const evre::Result &r);
 	void splitBlock(const Block &block);
-	void pollDone();
+	void pollDone(double sentAt = -1); /* sentAt: when the poll's requests went out (sampleAtRequest_), else -1 */
 	/* only: these table rows and no others (a heard tick); null: every plotted row, every CSV column */
 	void appendSamples(double t, const QSet<int> *only = nullptr);
 	void writeCsvRow(double t, const QSet<int> *only = nullptr);
@@ -524,6 +534,9 @@ private:
 	quint64 layoutGeneration_ = 0;               /* +1 on every new block layout: older answers are ignored */
 	quint64 nextPollId_ = 0;
 	QHash<quint64, int> pollsUnderWay_;          /* poll id -> blocks still to answer */
+	QHash<quint64, double> pollsSentAt_;         /* poll id -> when its last answered request went out */
+	bool sampleAtRequest_ = false;
+	double lastPollSample_ = -1;                 /* the last poll's sample time: the times keep rising */
 	int pollsSinceRate_ = 0;                     /* polls done since the rate was last measured */
 	QElapsedTimer clock_, rateClock_;
 	QVector<RegKey> plottedKeys_;

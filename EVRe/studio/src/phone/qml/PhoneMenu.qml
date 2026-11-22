@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: Apache-2.0
+// A menu of the phone's (STUDIO.md 25.6): a card's "..." menu, a legend chip's, Fast lines. Kept `edge` dp inside the
+// window (Material's menu has no margin: a card's menu touched the screen's right edge), and raised off the page by
+// more than a shadow: Material's shadow is lost on the dark page (the owner's phone: the menu's dark face on the dark
+// page had no edge), so its face is the raised surface and its edge the control colour, 3:1 or more to the page in
+// both looks. openUnder() hangs it under the button that asks, toward the window's middle: a button in the right half
+// (a card's in English) has the menu's end at its end, one in the left half (a card's in Arabic) its start.
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Controls.Material
+import QtQuick.Controls.Material.impl
+import EVRe.Phone
+
+Menu {
+    id: menu
+    readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
+    readonly property real edge: 8
+
+    margins: edge
+    // Material's grow and fade; none when Android's animations are removed
+    enter: Transition {
+        NumberAnimation { property: "scale"; from: 0.9; to: 1.0; easing.type: Easing.OutQuint; duration: PhoneSession.motion ? 220 : 0 }
+        NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; easing.type: Easing.OutCubic; duration: PhoneSession.motion ? 150 : 0 }
+    }
+    exit: Transition {
+        NumberAnimation { property: "scale"; from: 1.0; to: 0.9; easing.type: Easing.OutQuint; duration: PhoneSession.motion ? 220 : 0 }
+        NumberAnimation { property: "opacity"; from: 1.0; to: 0.0; easing.type: Easing.OutCubic; duration: PhoneSession.motion ? 150 : 0 }
+    }
+
+    function openUnder(from) {
+        const middle = from.mapToItem(null, from.width / 2, 0).x
+        const x = middle > from.Window.width / 2 ? from.width - menu.width : 0
+        // on whole pixels of the window: a button at a fraction of one (the Chart's row, its widths from text) left the
+        // menu's 1 px edge blurred over two
+        const at = from.mapToItem(null, x, from.height)
+        menu.popup(from, x + Math.round(at.x) - at.x, from.height + Math.round(at.y) - at.y)
+    }
+
+    background: Rectangle {
+        objectName: "menuFace"
+        implicitWidth: 200
+        implicitHeight: menu.Material.menuItemHeight
+        radius: 4
+        color: PhoneTheme.surface2
+        border.width: 1
+        border.color: PhoneTheme.control
+        layer.enabled: menu.Material.elevation > 0
+        layer.effect: ElevationEffect {
+            elevation: menu.Material.elevation
+        }
+    }
+}

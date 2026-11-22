@@ -91,8 +91,10 @@ qt_add_library(evre_engine STATIC
     src/io/engine.h             src/io/engine.cpp
     src/api/api_server.h        src/api/api_server.cpp
     src/ui/value_pace.h         src/ui/value_pace.cpp
+    src/ui/chart_data.h         src/ui/chart_data.cpp
     src/ui/theme.h              src/ui/theme_colors.cpp
     src/ui/language.h           src/ui/language.cpp
+    src/ui/help_topics.h        src/ui/help_topics.cpp
 )
 target_include_directories(evre_engine PUBLIC src)
 target_compile_definitions(evre_engine PUBLIC EVRE_STUDIO_VERSION="${PROJECT_VERSION}")
@@ -253,7 +255,8 @@ endif() # NOT ANDROID
 # Q_IMPORT_QML_PLUGIN); the program sets the Material style and loads Main.qml (phone_app.cpp)
 if(EVRE_PHONE)
     # the screens at the module's root (qrc:/qt/qml/EVRe/Phone/Main.qml), where they find each other by name
-    foreach(screen Main ConnectDrawer LinkPill PlaceholderScreen P9Screen)
+    foreach(screen Main ConnectDrawer LinkPill LogScreen MonitorScreen PhoneIcon HelpScreen PlaceholderScreen P9Screen RegistersScreen RegisterRow
+            RegisterSheet EmptyState ChartScreen PhoneMenu FilterChip FrameSheet)
         set_source_files_properties(src/phone/qml/${screen}.qml PROPERTIES QT_RESOURCE_ALIAS ${screen}.qml)
     endforeach()
     qt_add_library(evre_phone_qml STATIC)
@@ -268,13 +271,36 @@ if(EVRE_PHONE)
             src/phone/qml/Main.qml
             src/phone/qml/ConnectDrawer.qml
             src/phone/qml/LinkPill.qml
+            src/phone/qml/LogScreen.qml
+            src/phone/qml/PhoneIcon.qml
+            src/phone/qml/HelpScreen.qml
             src/phone/qml/PlaceholderScreen.qml
             src/phone/qml/P9Screen.qml
+            src/phone/qml/RegistersScreen.qml
+            src/phone/qml/RegisterRow.qml
+            src/phone/qml/RegisterSheet.qml
+            src/phone/qml/EmptyState.qml
+            src/phone/qml/ChartScreen.qml
+            src/phone/qml/MonitorScreen.qml
+            src/phone/qml/PhoneMenu.qml
+            src/phone/qml/FilterChip.qml
+            src/phone/qml/FrameSheet.qml
+            src/phone/qml/PressTint.qml
         SOURCES
             src/phone/phone_theme.h     src/phone/phone_theme.cpp
             src/phone/phone_language.h  src/phone/phone_language.cpp
             src/phone/phone_app.h       src/phone/phone_app.cpp
-            src/phone/p9_proof.h        src/phone/p9_proof.cpp)
+            src/phone/phone_session.h   src/phone/phone_session.cpp
+            src/phone/port_list.h       src/phone/port_list.cpp
+            src/phone/log_model.h       src/phone/log_model.cpp
+            src/phone/register_list.h   src/phone/register_list.cpp
+            src/phone/p9_proof.h        src/phone/p9_proof.cpp
+            src/phone/phone_system.h    src/phone/phone_system.cpp
+            src/phone/phone_help.h      src/phone/phone_help.cpp
+            src/phone/chart_item.h      src/phone/chart_item.cpp
+            src/phone/chart_demo.h      src/phone/chart_demo.cpp
+            src/phone/frame_log.h       src/phone/frame_log.cpp
+            src/phone/row_filter.h      src/phone/row_filter.cpp)
     # src/phone too: the generated type registrations include the classes' headers by their bare names
     target_include_directories(evre_phone_qml PUBLIC src PRIVATE src/phone)
     target_link_libraries(evre_phone_qml PUBLIC evre_engine Qt6::Quick Qt6::QuickControls2)
@@ -307,6 +333,10 @@ if(EVRE_PHONE)
         # the phone's window driven by QtTest (tests/phone_test.cpp, STUDIO.md 26.11)
         qt_add_executable(evre_phone_test tests/phone_test.cpp)
         target_link_libraries(evre_phone_test PRIVATE evre_phone_qml evre_phone_qmlplugin Qt6::Test)
-        add_dependencies(evre_phone_test evre_maps)
+        add_dependencies(evre_phone_test evre_maps evre_fake_fast) # the fast lines' check starts evre_fake_fast
+        # a crash names its check and prints its stack with the functions' names (Linux)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            target_link_options(evre_phone_test PRIVATE -rdynamic)
+        endif()
     endif()
 endif()

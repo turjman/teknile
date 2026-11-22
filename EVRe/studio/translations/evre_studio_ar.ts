@@ -612,6 +612,213 @@ Double-click to edit</source>
     </message>
 </context>
 <context>
+    <name>ChartScreen</name>
+    <message>
+        <source>Live</source>
+        <translation>مباشر</translation>
+    </message>
+    <message>
+        <source>Hold</source>
+        <translation>تثبيت</translation>
+    </message>
+    <message>
+        <source>Pinch: zoom the time · Drag: look back · Double tap: live</source>
+        <translation>القرص: تكبير الزمن · السحب: الرجوع إلى الأقدم · النقر المزدوج: مباشر</translation>
+    </message>
+    <message>
+        <source>Y auto</source>
+        <translation>مدى Y تلقائي</translation>
+    </message>
+    <message>
+        <source>Y %1 to %2</source>
+        <translation>مدى Y من ⁦%1⁩ إلى ⁦%2⁩</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>مسح</translation>
+    </message>
+    <message>
+        <source>Fast lines</source>
+        <translation>الخطوط السريعة</translation>
+    </message>
+    <message>
+        <source>Hide %1</source>
+        <translation>إخفاء %1</translation>
+    </message>
+    <message>
+        <source>Show %1</source>
+        <translation>إظهار %1</translation>
+    </message>
+    <message>
+        <source>More: Hide, Take off the chart</source>
+        <translation>المزيد: إخفاء، إزالة من المخطط</translation>
+    </message>
+    <message>
+        <source>Go to Registers</source>
+        <translation>الانتقال إلى المسجّلات</translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation>إخفاء</translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <translation>إظهار</translation>
+    </message>
+    <message>
+        <source>Take off the chart</source>
+        <translation>إزالة من المخطط</translation>
+    </message>
+    <message>
+        <source>%1 off the chart</source>
+        <translation>أُزيل ⁦%1⁩ من المخطط</translation>
+    </message>
+    <message>
+        <source>Type a number in both fields.</source>
+        <translation>يُكتب رقم في الحقلين كليهما.</translation>
+    </message>
+    <message>
+        <source>Max must be above min.</source>
+        <translation>يجب أن يكون الأعلى أكبر من الأدنى.</translation>
+    </message>
+    <message>
+        <source>Y range</source>
+        <translation>مدى Y</translation>
+    </message>
+    <message>
+        <source>Min</source>
+        <translation>الأدنى</translation>
+    </message>
+    <message>
+        <source>Max</source>
+        <translation>الأعلى</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>إلغاء</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>تطبيق</translation>
+    </message>
+    <message>
+        <source>Cursors</source>
+        <translation>المؤشران</translation>
+    </message>
+    <message>
+        <source>min</source>
+        <translation>أدنى</translation>
+    </message>
+    <message>
+        <source>max</source>
+        <translation>أعلى</translation>
+    </message>
+    <message>
+        <source>mean</source>
+        <translation>متوسط</translation>
+    </message>
+    <message>
+        <source>No samples between A and B</source>
+        <translation>لا عينات بين A و B</translation>
+    </message>
+    <message>
+        <source>No lines yet</source>
+        <translation>لا خطوط بعد</translation>
+    </message>
+    <message>
+        <source>Tap a register on the Registers screen, then Plot. Or choose a stream&apos;s channel under Fast lines.</source>
+        <translation>يُرسم المسجّل من صفحته: لمسة عليه في شاشة المسجّلات، ثم «رسم». أو تُختار قناة تدفق من الخطوط السريعة.</translation>
+    </message>
+    <message>
+        <source>Tap a register on the Registers screen, then Plot.</source>
+        <translation>يُرسم المسجّل من صفحته: لمسة عليه في شاشة المسجّلات، ثم «رسم».</translation>
+    </message>
+    <message>
+        <source>Show the tabs</source>
+        <translation>إظهار الألسنة</translation>
+    </message>
+    <message>
+        <source>Hide the tabs</source>
+        <translation>إخفاء الألسنة</translation>
+    </message>
+    <message>
+        <source>Show the tabs and the link</source>
+        <translation>إظهار الألسنة وحالة الوصلة</translation>
+    </message>
+    <message>
+        <source>Hide the tabs: the chart on the whole screen</source>
+        <translation>إخفاء الألسنة: المخطط على الشاشة كلها</translation>
+    </message>
+    <message>
+        <source>Window: %1</source>
+        <translation>النافذة: %1</translation>
+    </message>
+    <message>
+        <source>Auto follows the values in view. Or type a range: the value axis stays between these.</source>
+        <translation>التلقائي يتبع القيم المعروضة. أو اكتب مدى: يبقى محور القيم بين هذين الحدّين.</translation>
+    </message>
+    <message>
+        <source>Auto</source>
+        <translation>تلقائي</translation>
+    </message>
+    <message>
+        <source>Measure</source>
+        <translation>القياسات</translation>
+    </message>
+    <message>
+        <source>All lines: %1 more</source>
+        <translation>كل الخطوط: %1 أخرى</translation>
+    </message>
+    <message>
+        <source>All the lines, with their values</source>
+        <translation>كل الخطوط بقيمها</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>إغلاق</translation>
+    </message>
+    <message>
+        <source>Lines: %1</source>
+        <translation>الخطوط: %1</translation>
+    </message>
+    <message>
+        <source>Measure: A to B (%1)</source>
+        <translation>القياسات: من A إلى B ‏(%1)</translation>
+    </message>
+    <message>
+        <source>Measure: the view (%1)</source>
+        <translation>القياسات: المعروض (%1)</translation>
+    </message>
+    <message>
+        <source>Between the cursors: drag A or B to change the range.</source>
+        <translation>بين المؤشرين: اسحب A أو B لتغيير المدى.</translation>
+    </message>
+    <message>
+        <source>Over the time in view. Place the cursors to measure between them.</source>
+        <translation>على الزمن المعروض. ضع المؤشرين للقياس بينهما.</translation>
+    </message>
+    <message>
+        <source>Mean</source>
+        <translation>المتوسط</translation>
+    </message>
+    <message>
+        <source>RMS</source>
+        <translation>RMS</translation>
+    </message>
+    <message>
+        <source>Std dev</source>
+        <translation>الانحراف المعياري</translation>
+    </message>
+    <message>
+        <source>Peak-peak</source>
+        <translation>قمة–قمة</translation>
+    </message>
+    <message>
+        <source>Line</source>
+        <translation>الخط</translation>
+    </message>
+</context>
+<context>
     <name>ChartTab</name>
     <message>
         <source>View: the time shown. Pick one or type any length: 45, 2.5 s, 500 ms, 3 min, 1 h.
@@ -1932,10 +2139,6 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
         <translation>اتصال</translation>
     </message>
     <message>
-        <source>Coming soon: a USB port or a TCP address, the map, and Connect.</source>
-        <translation>قريبًا: منفذ USB أو عنوان TCP، والخريطة، والاتصال.</translation>
-    </message>
-    <message>
         <source>Dark theme</source>
         <translation>سمة داكنة</translation>
     </message>
@@ -1950,6 +2153,122 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
     <message>
         <source>The language changes when the app is opened again.</source>
         <translation>تتغيّر اللغة عند فتح التطبيق مرة أخرى.</translation>
+    </message>
+    <message>
+        <source>Restart now</source>
+        <translation>إعادة التشغيل الآن</translation>
+    </message>
+    <message>
+        <source>Open map</source>
+        <translation>فتح خريطة</translation>
+    </message>
+    <message>
+        <source>Maps (*.json)</source>
+        <translation>الخرائط (*.json)</translation>
+    </message>
+    <message>
+        <source>USB</source>
+        <translation>USB</translation>
+    </message>
+    <message>
+        <source>TCP</source>
+        <translation>TCP</translation>
+    </message>
+    <message>
+        <source>USB device</source>
+        <translation>جهاز USB</translation>
+    </message>
+    <message>
+        <source>No USB device found: plug the board in (through a USB OTG adapter).</source>
+        <translation>لم يُعثر على جهاز USB: صِل اللوحة (عبر محوّل USB OTG).</translation>
+    </message>
+    <message>
+        <source>Baud rate</source>
+        <translation>معدّل البود</translation>
+    </message>
+    <message>
+        <source>A USB CDC board ignores the baud rate.</source>
+        <translation>لوحة USB CDC تتجاهل معدّل البود.</translation>
+    </message>
+    <message>
+        <source>Host</source>
+        <translation>المضيف</translation>
+    </message>
+    <message>
+        <source>Port</source>
+        <translation>المنفذ</translation>
+    </message>
+    <message>
+        <source>Token (not stored)</source>
+        <translation>رمز الدخول (لا يُحفظ)</translation>
+    </message>
+    <message>
+        <source>Map</source>
+        <translation>الخريطة</translation>
+    </message>
+    <message>
+        <source>Open…</source>
+        <translation>فتح…</translation>
+    </message>
+    <message>
+        <source>Reconnect by itself</source>
+        <translation>إعادة الاتصال تلقائيًا</translation>
+    </message>
+    <message>
+        <source>Polling</source>
+        <translation>الاستطلاع</translation>
+    </message>
+    <message>
+        <source>Interval (ms)</source>
+        <translation>الفاصل (ms)</translation>
+    </message>
+    <message>
+        <source>0 ms: as fast as the device answers</source>
+        <translation>⁦0 ms⁩: بأسرع ما يجيب الجهاز</translation>
+    </message>
+    <message>
+        <source>Allow writes</source>
+        <translation>السماح بالكتابة</translation>
+    </message>
+    <message>
+        <source>Stop recording</source>
+        <translation>إيقاف التسجيل</translation>
+    </message>
+    <message>
+        <source>Record</source>
+        <translation>تسجيل</translation>
+    </message>
+    <message>
+        <source>A CSV of the logged registers, in the app&apos;s folder.</source>
+        <translation>ملف CSV للمسجّلات المسجَّلة، في مجلد التطبيق.</translation>
+    </message>
+    <message>
+        <source>Link</source>
+        <translation>الوصلة</translation>
+    </message>
+    <message>
+        <source>Device</source>
+        <translation>الجهاز</translation>
+    </message>
+    <message>
+        <source>Poll the registers</source>
+        <translation>استطلاع المسجّلات</translation>
+    </message>
+    <message>
+        <source>Recording</source>
+        <translation>التسجيل</translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation>العرض</translation>
+    </message>
+    <message>
+        <source>Keep the screen on while connected</source>
+        <translation>إبقاء الشاشة مضاءة أثناء الاتصال</translation>
+    </message>
+    <message>
+        <source>Help</source>
+        <translation>مساعدة</translation>
     </message>
 </context>
 <context>
@@ -2700,6 +3019,13 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
     </message>
 </context>
 <context>
+    <name>FilterChip</name>
+    <message>
+        <source>%1: %2</source>
+        <translation>%1: %2</translation>
+    </message>
+</context>
+<context>
     <name>FormulaCompleter</name>
     <message>
         <source>constant</source>
@@ -2708,6 +3034,58 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
     <message>
         <source>fast, every record of %1</source>
         <translation>سريع، كل سجلّ من %1</translation>
+    </message>
+</context>
+<context>
+    <name>FrameLog</name>
+    <message>
+        <source>… %1 frames not shown (too many to show)</source>
+        <translation>… %1 إطار لم يُعرض (أكثر من أن يُعرض)</translation>
+    </message>
+    <message numerus="yes">
+        <source>Data: the %n bytes written</source>
+        <translation>
+            <numerusform>البيانات: %n بايت مكتوب</numerusform>
+            <numerusform>البيانات: بايت واحد مكتوب</numerusform>
+            <numerusform>البيانات: بايتان مكتوبان</numerusform>
+            <numerusform>البيانات: %n بايتات مكتوبة</numerusform>
+            <numerusform>البيانات: %n بايتًا مكتوبًا</numerusform>
+            <numerusform>البيانات: %n بايت مكتوب</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Data: the %n bytes read (the payload)</source>
+        <translation>
+            <numerusform>البيانات: %n بايت مقروء (الحمولة)</numerusform>
+            <numerusform>البيانات: بايت واحد مقروء (الحمولة)</numerusform>
+            <numerusform>البيانات: بايتان مقروءان (الحمولة)</numerusform>
+            <numerusform>البيانات: %n بايتات مقروءة (الحمولة)</numerusform>
+            <numerusform>البيانات: %n بايتًا مقروءًا (الحمولة)</numerusform>
+            <numerusform>البيانات: %n بايت مقروء (الحمولة)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>CRC-16/X-25 over every byte before it, low byte first: %1; checked when the frame came (a frame whose CRC fails is dropped)</source>
+        <translation>⁦CRC-16/X-25⁩ على كل بايت قبله، البايت الأدنى أولًا: ⁦%1⁩؛ فُحص حين وصل الإطار (الإطار الذي يفشل فحص CRC فيه يُسقط)</translation>
+    </message>
+</context>
+<context>
+    <name>FrameSheet</name>
+    <message>
+        <source>Close</source>
+        <translation>إغلاق</translation>
+    </message>
+    <message>
+        <source>Not one whole EVRe frame: its bytes as they came.</source>
+        <translation>ليس إطار EVRe كاملًا: بايتاته كما وصلت.</translation>
+    </message>
+    <message>
+        <source>Copy the bytes</source>
+        <translation>نسخ البايتات</translation>
+    </message>
+    <message>
+        <source>Copied</source>
+        <translation>نُسخت</translation>
     </message>
 </context>
 <context>
@@ -4429,6 +4807,206 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 &lt;/ul&gt;
 </translation>
     </message>
+    <message>
+        <source>Using the phone app</source>
+        <translation>استخدام تطبيق الهاتف</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Using the phone app&lt;/h2&gt;
+&lt;p&gt;EVRe Studio on a phone: the desktop&apos;s engine and maps, four screens in the tab bar at the bottom: &lt;b&gt;Registers&lt;/b&gt;,
+&lt;b&gt;Chart&lt;/b&gt;, &lt;b&gt;Monitor&lt;/b&gt; and &lt;b&gt;Log&lt;/b&gt; (across, in a rail at the side, with the menu and the link&apos;s state). The
+Chart and the Monitor turn the screen across; the Registers and the Log follow the way the phone is held. The other topics of this Help are the desktop&apos;s: where they speak of the sidebar, here
+it is the drawer; a click is a tap.&lt;/p&gt;
+&lt;h3&gt;Connecting&lt;/h3&gt;
+&lt;p&gt;The menu button at the top, or the link&apos;s pill beside it, opens the &lt;b&gt;Connect&lt;/b&gt; drawer.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;USB&lt;/b&gt;: plug the board in (through a USB OTG adapter) and choose it under &lt;i&gt;USB device&lt;/i&gt;. Android asks
+whether EVRe Studio may use it: the pill reads &lt;i&gt;Waiting for permission…&lt;/i&gt; until you answer its dialog. A USB CDC
+board ignores the baud rate.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;TCP&lt;/b&gt;: the &lt;b&gt;host&lt;/b&gt; and &lt;b&gt;port&lt;/b&gt; of the device or its gateway, and the &lt;b&gt;token&lt;/b&gt; when the device asks
+for one (it is not stored).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Connect&lt;/b&gt;: the pill turns green and the device&apos;s ID shows; while polling, the pill has the polls a second
+(&lt;i&gt;Connected · 48 Hz&lt;/i&gt;). &lt;b&gt;Reconnect by itself&lt;/b&gt; brings a lost link back, also to a board that was reset or plugged
+in again.&lt;/li&gt;
+&lt;li&gt;Connected, a line under the link&apos;s state tells its health, as the desktop&apos;s status bar: the latency, the frames
+sent and received, the timeouts, the error answers and the bad frames. While timeouts or errors rise the pill turns
+amber and a line says why; after a quiet while it is green again.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Device&lt;/b&gt;: the map (&lt;b&gt;Open…&lt;/b&gt; chooses another &lt;code&gt;.json&lt;/code&gt;) and &lt;b&gt;Allow writes&lt;/b&gt;. &lt;b&gt;Polling&lt;/b&gt;: on
+or off, and its interval (0 ms: as fast as the device answers).&lt;/li&gt;
+&lt;li&gt;At the drawer&apos;s foot: the dark theme, the language (applied when the app is opened again; &lt;b&gt;Restart now&lt;/b&gt; under it
+does that at once) and &lt;b&gt;Help&lt;/b&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Registers&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;A row per register, in its group, as the desktop&apos;s table: the name and address, the value at the end lined up
+with the others, and its unit. A second line only when there is more to say: the decoded fields, &lt;i&gt;not
+refreshed&lt;/i&gt; (a value not read for a while), &lt;i&gt;on the chart&lt;/i&gt;, or an error in red. A changed value glows.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Search&lt;/b&gt; at the top: a name, a unit or an address.&lt;/li&gt;
+&lt;li&gt;A tap on a group&apos;s header folds its rows away (the header then says how many it holds) and opens them again. The
+folds are kept for the map; a search shows its matches in folded groups too.&lt;/li&gt;
+&lt;li&gt;A tap on a row opens its sheet: the value large, the decoded fields, a small line of its last values, &lt;b&gt;Plot&lt;/b&gt;
+(&lt;b&gt;Take off the chart&lt;/b&gt; once plotted) and &lt;b&gt;Copy&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;A writable register&apos;s sheet writes as the desktop&apos;s quick write: type the value (a number brings up the number pad;
+an enum: its list) and &lt;b&gt;Write&lt;/b&gt;, or &lt;b&gt;Enter&lt;/b&gt;. A value past the map&apos;s limits, or a register that moves something,
+is asked first: &lt;b&gt;Write anyway&lt;/b&gt; or &lt;b&gt;Cancel&lt;/b&gt;. The answer shows under it, then the value read back from the
+device. Writing needs &lt;b&gt;Allow writes&lt;/b&gt; on.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Chart&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;The lines: registers plotted from their sheet (a tap on a row, &lt;b&gt;Plot&lt;/b&gt;), and with &lt;b&gt;Fast lines&lt;/b&gt; (a map with
+streams) a stream&apos;s channels.&lt;/li&gt;
+&lt;li&gt;Across, the chart has the whole screen: the rail with the tabs goes. The button with four corners at the start
+of its row brings it back (a dot on it shows the link&apos;s state: green connected, amber on the way, red lost); a tap
+again gives the chart the whole screen. Android&apos;s back brings it back too.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Live&lt;/b&gt; follows the newest samples, &lt;b&gt;Hold&lt;/b&gt; keeps the view still. The window&apos;s button shows its length
+(&lt;i&gt;1 min&lt;/i&gt;): a tap offers &lt;b&gt;10 s&lt;/b&gt;, &lt;b&gt;1 min&lt;/b&gt; or &lt;b&gt;5 min&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;A &lt;b&gt;pinch&lt;/b&gt; zooms the time, a &lt;b&gt;drag&lt;/b&gt; looks back (and holds), a &lt;b&gt;double tap&lt;/b&gt; goes live again. The
+times under the plot are clock times (&lt;i&gt;17:50:50&lt;/i&gt;), as on the desktop.&lt;/li&gt;
+&lt;li&gt;The &lt;b&gt;Y&lt;/b&gt; button shows the range: &lt;i&gt;Y auto&lt;/i&gt; fits the values in view. A tap opens a small sheet: a
+&lt;b&gt;Min&lt;/b&gt; and a &lt;b&gt;Max&lt;/b&gt; with &lt;b&gt;Apply&lt;/b&gt;, or &lt;b&gt;Auto&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;A lost link, or a stretch no poll filled, leaves a gap in a line: nothing is drawn across it.&lt;/li&gt;
+&lt;li&gt;The legend over the plot: a chip per line with its latest value; a tap hides or shows the line, its &lt;b&gt;▾&lt;/b&gt;
+offers &lt;b&gt;Take off the chart&lt;/b&gt;. When the chips do not all fit, &lt;b&gt;+N&lt;/b&gt; at the end lists every line, each with a
+switch to show it. &lt;b&gt;Clear&lt;/b&gt; empties the chart.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Measure&lt;/b&gt; shows, per line, its min, max, mean, RMS, std dev and peak-peak over the view, or between A and B
+once the cursors are placed, as the desktop&apos;s table under its chart. The chart stays usable beside it; the columns
+scroll sideways when they do not fit.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Cursors&lt;/b&gt; puts A and B on the view and holds it; drag each by its handle, a rounded square with its letter (A&apos;s at
+the top, B&apos;s at the foot). Beside the plot (under it, upright): the times of A and B and B − A, and per line its values at A and B,
+B − A, and the min, max and mean between them. &lt;b&gt;Cursors&lt;/b&gt; again takes them off.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Monitor and Log&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Monitor&lt;/b&gt;: every frame on the link while the screen shows: its time, its direction (TX, RX) and its function
+(READ, READ_RESP ...: a read asked in blue, a write in amber, an answer in green, an error in red) over its bytes.
+&lt;b&gt;TX&lt;/b&gt; and &lt;b&gt;RX&lt;/b&gt; at the top show or hide the frames each way, with their counts. A tap on a frame shows it
+field by field, as the desktop&apos;s Dump spells it: START, SLAVE, FUNCTION, OFFSET (with the registers it covers), COUNT,
+DATA, CRC and END. &lt;b&gt;Pause&lt;/b&gt; keeps what is there, &lt;b&gt;Clear&lt;/b&gt; empties it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Log&lt;/b&gt;: what happened (the map, the link, the writes and their answers, the recordings), each line with its
+level&apos;s mark: an &lt;i&gt;i&lt;/i&gt; for information, a triangle in amber for a warning, a cross in red for an error. The chips at
+the top show or hide each level, with its count. &lt;b&gt;Copy&lt;/b&gt; puts the lines shown on the clipboard, &lt;b&gt;Clear&lt;/b&gt;
+empties it.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Recording and the background&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Record&lt;/b&gt; in the drawer writes a CSV of the logged registers in the app&apos;s folder; the Log says where.
+&lt;b&gt;Stop recording&lt;/b&gt; ends it.&lt;/li&gt;
+&lt;li&gt;While a link is up or wanted, Android shows a notification with the link&apos;s state and the recording&apos;s time: the
+link and a recording go on with the screen off or another app in front. A tap on it opens the app; &lt;b&gt;Disconnect&lt;/b&gt;
+takes it away.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Keep the screen on while connected&lt;/b&gt; (at the drawer&apos;s foot, on at first): the screen does not go dark while
+the link is up.&lt;/li&gt;
+&lt;li&gt;A short buzz says the link is up and that the device took a write (with the phone&apos;s touch feedback on). The tabs
+and the sheets move; with Android&apos;s &lt;i&gt;Remove animations&lt;/i&gt; on, they do not.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Back&lt;/h3&gt;
+&lt;p&gt;Android&apos;s back gesture closes what is open, a step at a time: a Help page to the list, the Help, a register&apos;s or a
+frame&apos;s sheet, the drawer; on the Chart&apos;s whole screen it brings the tab bar back. With nothing open, while a link or a recording runs, the app goes to the background as with Home and
+both go on; with no link it closes the app.&lt;/p&gt;
+&lt;p&gt;Only on the desktop: the Map editor, the Dump, Listen, the API, math lines, lanes, the trigger and notes.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;استخدام تطبيق الهاتف&lt;/h2&gt;
+&lt;p&gt;EVRe Studio على الهاتف: محرّك سطح المكتب وخرائطه، وأربع شاشات في شريط الألسنة أسفل الشاشة: &lt;b&gt;المسجّلات&lt;/b&gt;،
+و&lt;b&gt;المخطط&lt;/b&gt;، و&lt;b&gt;المراقبة&lt;/b&gt;، و&lt;b&gt;السجل&lt;/b&gt; (وبالعرض في شريط جانبي، مع القائمة وحالة الوصلة). يدير المخطط والمراقبة الشاشة بالعرض، وتتبع المسجّلات والسجل اتجاه الهاتف كما تمسكه.
+المواضيع الأخرى في هذه المساعدة مواضيع سطح المكتب: حيث تذكر الشريط الجانبي فهو هنا لوحة الاتصال، والنقرة لمسة.&lt;/p&gt;
+&lt;h3&gt;الاتصال&lt;/h3&gt;
+&lt;p&gt;زر القائمة في الأعلى، أو شارة الوصلة بجانبه، يفتح &lt;b&gt;لوحة الاتصال&lt;/b&gt;.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;USB&lt;/b&gt;: صِل اللوحة (عبر محوّل USB OTG) واخترها تحت &lt;i&gt;جهاز USB&lt;/i&gt;. يسأل أندرويد هل يُسمح لـ EVRe Studio
+باستخدامها: تقول الشارة &lt;i&gt;بانتظار الإذن…&lt;/i&gt; حتى تجيب عن نافذة الحوار. لوحة USB CDC تتجاهل معدّل البود.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;TCP&lt;/b&gt;: &lt;b&gt;المضيف&lt;/b&gt; و&lt;b&gt;المنفذ&lt;/b&gt; للجهاز أو لبوابته، و&lt;b&gt;رمز الدخول&lt;/b&gt; حين يطلبه الجهاز (لا يُحفظ).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;اتصال&lt;/b&gt;: تخضرّ الشارة ويظهر معرّف الجهاز؛ وفي أثناء الاستطلاع تعرض الشارة عدد الاستطلاعات في الثانية
+(&lt;i&gt;متصل · ⁦48 Hz⁩&lt;/i&gt;). &lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt; تعيد الوصلة المفقودة، وتعيدها أيضًا
+إلى لوحة أُعيد تشغيلها أو وُصلت من جديد.&lt;/li&gt;
+&lt;li&gt;عند الاتصال يقول سطر تحت حالة الوصلة صحتَها، كشريط الحالة في سطح المكتب: زمن الاستجابة، والإطارات المرسلة
+والمستقبلة، والمهلات، وردود الخطأ، والإطارات التالفة. وما دامت المهلات أو الأخطاء تتزايد تصفرّ الشارة ويقول سطر
+السبب؛ وبعد فترة هدوء تعود خضراء.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الجهاز&lt;/b&gt;: الخريطة (&lt;b&gt;فتح…&lt;/b&gt; يختار ملف &lt;code&gt;.json&lt;/code&gt; آخر) و&lt;b&gt;السماح بالكتابة&lt;/b&gt;. &lt;b&gt;الاستطلاع&lt;/b&gt;: تشغيله
+أو إيقافه، وفاصله (القيمة ⁦0&#xa0;ms⁩: بأسرع ما يجيب الجهاز).&lt;/li&gt;
+&lt;li&gt;في أسفل لوحة الاتصال: السمة الداكنة، واللغة (تُطبَّق حين يُفتح التطبيق مرة أخرى؛ و&lt;b&gt;إعادة التشغيل الآن&lt;/b&gt; تحتها تفعل ذلك في الحال)، و&lt;b&gt;مساعدة&lt;/b&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;المسجّلات&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;صف لكل مسجّل، في مجموعته، كجدول سطح المكتب: الاسم والعنوان، والقيمة في آخر الصف مصطفّةً مع غيرها، ووحدتها.
+وسطر ثانٍ حين يكون هناك ما يُقال فقط: الحقول المفكوكة، أو &lt;i&gt;غير محدّث&lt;/i&gt; (قيمة لم تُقرأ منذ مدة)، أو &lt;i&gt;على
+المخطط&lt;/i&gt;، أو خطأ بالأحمر. القيمة التي تتغيّر تتوهّج.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;البحث&lt;/b&gt; في الأعلى: اسم أو وحدة أو عنوان.&lt;/li&gt;
+&lt;li&gt;النقر على ترويسة مجموعة يطوي صفوفها (فتقول الترويسة عندئذ كم مسجّلًا تضم) ويفتحها من جديد. يُحفظ الطيّ
+للخريطة؛ ويُظهر البحث نتائجه في المجموعات المطويّة أيضًا.&lt;/li&gt;
+&lt;li&gt;لمسة على صف تفتح ورقته: القيمة كبيرةً، والحقول المفكوكة، وخط صغير لآخر قيمه، و&lt;b&gt;رسم&lt;/b&gt; (&lt;b&gt;إزالة من المخطط&lt;/b&gt;
+بعد رسمه)، و&lt;b&gt;نسخ&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;ورقة المسجّل القابل للكتابة تكتب ككتابة سطح المكتب السريعة: تُكتب القيمة (الرقم يُظهر لوحة الأرقام؛ والقيمة ذات
+الأسماء: قائمتها) ثم &lt;b&gt;كتابة&lt;/b&gt;، أو &lt;b&gt;Enter&lt;/b&gt;. القيمة التي تتجاوز حدود الخريطة، أو المسجّل الذي يحرّك شيئًا،
+يُسأل عنها أولًا: &lt;b&gt;اكتب مع ذلك&lt;/b&gt; أو &lt;b&gt;إلغاء&lt;/b&gt;. يظهر الرد تحتها، ثم القيمة المقروءة من الجهاز للتحقق. الكتابة
+تحتاج &lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّلًا.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;المخطط&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;الخطوط: المسجّلات المرسومة من ورقتها (لمسة على صف، ثم &lt;b&gt;رسم&lt;/b&gt;)، ومع &lt;b&gt;الخطوط السريعة&lt;/b&gt; (خريطة فيها تدفقات) قنوات تدفق
+سريع.&lt;/li&gt;
+&lt;li&gt;بالعرض يأخذ المخطط الشاشة كلها: يختفي الشريط الجانبي بالألسنة. الزر ذو الزوايا الأربع في أول صفه يعيده
+(ونقطة عليه تُظهر حالة الوصلة: خضراء متصلة، وكهرمانية في الطريق، وحمراء مفقودة)؛ ولمسة أخرى تعطي المخطط الشاشة كلها.
+ورجوع أندرويد يعيده كذلك.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;مباشر&lt;/b&gt; يتابع أحدث العينات، و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي العرض ساكنًا. زر النافذة يُظهر طولها
+(&lt;i&gt;⁦1&#xa0;min⁩&lt;/i&gt;): لمسة عليه تقدّم &lt;b&gt;⁦10&#xa0;s⁩&lt;/b&gt; أو &lt;b&gt;⁦1&#xa0;min⁩&lt;/b&gt; أو &lt;b&gt;⁦5&#xa0;min⁩&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;القرص&lt;/b&gt; يكبّر الزمن، و&lt;b&gt;السحب&lt;/b&gt; يرجع إلى الأقدم (ويثبّت العرض)، و&lt;b&gt;النقر المزدوج&lt;/b&gt; يعود إلى المباشر.
+والأزمنة تحت الرسم أوقات الساعة (&lt;i&gt;⁦17:50:50⁩&lt;/i&gt;)، كما في سطح المكتب.&lt;/li&gt;
+&lt;li&gt;زر &lt;b&gt;Y&lt;/b&gt; يُظهر المدى: &lt;i&gt;مدى Y تلقائي&lt;/i&gt; يلائم القيم المعروضة. ولمسة عليه تفتح ورقة صغيرة:
+&lt;b&gt;الأدنى&lt;/b&gt; و&lt;b&gt;الأعلى&lt;/b&gt; مع &lt;b&gt;تطبيق&lt;/b&gt;، أو &lt;b&gt;تلقائي&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;الوصلة المفقودة، أو مدة لم يملأها استطلاع، تترك فجوة في الخط: لا يُرسم شيء عبرها.&lt;/li&gt;
+&lt;li&gt;وسيلة الإيضاح فوق الرسم: شارة لكل خط بآخر قيمة له؛ لمسة عليها تُخفي الخط أو تُظهره، وعلامة &lt;b&gt;▾&lt;/b&gt; الخاصة بها
+تقدّم &lt;b&gt;إزالة من المخطط&lt;/b&gt;. وحين لا تتسع الشارات كلها تعرض &lt;b&gt;+N&lt;/b&gt; في آخرها كل الخطوط، لكلٍّ منها مفتاح لإظهاره.
+&lt;b&gt;مسح&lt;/b&gt; يُفرغ المخطط.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;القياسات&lt;/b&gt; تعرض لكل خط الأدنى والأعلى والمتوسط وRMS والانحراف المعياري وقمة–قمة على المعروض، أو بين A وB
+بعد وضع المؤشرين، كجدول سطح المكتب تحت مخططه. ويبقى المخطط قابلًا للاستخدام بجانبها؛ وتنزلق الأعمدة جانبيًا حين
+لا تتسع.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;المؤشران&lt;/b&gt; يضع A وB على العرض ويثبّته؛ اسحب كلًّا منهما من مقبضه، وهو مربعٌ مستدير الحواف يحمل حرفه (مقبض A في الأعلى، ومقبض B في
+الأسفل). بجانب الرسم (وتحته بالطول): زمنا A وB و⁦B&#xa0;−&#xa0;A⁩، ولكل خط قيمتاه عند A وB، و⁦B&#xa0;−&#xa0;A⁩، والأدنى
+والأعلى والمتوسط بينهما. &lt;b&gt;المؤشران&lt;/b&gt; مرة أخرى يزيلهما.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;المراقبة والسجل&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;المراقبة&lt;/b&gt;: كل إطار على الوصلة ما دامت الشاشة ظاهرة: زمنه واتجاهه (TX، RX) ووظيفته (READ، READ_RESP ...:
+القراءة المطلوبة بالأزرق، والكتابة بالكهرماني، والرد بالأخضر، والخطأ بالأحمر) فوق بايتاته. &lt;b&gt;TX&lt;/b&gt; و&lt;b&gt;RX&lt;/b&gt;
+في الأعلى تُظهر الإطارات في كل اتجاه أو تُخفيها، مع عددها. لمسة على إطار تعرضه حقلًا حقلًا كما يعرضه عرض الذاكرة في سطح
+المكتب: START وSLAVE وFUNCTION وOFFSET (مع المسجّلات التي يغطيها) وCOUNT وDATA وCRC وEND. &lt;b&gt;إيقاف مؤقت&lt;/b&gt;
+يُبقي ما هناك، و&lt;b&gt;مسح&lt;/b&gt; يُفرغه.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;السجل&lt;/b&gt;: ما حدث (الخريطة، والوصلة، والكتابات وردودها، والتسجيلات)، كل سطر بعلامة مستواه: &lt;i&gt;i&lt;/i&gt;
+للمعلومات، ومثلث كهرماني للتحذير، وعلامة تقاطع حمراء للخطأ. الشارات في الأعلى تُظهر كل مستوى أو تُخفيه، مع عدده.
+&lt;b&gt;نسخ&lt;/b&gt; يضع الأسطر المعروضة في الحافظة، و&lt;b&gt;مسح&lt;/b&gt; يُفرغه.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;التسجيل والخلفية&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;تسجيل&lt;/b&gt; في لوحة الاتصال يكتب ملف CSV للمسجّلات المفعّل عليها تسجيل، في مجلد التطبيق؛ ويقول السجل أين.
+&lt;b&gt;إيقاف التسجيل&lt;/b&gt; ينهيه.&lt;/li&gt;
+&lt;li&gt;ما دامت الوصلة قائمة أو مطلوبة، يعرض أندرويد إشعارًا بحالة الوصلة وزمن التسجيل: تستمر الوصلة والتسجيل والشاشة
+مطفأة أو تطبيق آخر في المقدمة. لمسة عليه تفتح التطبيق؛ و&lt;b&gt;قطع الاتصال&lt;/b&gt; يزيله.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;إبقاء الشاشة مضاءة أثناء الاتصال&lt;/b&gt; (في أسفل لوحة الاتصال، مفعّل في البداية): لا تُظلم الشاشة ما دامت الوصلة
+قائمة.&lt;/li&gt;
+&lt;li&gt;اهتزاز قصير يقول إن الوصلة قامت وإن الجهاز أخذ الكتابة (حين تكون ردود فعل اللمس في الهاتف مفعّلة). تتحرك الألسنة
+والأوراق؛ ومع &lt;i&gt;إزالة الرسوم المتحركة&lt;/i&gt; في أندرويد لا تتحرك.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;الرجوع&lt;/h3&gt;
+&lt;p&gt;إيماءة الرجوع في أندرويد تغلق ما هو مفتوح، خطوةً خطوة: صفحة المساعدة إلى القائمة، ثم المساعدة، ثم ورقة المسجّل أو الإطار، ثم
+لوحة الاتصال؛ وفي الشاشة الكاملة للمخطط يعيد شريط الألسنة. وإن لم يكن شيء مفتوحًا والوصلة أو التسجيل قائمان، ينتقل التطبيق إلى الخلفية كما بزر الرئيسية ويستمر
+كلاهما؛ وبلا وصلة تُغلق التطبيق.&lt;/p&gt;
+&lt;p&gt;على سطح المكتب فقط: محرر الخريطة، وعرض الذاكرة، والاستماع، وواجهة API، والخطوط الرياضية، والمسارات، والقدح،
+والملاحظات.&lt;/p&gt;
+</translation>
+    </message>
+</context>
+<context>
+    <name>HelpScreen</name>
+    <message>
+        <source>Back</source>
+        <translation>رجوع</translation>
+    </message>
+    <message>
+        <source>Help</source>
+        <translation>مساعدة</translation>
+    </message>
 </context>
 <context>
     <name>IoEngine</name>
@@ -4590,6 +5168,60 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     </message>
 </context>
 <context>
+    <name>LogScreen</name>
+    <message>
+        <source>Copy</source>
+        <translation>نسخ</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>مسح</translation>
+    </message>
+    <message>
+        <source>Nothing logged yet</source>
+        <translation>لم يُسجَّل شيء بعد</translation>
+    </message>
+    <message>
+        <source>The map, the link and the recordings are told here.</source>
+        <translation>هنا يُذكر ما يجري للخريطة والوصلة والتسجيلات.</translation>
+    </message>
+    <message>
+        <source>Open the Connect drawer</source>
+        <translation>فتح لوحة الاتصال</translation>
+    </message>
+    <message>
+        <source>Info</source>
+        <translation>معلومات</translation>
+    </message>
+    <message>
+        <source>Warnings</source>
+        <translation>تحذيرات</translation>
+    </message>
+    <message>
+        <source>Errors</source>
+        <translation>أخطاء</translation>
+    </message>
+    <message>
+        <source>No line of the levels chosen</source>
+        <translation>لا سطر من المستويات المختارة</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n line(s) hidden by the filter above.</source>
+        <translation>
+            <numerusform>%n سطر مخفي بالمرشّح أعلاه.</numerusform>
+            <numerusform>سطر واحد مخفي بالمرشّح أعلاه.</numerusform>
+            <numerusform>سطران مخفيان بالمرشّح أعلاه.</numerusform>
+            <numerusform>%n أسطر مخفية بالمرشّح أعلاه.</numerusform>
+            <numerusform>%n سطرًا مخفيًا بالمرشّح أعلاه.</numerusform>
+            <numerusform>%n سطر مخفي بالمرشّح أعلاه.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Show all levels</source>
+        <translation>عرض كل المستويات</translation>
+    </message>
+</context>
+<context>
     <name>Main</name>
     <message>
         <source>EVRe Studio</source>
@@ -4616,24 +5248,8 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
         <translation>الاتصال والإعدادات</translation>
     </message>
     <message>
-        <source>Not connected</source>
-        <translation>غير متصل</translation>
-    </message>
-    <message>
-        <source>Coming soon: every register of the map, its value live.</source>
-        <translation>قريبًا: كل مسجّل في الخريطة، بقيمته الحيّة.</translation>
-    </message>
-    <message>
-        <source>Coming soon: the plotted registers over time.</source>
-        <translation>قريبًا: المسجّلات المرسومة عبر الزمن.</translation>
-    </message>
-    <message>
-        <source>Coming soon: the frames on the link.</source>
-        <translation>قريبًا: الإطارات على الوصلة.</translation>
-    </message>
-    <message>
-        <source>Coming soon: what happened on the link, newest last.</source>
-        <translation>قريبًا: ما جرى على الوصلة، والأحدث في الآخر.</translation>
+        <source>%1 · %2 Hz</source>
+        <translation>%1 · ⁦%2 Hz⁩</translation>
     </message>
 </context>
 <context>
@@ -4728,7 +5344,7 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     </message>
     <message>
         <source>connecting to %1:%2%3</source>
-        <translation>يتصل بـ %1:%2%3</translation>
+        <translation>يتصل بـ ⁦%1:%2⁩%3</translation>
     </message>
     <message>
         <source> (with a token)</source>
@@ -6231,6 +6847,49 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     </message>
 </context>
 <context>
+    <name>MonitorScreen</name>
+    <message>
+        <source>Resume</source>
+        <translation>استئناف</translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation>إيقاف مؤقت</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>مسح</translation>
+    </message>
+    <message>
+        <source>Not connected: the frames on the link show here once it is up.</source>
+        <translation>غير متصل: تظهر هنا إطارات الوصلة حين تعمل.</translation>
+    </message>
+    <message>
+        <source>Paused: Resume to see the frames again.</source>
+        <translation>متوقف مؤقتًا: الاستئناف يُظهر الإطارات من جديد.</translation>
+    </message>
+    <message>
+        <source>Waiting for frames…</source>
+        <translation>في انتظار الإطارات…</translation>
+    </message>
+    <message>
+        <source>Connect…</source>
+        <translation>اتصال…</translation>
+    </message>
+    <message>
+        <source>paused</source>
+        <translation>متوقف مؤقتًا</translation>
+    </message>
+    <message>
+        <source>Frame %1 %2: show its fields</source>
+        <translation>الإطار ⁦%1 %2⁩: عرض حقوله</translation>
+    </message>
+    <message>
+        <source>TX and RX both off: turn one on to see its frames.</source>
+        <translation>TX وRX كلاهما مطفأ: تشغيل أحدهما يُظهر إطاراته.</translation>
+    </message>
+</context>
+<context>
     <name>MonitorTab</name>
     <message>
         <source>The device the request goes to. 0 is the broadcast address: every device takes a WRITE (no acknowledge) sent there, and none answers.</source>
@@ -6422,6 +7081,332 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>Proof P-9: the values change 20 times a second. Flick the list.</source>
         <translation>الإثبات P-9: تتغيّر القيم 20 مرة في الثانية. اسحب القائمة بسرعة.</translation>
+    </message>
+</context>
+<context>
+    <name>PhoneSession</name>
+    <message>
+        <source>Not connected</source>
+        <translation>غير متصل</translation>
+    </message>
+    <message>
+        <source>Device ID not read yet</source>
+        <translation>لم يُقرأ معرّف الجهاز بعد</translation>
+    </message>
+    <message>
+        <source>Waiting for permission…</source>
+        <translation>بانتظار الإذن…</translation>
+    </message>
+    <message>
+        <source>Android asks whether EVRe Studio may use %1: answer its dialog.</source>
+        <translation>يسأل أندرويد هل يُسمح لـ EVRe Studio باستخدام ⁦%1⁩: أجب عن نافذة الحوار.</translation>
+    </message>
+    <message>
+        <source>token refused: %1</source>
+        <translation>رُفض رمز الدخول: %1</translation>
+    </message>
+    <message>
+        <source>token refused: type the right token, then Connect</source>
+        <translation>رُفض رمز الدخول: اكتب الرمز الصحيح ثم «اتصال»</translation>
+    </message>
+    <message>
+        <source>the device wants a login: its map has a login register, and no token was given</source>
+        <translation>الجهاز يطلب تسجيل الدخول: خريطته تعلن مسجّل دخول، ولم يُعطَ رمز دخول</translation>
+    </message>
+    <message>
+        <source>the device wants a token: type it in the Token box, then Connect</source>
+        <translation>الجهاز يطلب رمز دخول: اكتبه في خانة رمز الدخول ثم «اتصال»</translation>
+    </message>
+    <message>
+        <source>the map declares no login register: the token was not sent</source>
+        <translation>الخريطة لا تعلن مسجّل دخول: لم يُرسل رمز الدخول</translation>
+    </message>
+    <message>
+        <source>map not loaded: %1: %2</source>
+        <translation>لم تُحمَّل الخريطة: %1: %2</translation>
+    </message>
+    <message>
+        <source>map loaded: %1 (%2 registers)</source>
+        <translation>حُمّلت الخريطة: %1 (المسجّلات: %2)</translation>
+    </message>
+    <message>
+        <source>registers: %1</source>
+        <translation>المسجّلات: %1</translation>
+    </message>
+    <message>
+        <source>polls a second: %1</source>
+        <translation>الاستطلاعات في الثانية: %1</translation>
+    </message>
+    <message>
+        <source>writes allowed</source>
+        <translation>الكتابة مسموحة</translation>
+    </message>
+    <message>
+        <source>writes off</source>
+        <translation>الكتابة متوقفة</translation>
+    </message>
+    <message>
+        <source>No USB device: plug the board in, then choose it</source>
+        <translation>لا جهاز USB: صِل اللوحة ثم اخترها</translation>
+    </message>
+    <message>
+        <source>Type the device&apos;s host and a port from 1 to 65535</source>
+        <translation>اكتب مضيف الجهاز ومنفذًا من 1 إلى 65535</translation>
+    </message>
+    <message>
+        <source>connecting to %1:%2%3</source>
+        <translation>يتصل بـ ⁦%1:%2⁩%3</translation>
+    </message>
+    <message>
+        <source> (with a token)</source>
+        <translation> (مع رمز دخول)</translation>
+    </message>
+    <message>
+        <source>Connecting to %1:%2…</source>
+        <translation>يتصل بـ ⁦%1:%2⁩…</translation>
+    </message>
+    <message>
+        <source>opening %1 at %2</source>
+        <translation>يفتح %1 عند %2</translation>
+    </message>
+    <message>
+        <source>Connecting to %1…</source>
+        <translation>يتصل بـ ⁦%1⁩…</translation>
+    </message>
+    <message>
+        <source>disconnected</source>
+        <translation>قُطع الاتصال</translation>
+    </message>
+    <message>
+        <source>connected: %1</source>
+        <translation>متصل: %1</translation>
+    </message>
+    <message>
+        <source>Connected: %1</source>
+        <translation>متصل: ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>connection lost: %1</source>
+        <translation>انقطع الاتصال: %1</translation>
+    </message>
+    <message>
+        <source>not connected: %1</source>
+        <translation>غير متصل: %1</translation>
+    </message>
+    <message>
+        <source>not reconnecting: %1</source>
+        <translation>لا إعادة اتصال: %1</translation>
+    </message>
+    <message>
+        <source>Connect asks again</source>
+        <translation>زر «اتصال» يطلب الإذن من جديد</translation>
+    </message>
+    <message>
+        <source>Reconnecting…</source>
+        <translation>يعيد الاتصال…</translation>
+    </message>
+    <message>
+        <source>DEVICE_ID not read: %1</source>
+        <translation>لم يُقرأ DEVICE_ID: %1</translation>
+    </message>
+    <message>
+        <source>Device ID %1 · protocol rev %2</source>
+        <translation>معرّف الجهاز %1 · مراجعة البروتوكول %2</translation>
+    </message>
+    <message>
+        <source>device ID %1, protocol revision %2</source>
+        <translation>معرّف الجهاز %1، مراجعة البروتوكول %2</translation>
+    </message>
+    <message>
+        <source>the map is for device %1, this is %2</source>
+        <translation>الخريطة للجهاز %1، وهذا %2</translation>
+    </message>
+    <message>
+        <source>the map is for %1</source>
+        <translation>الخريطة لـ %1</translation>
+    </message>
+    <message>
+        <source>last seen: Device ID %1 · protocol rev %2</source>
+        <translation>آخر ظهور: معرّف الجهاز %1 · مراجعة البروتوكول %2</translation>
+    </message>
+    <message>
+        <source>Connecting…</source>
+        <translation>يتصل…</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>متصل</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation>قطع الاتصال</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>إلغاء</translation>
+    </message>
+    <message>
+        <source>Stop reconnecting</source>
+        <translation>إيقاف إعادة الاتصال</translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation>اتصال</translation>
+    </message>
+    <message>
+        <source>CSV recording not started: %1</source>
+        <translation>لم يبدأ تسجيل CSV: %1</translation>
+    </message>
+    <message>
+        <source>Not recording: %1</source>
+        <translation>لا تسجيل: %1</translation>
+    </message>
+    <message>
+        <source>CSV recording started: %1</source>
+        <translation>بدأ تسجيل CSV: %1</translation>
+    </message>
+    <message>
+        <source>Recording to %1</source>
+        <translation>يسجّل في ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Saved %1 · rows: %2</source>
+        <translation>حُفظ ⁦%1⁩ · الصفوف: %2</translation>
+    </message>
+    <message>
+        <source>CSV recording stopped: %1 rows in %2</source>
+        <translation>توقف تسجيل CSV: الصفوف %1 في %2</translation>
+    </message>
+    <message>
+        <source>At most %1 registers on the chart at %2 samples a second: take one off first</source>
+        <translation>على الأكثر %1 مسجّلًا على المخطط عند %2 عينة في الثانية: أزِل واحدًا أولًا</translation>
+    </message>
+    <message>
+        <source>At most %1 registers on the chart: take one off first</source>
+        <translation>على الأكثر %1 مسجّلًا على المخطط: أزِل واحدًا أولًا</translation>
+    </message>
+    <message>
+        <source>%1 samples a second: at most %2 registers on the chart; taken off: %3</source>
+        <translation>%1 عينة في الثانية: على الأكثر %2 مسجّلًا على المخطط؛ أُزيل: %3</translation>
+    </message>
+    <message>
+        <source>reading the device ID…</source>
+        <translation>قراءة معرّف الجهاز…</translation>
+    </message>
+    <message>
+        <source>a short answer</source>
+        <translation>جواب قصير</translation>
+    </message>
+    <message>
+        <source>from %1 to %2</source>
+        <translation>من ⁦%1⁩ إلى ⁦%2⁩</translation>
+    </message>
+    <message>
+        <source>at least %1</source>
+        <translation>على الأقل ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>at most %1</source>
+        <translation>على الأكثر ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>%1 = %2 is %3 the map gives it. The map may be stricter than the device, or the device may not take it.</source>
+        <translation>⁦%1 = %2⁩ %3 الذي تعطيه الخريطة. قد تكون الخريطة أشد من الجهاز، أو قد لا يقبلها الجهاز.</translation>
+    </message>
+    <message>
+        <source>%1 moves, powers or changes something on the device.</source>
+        <translation>⁦%1⁩ يحرّك شيئًا على الجهاز أو يشغّله أو يغيّره.</translation>
+    </message>
+    <message>
+        <source>Write it anyway?</source>
+        <translation>أتكتبها مع ذلك؟</translation>
+    </message>
+    <message>
+        <source>Writes are off: turn on Allow writes in the Connect drawer</source>
+        <translation>الكتابة متوقفة: فعّل «السماح بالكتابة» في لوحة الاتصال</translation>
+    </message>
+    <message>
+        <source>Not connected: connect first</source>
+        <translation>غير متصل: اتصل أولًا</translation>
+    </message>
+    <message>
+        <source>%1: %2 not written: %3</source>
+        <translation>%1: لم يُكتب %2: %3</translation>
+    </message>
+    <message>
+        <source>%1 = %2 (%3 at %4)</source>
+        <translation>⁦%1 = %2⁩ (⁦%3⁩ عند ⁦%4⁩)</translation>
+    </message>
+    <message>
+        <source>written: %1</source>
+        <translation>كُتب: %1</translation>
+    </message>
+    <message>
+        <source>%1 written</source>
+        <translation>كُتب %1</translation>
+    </message>
+    <message>
+        <source>write refused: %1: %2</source>
+        <translation>رُفضت الكتابة: %1: %2</translation>
+    </message>
+    <message>
+        <source>fast stream %1 not switched on: %2</source>
+        <translation>لم يُشغَّل التدفق السريع %1: %2</translation>
+    </message>
+    <message>
+        <source>fast stream %1 not switched off: %2</source>
+        <translation>لم يُوقف التدفق السريع %1: %2</translation>
+    </message>
+    <message>
+        <source>fast stream %1 on: %2 records a second</source>
+        <translation>التدفق السريع %1 يعمل: %2 سجلّ في الثانية</translation>
+    </message>
+    <message>
+        <source>fast stream %1 off</source>
+        <translation>التدفق السريع %1 معطّل</translation>
+    </message>
+    <message>
+        <source>At most %1 lines on the chart, registers and fast lines together: take one off first</source>
+        <translation>على الأكثر %1 خطًا على المخطط، المسجّلات والخطوط السريعة معًا: أزِل واحدًا أولًا</translation>
+    </message>
+    <message>
+        <source> · recording %1</source>
+        <translation> · التسجيل ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>%1 is back as %2</source>
+        <translation>عاد ⁦%1⁩ باسم ⁦%2⁩</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n more</source>
+        <translation>
+            <numerusform>%n أخرى</numerusform>
+            <numerusform>واحد آخر</numerusform>
+            <numerusform>اثنان آخران</numerusform>
+            <numerusform>%n أخرى</numerusform>
+            <numerusform>%n أخرى</numerusform>
+            <numerusform>%n أخرى</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Timeouts +%1</source>
+        <translation>مهلات ⁦+%1⁩</translation>
+    </message>
+    <message>
+        <source>Errors +%1</source>
+        <translation>أخطاء ⁦+%1⁩</translation>
+    </message>
+    <message>
+        <source>Bad frames +%1</source>
+        <translation>إطارات تالفة ⁦+%1⁩</translation>
+    </message>
+    <message>
+        <source>The link is struggling: %1 in the last %2 s</source>
+        <translation>الوصلة متعثرة: %1 في آخر ⁦%2 s⁩</translation>
+    </message>
+    <message>
+        <source>Latency %1 ms · TX %2 · RX %3 · Timeouts %4 · Errors %5 · Bad frames %6</source>
+        <translation>زمن الاستجابة ⁦%1 ms⁩ · TX %2 · RX %3 · مهلات %4 · أخطاء %5 · إطارات تالفة %6</translation>
     </message>
 </context>
 <context>
@@ -7833,6 +8818,13 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     </message>
 </context>
 <context>
+    <name>RegisterList</name>
+    <message>
+        <source>the device refused this address</source>
+        <translation>رفض الجهاز هذا العنوان</translation>
+    </message>
+</context>
+<context>
     <name>RegisterModel</name>
     <message>
         <source>Not plotted: a bytes register is not a number</source>
@@ -7909,6 +8901,167 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     <message>
         <source>not read by the other program yet</source>
         <translation>لم يقرأه البرنامج الآخر بعد</translation>
+    </message>
+</context>
+<context>
+    <name>RegisterRow</name>
+    <message>
+        <source>not refreshed</source>
+        <translation>غير محدّث</translation>
+    </message>
+    <message>
+        <source>on the chart</source>
+        <translation>على المخطط</translation>
+    </message>
+</context>
+<context>
+    <name>RegisterSheet</name>
+    <message>
+        <source>Writing…</source>
+        <translation>جارٍ الكتابة…</translation>
+    </message>
+    <message>
+        <source>%1 on the chart</source>
+        <translation>⁦%1⁩ على المخطط</translation>
+    </message>
+    <message>
+        <source>%1 off the chart</source>
+        <translation>أُزيل ⁦%1⁩ من المخطط</translation>
+    </message>
+    <message>
+        <source>Copied: %1</source>
+        <translation>نُسخ: ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>إغلاق</translation>
+    </message>
+    <message>
+        <source>not refreshed</source>
+        <translation>غير محدّث</translation>
+    </message>
+    <message>
+        <source>on the chart</source>
+        <translation>على المخطط</translation>
+    </message>
+    <message>
+        <source>last %1 s</source>
+        <translation>آخر ⁦%1 s⁩</translation>
+    </message>
+    <message>
+        <source>Take off the chart</source>
+        <translation>إزالة من المخطط</translation>
+    </message>
+    <message>
+        <source>Plot</source>
+        <translation>رسم</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>نسخ</translation>
+    </message>
+    <message>
+        <source>Write</source>
+        <translation>كتابة</translation>
+    </message>
+    <message>
+        <source>The map&apos;s limits: %1</source>
+        <translation>حدود الخريطة: %1</translation>
+    </message>
+    <message>
+        <source>Not connected: connect in the Connect drawer first.</source>
+        <translation>غير متصل: اتصل من لوحة الاتصال أولًا.</translation>
+    </message>
+    <message>
+        <source>Writes are off: turn on Allow writes in the Connect drawer.</source>
+        <translation>الكتابة متوقفة: فعّل «السماح بالكتابة» في لوحة الاتصال.</translation>
+    </message>
+    <message>
+        <source>Open the Connect drawer</source>
+        <translation>فتح لوحة الاتصال</translation>
+    </message>
+    <message>
+        <source>Check before writing</source>
+        <translation>التحقّق قبل الكتابة</translation>
+    </message>
+    <message>
+        <source>Write anyway</source>
+        <translation>اكتب مع ذلك</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>إلغاء</translation>
+    </message>
+    <message>
+        <source>Not written</source>
+        <translation>لم يُكتب</translation>
+    </message>
+    <message>
+        <source>Read back: %1</source>
+        <translation>قراءة التحقق: ⁦%1⁩</translation>
+    </message>
+</context>
+<context>
+    <name>RegistersScreen</name>
+    <message>
+        <source>Open %1</source>
+        <translation>فتح %1</translation>
+    </message>
+    <message>
+        <source>Fold %1</source>
+        <translation>طيّ %1</translation>
+    </message>
+    <message>
+        <source>Search: name, unit, address</source>
+        <translation>بحث: الاسم، الوحدة، العنوان</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>مسح</translation>
+    </message>
+    <message>
+        <source>registers: %1</source>
+        <translation>المسجّلات: %1</translation>
+    </message>
+    <message>
+        <source>registers: %1 of %2</source>
+        <translation>المسجّلات: %1 من %2</translation>
+    </message>
+    <message>
+        <source>Connect…</source>
+        <translation>اتصال…</translation>
+    </message>
+    <message>
+        <source>No register matches &quot;%1&quot;.</source>
+        <translation>لا مسجّل يطابق «%1».</translation>
+    </message>
+    <message>
+        <source>Not connected</source>
+        <translation>غير متصل</translation>
+    </message>
+    <message>
+        <source>Open the Connect drawer</source>
+        <translation>فتح لوحة الاتصال</translation>
+    </message>
+    <message>
+        <source>The values show once the link is up.</source>
+        <translation>تظهر القيم حين تقوم الوصلة.</translation>
+    </message>
+    <message>
+        <source>No registers</source>
+        <translation>لا مسجّلات</translation>
+    </message>
+    <message>
+        <source>No match</source>
+        <translation>لا تطابق</translation>
+    </message>
+    <message>
+        <source>Choose a map in the Connect drawer.</source>
+        <translation>تُختار الخريطة في لوحة الاتصال.</translation>
+    </message>
+    <message>
+        <source>Clear the search</source>
+        <translation>مسح البحث</translation>
     </message>
 </context>
 <context>

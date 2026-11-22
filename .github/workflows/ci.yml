@@ -58,17 +58,23 @@ jobs:
         run: python3 studio/tests/device_table_test.py build
       - name: Python package
         run: EVRE_BUILD=build python3 -m unittest discover -s studio/python/tests
+      # its fake device ended with the step: the phone test's step starts its own on the same port (left running, it
+      # made that one's start fail with "Address already in use" in every run's log)
       - name: GUI test (against the fake device, on a virtual screen)
         run: |
           python3 studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
+          FAKE=$!
           sleep 2
-          cd build && QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_gui_test example_device.json
+          (cd build && QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_gui_test example_device.json)
+          kill $FAKE
       - name: Login of the fake devices
         run: python3 studio/tests/fake_login_test.py build
       # Qt Quick through OpenGL on Mesa's llvmpipe, not the software adaptation: that one would not draw the chart's
-      # own geometry nodes (STUDIO.md 26.11)
-      - name: Phone test (Qt Quick, on a virtual screen)
+      # own geometry nodes (STUDIO.md 26.11). The link's checks connect to the fake device started here
+      - name: Phone test (Qt Quick, on a virtual screen, against the fake device)
         run: |
+          python3 studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
+          sleep 2
           cd build && QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_phone_test
 
   windows:
@@ -102,11 +108,14 @@ jobs:
           python studio/tests/sim_test.py build
           python studio/tests/device_table_test.py build
           EVRE_BUILD=build python -m unittest discover -s studio/python/tests
-      # the phone's window drawn by Direct3D 11 (WARP on a runner without a graphics card)
-      - name: Phone test (Qt Quick)
+      # the phone's window drawn by Direct3D 11 (WARP on a runner without a graphics card); the link's checks connect
+      # to the fake device
+      - name: Phone test (Qt Quick, against the fake device)
         shell: bash
         run: |
           export PATH="$IQTA_TOOLS/mingw1310_64/bin:$QT_ROOT_DIR/bin:$PATH"
+          python studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
+          sleep 2
           ./build/evre_phone_test
 
   # The Android app (EVReStudioPhone, EVRe/studio/android, STUDIO.md 25.6): the APK is built, nothing runs (no
