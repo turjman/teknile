@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.5.1 (not released yet)
+## 1.6.0 (2026-11-22)
+
+The phone app: EVRe Studio on Android, with the Registers, the Chart, the Monitor and the Log.
 
 ### EVRe Studio
 
@@ -126,6 +128,26 @@
   lights. On the phone the lists no longer tear or keep old strips while they scroll (Qt's own touch scroller did,
   QTBUG-135011). Before, only the scroll bars moved them, and a finger's
   drag over a list selected its rows. The mouse is unchanged.
+- **The phone app, designed by eye after a week on a real phone.** The Registers are rows like the desktop's table
+  (about twice as many in view), in groups that fold (kept per map); a tap opens the register's sheet: its value, a
+  trend of the last seconds, Plot and Copy, and the quick write by **Write** or Enter, read back. The pill shows the
+  poll rate and opens the Connect drawer, where the link's health reads as the desktop's status bar (the pill turns
+  amber while timeouts rise). Across, a rail of the screens on every screen and the Chart on the whole window, with
+  the legend over the plot (whole chips, *+N* for the rest, a Lines sheet) and a **Measure** sheet with the
+  desktop's statistics over the view or A to B; clock times on the time axis. A polled line breaks where the link
+  was lost and keeps the samples' real times after a reconnect. The Log's levels have icons, colours and filter
+  chips; the Monitor colours each frame by kind, filters TX or RX, and a tap decodes a frame field by field. The
+  screens move as they change (none when Android's *Remove animations* is on), and the phone buzzes briefly when a
+  link comes up and when the device takes a write. Every chip, button and tag is a rounded square; a language
+  change offers **Restart now**; the app has an adaptive launcher icon.
+- **The phone's cursor readouts read in two rows**: the values at A and B with B - A, then min, max and mean, so
+  *mean* is never left alone on a line (the Arabic labels are shorter on the phone, so both rows fit there too).
+- **The phone's Log keeps its filters together**: the level chips on one row, Copy and Clear beside them when they
+  fit, else on the next row at its end. The Chart's gesture line (pinch, drag, double tap) goes for good once a
+  finger has used the plot, and its row goes to the plot.
+- **A typed polling interval is taken once the typing rests** on the phone (*10* over *100* needed another tap); a
+  line with no sample between the cursors says *No samples between A and B*; an enum's chosen value has a tick, not
+  a round radio; the legend stays beside the Measure sheet across.
 
 ## 1.5.0 (2026-11-07)
 

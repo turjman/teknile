@@ -28,7 +28,7 @@ host                                   device
 |---|---|
 | Protocol&nbsp;revision | **1** (reported in `STATUS[7:0]`) |
 | Device&nbsp;library | C++, two files, no dependencies beyond `stdint` / `stdlib`, ~3 kB of code |
-| Host&nbsp;tool | **EVRe Studio**: live registers, charts, CSV, writes, Listen, an API for MATLAB / LabVIEW / Python, and a map editor that exports a specification, a C header and a Python module |
+| Host&nbsp;tool | **EVRe Studio**: live registers, charts, CSV, writes, Listen, an API for MATLAB / LabVIEW / Python, and a map editor that exports a specification, a C header and a Python module; a phone app for Android |
 | Map&nbsp;format | **`evre-map/1`**: one JSON file describes a device's registers for every tool ([contract](studio/docs/MAP_FORMAT.md), [JSON Schema](studio/docs/evre-map-1.schema.json)) |
 
 ## What is here
@@ -38,7 +38,7 @@ host                                   device
 | [`lib/`](lib/) | The device-side library: `EVRe.h`, `EVRe.cpp`. `ports/stm32h7/malloc_lock.c` is an optional heap lock for newlib on Cortex-M7. |
 | [`lib/fast/`](lib/fast/) | Fast EVRe, a layer above the protocol (not part of it): a device sends samples taken on its own clock in numbered blocks, as `READ_RESP` frames of a window of the device bank that nobody asked for; `evre_fast.h` builds a block's frame around the records where they lie (no copy, no heap). The chapter "Fast EVRe" of `docs/PROTOCOL.md` says the rest; the Studio plots, measures, triggers on and records the streams (`.evrs`), and `evre record` writes one. |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | The protocol: frame, function codes, CRC, register model, reserved bank, messages, errors, test vectors, device API, host notes, conformance checklist. |
-| [`studio/`](studio/) | **EVRe Studio**, the desktop tool (C++17, Qt 6). |
+| [`studio/`](studio/) | **EVRe Studio**, the desktop tool (C++17, Qt 6), and its phone app (Android, Qt Quick). |
 | [`studio/docs/MAP_FORMAT.md`](studio/docs/MAP_FORMAT.md) | The register map format `evre-map/1`: the contract for any tool that reads or writes maps, and its [JSON Schema](studio/docs/evre-map-1.schema.json). |
 | [`studio/cli/`](studio/cli/) | `evre` (validate, export, info, read, dump, watch, write, broadcast, check a device against its map, record a fast stream) and `evre-sim` (a map served as a device), built with the Studio. |
 | [`studio/python/`](studio/python/) | `evre` for Python: a device by register name with its map, standard library only. |

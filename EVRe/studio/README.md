@@ -7,7 +7,8 @@ EVRe Studio is a desktop register tool for any device that speaks the **EVRe** r
 tells it what the device holds. The Studio polls the registers
 live, shows and decodes them, charts them like an oscilloscope, records them to CSV, writes them with safety
 checks, and shares the device with other programs through a local API. It runs on **Windows** and **Linux**
-(C++17, Qt 6).
+(C++17, Qt 6), and as a phone app on **Android** (Qt Quick): the Registers, the Chart with cursors and Measure, the
+Monitor and the Log, over a board on the phone's USB port or a device over TCP (STUDIO.md 25.6).
 
 EVRe is a protocol of **teknile**.
 

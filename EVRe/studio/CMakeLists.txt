@@ -17,7 +17,7 @@
 # On Android only EVReStudioPhone is built, as an APK (the target apk; android/ holds its manifest and the Java USB
 # layer).
 cmake_minimum_required(VERSION 3.21)
-project(EVReStudio VERSION 1.5.0 LANGUAGES CXX)
+project(EVReStudio VERSION 1.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
