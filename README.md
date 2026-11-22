@@ -9,13 +9,13 @@
 
 <p align="center">
   <b>One request, the device's whole state.</b> A 3 kB register protocol for microcontrollers,<br>
-  and a desktop oscilloscope-style tool that watches, charts, records and drives any device that speaks it.
+  and a desktop oscilloscope-style tool, with a phone app, that watches, charts, records and drives any device that speaks it.
 </p>
 
 <p align="center">
   <a href="https://github.com/turjman/teknile/actions/workflows/ci.yml"><img src="https://github.com/turjman/teknile/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
-  <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-informational.svg" alt="Platforms: Windows, Linux">
+  <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20Android-informational.svg" alt="Platforms: Windows, Linux, Android">
   <img src="https://img.shields.io/badge/C%2B%2B-17-informational.svg" alt="C++17">
   <img src="https://img.shields.io/badge/Qt-6.5%2B-41cd52.svg" alt="Qt 6.5+">
   <img src="https://img.shields.io/badge/languages-English%20%7C%20%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-informational.svg" alt="Languages: English, Arabic">
@@ -105,6 +105,7 @@ Every version ships ready to run on the [Releases](https://github.com/turjman/te
 | `EVReStudio-<version>-windows.zip` | The same, portable: unzip and run `EVReStudio.exe` |
 | `EVReStudio-<version>-x86_64.AppImage` | Linux: make it executable and run it |
 | `evre-tools-<version>-linux-x86_64.tar.gz` | The command-line tools `evre` and `evre-sim` for Linux |
+| `EVReStudio-<version>-arm64.apk` | The phone app, Android 9 or newer (arm64): open it on the phone and allow the install. A board on the phone's USB port (OTG) or a device over TCP; the Registers, the Chart with cursors and Measure, the Monitor and the Log, recording with the screen off |
 
 The Windows installer and the zip hold the command-line tools, the example files (`example_device.json`, `example_fast.json`, `example_bus.json`) and the map format's JSON Schema (`evre-map-1.schema.json`) beside the Studio.
 
@@ -117,7 +118,7 @@ The Windows files are not code-signed yet: Windows SmartScreen may say it does n
 |---|---|
 | **[EVRe&nbsp;protocol](EVRe/docs/PROTOCOL.md)** | A small single-master register protocol: frames, function codes, CRC-16/X-25, the register model, a reserved bank for the protocol's own registers, messages, errors, broadcast, device-initiated streaming (auto send), test vectors and a conformance checklist. |
 | **[Device&nbsp;library](EVRe/lib/)** | `EVRe.h` and `EVRe.cpp`: the device side in two files, with a port note for newlib on Cortex-M7. |
-| **[EVRe&nbsp;Studio](EVRe/studio/)** | The desktop tool (C++17, Qt 6, Windows and Linux): live registers, safe writes, the chart, measurements and analysis, recordings, a map editor with exports, several devices on one bus, Listen (what another program says to a USB device), and an API for other programs. |
+| **[EVRe&nbsp;Studio](EVRe/studio/)** | The desktop tool (C++17, Qt 6, Windows and Linux): live registers, safe writes, the chart, measurements and analysis, recordings, a map editor with exports, several devices on one bus, Listen (what another program says to a USB device), and an API for other programs. A phone app (Android, Qt Quick) with the Registers, the Chart, the Monitor and the Log. |
 | **[Map&nbsp;format](EVRe/studio/docs/MAP_FORMAT.md)** | `evre-map/1`: one JSON file describes a device's registers for every tool, with a [JSON Schema](EVRe/studio/docs/evre-map-1.schema.json). Overlays change a base map in a small file of their own. |
 | **[Command&nbsp;line](EVRe/studio/cli/)** | `evre`: validate and export maps, read, dump, watch, write, broadcast, check a device against its map and record a fast stream, from a terminal or CI. `evre-sim`: any map served as a device over TCP. |
 | **[Python&nbsp;package](EVRe/studio/python/)** | A device by register name with its map, standard library only; a bus of devices too. |

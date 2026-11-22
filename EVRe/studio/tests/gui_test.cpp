@@ -158,7 +158,8 @@
 
 namespace {
 
-constexpr quint16 FAKE_DEVICE_PORT = 1210;
+/* EVRE_FAKE_PORT: the fake device on another port (a second run on the same PC) */
+const quint16 FAKE_DEVICE_PORT = quint16(qEnvironmentVariableIsSet("EVRE_FAKE_PORT") ? qEnvironmentVariableIntValue("EVRE_FAKE_PORT") : 1210);
 constexpr quint16 FAKE_BUS_PORT = 1226; /* evre_fake_fast as several devices on one link, started by the bus step */
 constexpr quint16 FAKE_AUTO_SEND_PORT = 1236; /* evre_fake_fast as one device that can AUTO_SEND, the auto send step */
 constexpr quint16 FAKE_FAST_PORT = 1240;      /* evre_fake_fast with maps/example_fast.json: the fast streams step */

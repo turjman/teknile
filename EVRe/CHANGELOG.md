@@ -1,9 +1,112 @@
 # Changelog
 
-## 1.5.1 (not released yet)
+## 1.6.0 (2026-11-22)
+
+The phone app: EVRe Studio on Android, with the Registers, the Chart, the Monitor and the Log.
 
 ### EVRe Studio
 
+- **The phone gets an interface of its own** (Android, the skeleton): a window in Qt Quick, drawn by the phone's
+  graphics card, with a header (the menu, the screen's name, the link's state), the Connect drawer (the dark theme and
+  the language at its bottom), a tab bar for Registers, Chart, Monitor and Log, and right to left in Arabic. The
+  screens say what will come; the desktop's widget window is no longer built for Android, and the desktop does not
+  change. A proof screen (`am start ... --ez p9 true`) measures a live list's frames.
+- **Connect and the Log on the phone.** The drawer connects to a board on the phone's USB port (Android asks for the
+  permission, and the drawer says it waits for it) or to a device over TCP (host, port, token), with a map of the
+  app's or one picked from the phone. Under Connect: what the link is or why it went down, and the device's ID.
+  Reconnect by itself, polling and its interval, Allow writes, and Record, a CSV into the app's own folder
+  (`Android/data/com.teknile.evrestudio/files/recordings`). A refused token or a refused USB permission stops the
+  tries. The header's pill shows the link's state in its colour and opens the drawer; the Log screen lists what
+  happened, Copy and Clear.
+- **The Registers screen on the phone.** Every register of the map as a card in sections by group: the name, the
+  value large with its unit, the decoded text, the address; a search field; the desktop's glow on a change, a greyed
+  *not refreshed* value and a refused register in red. **Write** (or a tap on the card) opens a sheet from the
+  screen's foot: the value or an enum's list, Apply, the map's limits asked first, the answer (written and read back,
+  or the refusal's text); with no link or Allow writes off it says so. The "⋯" button: Plot, Write…, Copy. Started
+  with `--ez perf true`, the app writes its frame rate to logcat (`EVRE_PERF`) while the screen shows.
+- **The phone's menu button showed an empty box** on a Samsung phone: its font has no "☰". The three bars are drawn
+  now, and no screen uses a symbol character.
+- **The phone reads the device's ID again** when the first read after a connect gets no answer (a board still
+  booting when the link comes back, or a simulator restarted): three more tries a second apart, *reading the device
+  ID…* meanwhile. Before, the drawer kept *DEVICE_ID not read* until a manual reconnect.
+- **The phone's screen darkens behind the drawer** and the write sheet in the dark theme too: Material's grey wash
+  made it lighter instead.
+- **The keyboard covered the write sheet's field on the phone** while typing (a Samsung phone): Android now makes the
+  window smaller over the keyboard, and the sheet and the Connect drawer keep the field typed in (the sheet's Apply
+  too) above it where Android does not.
+- **The phone with the screen off, its Help, each screen's orientation and the back gesture.** While a link is
+  wanted, Android's foreground service keeps the app going with the screen off, its notification saying the link's
+  state and the recording's time; the screen stays on while connected (a switch in the drawer). The drawer's Help
+  shows the desktop's Help, every topic, in English and Arabic. The Chart and the Monitor turn the phone to
+  landscape; the Registers and the Log follow the way it is held. Android's back closes the Help's page, the Help, the write sheet,
+  then the drawer; with nothing open the app goes to the background. A release now also ships
+  `EVReStudio-<version>-arm64.apk`.
+- **The phone's Help fits the phone.** It starts with a topic of its own, *Using the phone app* (connecting, the
+  Registers and the write sheet, the Chart with its gestures and cursors, the Monitor and the Log, recording with the
+  screen off, the back gesture), in English and Arabic; then the desktop's topics that apply, without the Map editor,
+  the API, the Dump, the command line and Keys & mouse, which the phone has none of. The desktop's Help is unchanged.
+- **The phone's Reconnect by itself never found a USB board again** after the board reset or was plugged in again:
+  Android gives it another name, and every try looked for the old one. It is found by its USB IDs now.
+- **The phone's device line stayed at *reading the device ID…*** after a Disconnect, and the cancelled read was logged
+  as an error: the line says *Device ID not read yet*, and the Log stays quiet.
+- **The phone's write sheet refused *1,5* and Arabic digits** (a comma keypad, an Arabic keyboard): both are numbers
+  now; hex and binary stay as typed.
+- **The phone's drawer wrote the chosen USB / TCP in black** on the accent's blue in the light theme; it is white in
+  both themes now.
+- **Two runs of the phone test at once no longer touch each other**: each keeps its settings and recordings in a folder
+  of its own (one run's theme switch had turned the other's pictures light).
+- **The phone's screens polished by eye**, in both themes and languages: drawn icons on the tabs, the chosen tab on a
+  pill; a search field with a magnifier and a clear cross, the count at the list's foot; group headers that stay at
+  the top; cards with the address beside the name, the value as the hero, a ripple on a press, chips for *not
+  refreshed* and *on the chart*, a red edge for an error; a card that says how to connect, with a button to the
+  drawer; the drawer in sections (Link, Device, Polling, Recording, Display) with Connect as the primary button and
+  the link's state by a coloured dot; the write sheet with a drag handle, an enum's values as a list, the warning in
+  its colours and the answer on its tone; the Log's time over each line, a bar for warnings and errors, an empty
+  state. Every button 48 dp; the cards keep a phone's width in landscape.
+- **The chart on the phone, its core.** The Chart screen draws its lines on the phone's graphics card, binned
+  exactly as the desktop's chart bins them: a grid with the time and value labels, Live and Hold, the window (10 s,
+  1 min, 5 min); a pinch zooms the time, a drag looks back and holds, a double tap goes live again. Time runs left
+  to right in Arabic too. The registers come onto it with the next part; a test feed (`am start ... --ez chartdemo
+  true`) draws 8 lines at 1,000 samples a second and measures the frames. The desktop's chart does not change: its
+  data and binning moved into a file that both charts share.
+- **The phone's chart shows the registers.** A register plotted from its card's "⋯" menu is a line in the theme's
+  next colour, fed with every poll's samples; a disconnect keeps the lines and what they hold, as on the desktop. A
+  legend over the plot has a chip per line (its colour, name and latest value with its unit, sideways when they do
+  not fit): a tap hides or shows the line, its "⋯" button offers Hide and Take off the chart. **Y auto** (on) spans
+  the values in view; off, a small sheet takes Min and Max. **Clear** empties the lines. With a map that has fast
+  streams, **Fast lines** lists their channels: one chosen switches its stream on and draws it as the desktop draws
+  a fast line. With no line, the chart says how to plot one, with a button to the Registers screen.
+- **Cursors and the Monitor on the phone.** **Cursors** on the Chart screen puts A and B on the view and holds it;
+  each is dragged by its round handle. Beside the plot (under it in portrait) the readouts give A's and B's times and
+  B - A, and per line its values at A and B, B - A, and min, max and mean over A..B, as the desktop measures them.
+  The Monitor screen shows the frames on the link, each its time and direction over its bytes in a monospaced font
+  (left to right in Arabic too); **Pause** holds them, **Clear** empties the list.
+- **The phone's cursors, after the review of their pictures.** **Cursors** puts A and B where the lines have samples
+  in view (a quarter and three quarters of that span), so a view whose data starts late no longer reads a dash for
+  every A, B - A, min, max and mean. The readouts scroll when they do not fit, with a scroll bar that stays shown and
+  a fade over the edge that has more, instead of a row cut through its letters at the panel's foot in landscape. A
+  missing value is an em dash, and each label stays with its value: in Arabic A, B and B - A read *B 5.11 V*, never
+  *- B - A*. Android's back also closes the drawer or the Help while it is still sliding in (it went to Android, and
+  the app went to the background with the drawer half open).
+- **The phone's back with nothing open no longer ends a link.** On Android 16 it finished the activity, and the
+  process with it: the link, the service and a recording were cut. While a link is wanted or a recording runs, the
+  back now moves the app to the background as Home does; with no link it closes the app as before. A back while the
+  soft keyboard is up only hides it (from the search field it quit the app), and a card's "⋯" menu no longer gives
+  the focus back to the search field, whose keyboard came up again after a Plot.
+- **The phone's Monitor in a fixed-pitch font.** On a Samsung phone the bytes were drawn in Roboto ("monospace" is
+  not a family Qt finds on Android), the "1"s narrow and the rows' bytes out of line; now Droid Sans Mono or the
+  platform's fixed font.
+- **The phone's chart keeps its plot in landscape.** On a Samsung phone across (384 dp high) the plot had about a
+  quarter of the height under the header, the buttons, the gesture line and the legend. Across, the header and the
+  tab bar are lower (48 dp), the buttons as narrow as their text (still 48 dp to the touch), the gesture line goes
+  (upright and in Help it stays), and the legend shares the buttons' row when about a chip fits after them: the plot
+  keeps half the height or more. A legend with more chips than room shows that it scrolls: a fade at its end, and at
+  its start once scrolled (the last chip was cut at the screen's edge). The menus (a card's "⋯", a chip's, Fast
+  lines) stay 8 dp inside the window, grow from their button toward the screen's middle (mirrored in Arabic), and
+  have an edge in both themes: a card's menu touched the screen's right edge, its dark face lost on the dark page.
+- **The phone's Registers and Log no longer turn the phone upright.** They asked Android for portrait, so a tap on
+  Registers while holding the phone across for the Chart flipped it; they follow the way the phone is held now. The
+  Chart and the Monitor still turn it to landscape.
 - **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every
@@ -25,6 +128,26 @@
   lights. On the phone the lists no longer tear or keep old strips while they scroll (Qt's own touch scroller did,
   QTBUG-135011). Before, only the scroll bars moved them, and a finger's
   drag over a list selected its rows. The mouse is unchanged.
+- **The phone app, designed by eye after a week on a real phone.** The Registers are rows like the desktop's table
+  (about twice as many in view), in groups that fold (kept per map); a tap opens the register's sheet: its value, a
+  trend of the last seconds, Plot and Copy, and the quick write by **Write** or Enter, read back. The pill shows the
+  poll rate and opens the Connect drawer, where the link's health reads as the desktop's status bar (the pill turns
+  amber while timeouts rise). Across, a rail of the screens on every screen and the Chart on the whole window, with
+  the legend over the plot (whole chips, *+N* for the rest, a Lines sheet) and a **Measure** sheet with the
+  desktop's statistics over the view or A to B; clock times on the time axis. A polled line breaks where the link
+  was lost and keeps the samples' real times after a reconnect. The Log's levels have icons, colours and filter
+  chips; the Monitor colours each frame by kind, filters TX or RX, and a tap decodes a frame field by field. The
+  screens move as they change (none when Android's *Remove animations* is on), and the phone buzzes briefly when a
+  link comes up and when the device takes a write. Every chip, button and tag is a rounded square; a language
+  change offers **Restart now**; the app has an adaptive launcher icon.
+- **The phone's cursor readouts read in two rows**: the values at A and B with B - A, then min, max and mean, so
+  *mean* is never left alone on a line (the Arabic labels are shorter on the phone, so both rows fit there too).
+- **The phone's Log keeps its filters together**: the level chips on one row, Copy and Clear beside them when they
+  fit, else on the next row at its end. The Chart's gesture line (pinch, drag, double tap) goes for good once a
+  finger has used the plot, and its row goes to the plot.
+- **A typed polling interval is taken once the typing rests** on the phone (*10* over *100* needed another tap); a
+  line with no sample between the cursors says *No samples between A and B*; an enum's chosen value has a tick, not
+  a round radio; the legend stays beside the Measure sheet across.
 
 ## 1.5.0 (2026-11-07)
 

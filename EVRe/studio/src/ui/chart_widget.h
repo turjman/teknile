@@ -99,6 +99,7 @@
 #include "io/fast_stream.h"
 #include "model/fast_store.h"
 #include "model/recording_file.h"
+#include "ui/chart_data.h"
 #include "ui/gpu_lines.h"
 #include "ui/value_pace.h"
 
@@ -114,7 +115,7 @@ QString chartAxisLabel(double value, double step, bool percent);
 QString chartLogLabel(double value);
 
 /* ChartView: the chart itself, a raster widget that paints every pixel at each display frame */
-class ChartView : public QWidget {
+class ChartView : public QWidget, private ChartData {
 	Q_OBJECT
 public:
 	static constexpr double MAX_SPAN = 86400; /* a day: the longest view and memory, seconds */
@@ -512,17 +513,8 @@ public:
 	QRectF chipButtonRect(int key) const;
 	int hoveredChip() const { return hoverChip_; } /* tests: the chip under the mouse, its button drawn highlighted */
 
-	/* measurements of one line over A..B, or over the view */
-	struct Stats {
-		bool ok = false;
-		/* integral: unit x s; std: the standard deviation, time-weighted as the mean; p2p: max - min */
-		double atA = NAN, atB = NAN, min = 0, max = 0, mean = 0, rms = 0, std = 0, p2p = 0, integral = 0;
-		double total = NAN; /* the area since Clear (totalsSince), unit x s; NaN: no sample yet */
-		int n = 0;
-		/* a fast line's records kept as summaries only in the range: min, max and p2p from them, the rest (and A or B
-		 * there) need samples: NaN */
-		bool summaries = false;
-	};
+	/* measurements of one line over A..B, or over the view (chart_data.h) */
+	using ChartData::Stats;
 	struct Info {
 		int key;
 		QString name, unit;
@@ -768,102 +760,18 @@ protected:
 	void keyPressEvent(QKeyEvent *e) override;
 
 private:
-	/* Samples per min/max chunk, four levels, each LEVEL_STEP chunks of the one
-	 * below. Chunks of a level start at multiples of its size in a line's samples
-	 * (the memory drops whole chunks of the largest to keep it so), and a span with
-	 * many samples per pixel column bins the largest chunks that still fit it. */
-	static constexpr int LEVELS = 4;
-	static constexpr int LEVEL_STEP = 8;
-	static constexpr int CHUNK_SIZE[LEVELS] = { 8, 64, 512, 4096 };
+	/* the samples, their chunks and bins, the axes, and the functions on them: the chart's data (chart_data.h),
+	 * shared with the phone's chart, its names kept here */
+	using ChartData::LEVELS;
+	using ChartData::LEVEL_STEP;
+	using ChartData::CHUNK_SIZE;
+	using ChartData::Chunk;
+	using ChartData::Bin;
+	using ChartData::Series;
+	using ChartData::BinnedLine;
+	using ChartData::Axes;
 	/* per series, whatever the memory and the RAM: trimming moves the line's arrays, 16 M samples (256 MB) at most */
 	static constexpr qsizetype MAX_POINTS = 16000000;
-
-	struct Chunk {
-		double t0, t1, min, max, first, last;
-	};
-	/* one pixel column's samples; columns are counted from time zero, so a sample
-	 * stays in its column while the view scrolls */
-	struct Bin {
-		qint64 column = 0;
-		int count = 0;
-		qsizetype firstSample = 0; /* the line's sample it starts with, counted since the line began */
-		double t0 = 0, t1 = 0, first = 0, last = 0, min = 0, max = 0;
-		bool gap = false;          /* a fast line: records were lost (or the stream started again) before it */
-		/* a fast line's records kept as summaries only, zoomed in past one a column: the summary of the column before
-		 * drawn again over this one (no records of its own: count 0, its times the column's middle), so each summary
-		 * is a bar over the columns it covers */
-		bool bar = false;
-		void add(double ta, double tb, double firstValue, double lastValue, double lo, double hi, int samples);
-	};
-	struct Series {
-		QString name, unit;
-		QColor color;
-		QVector<double> times, values; /* the samples kept, times rising */
-		QVector<Chunk> chunks[LEVELS]; /* one per full CHUNK_SIZE[level] of samples */
-		bool hasLast = false;
-		double last = 0;
-		bool hasShown = false; /* the legend's value: last, taken at the values' pace */
-		double shown = 0;
-		/* the total since Clear, and the sample it was summed to (time NaN: none yet) */
-		double total = 0, totalT = NAN, totalV = 0;
-		qsizetype dropped = 0; /* the samples the memory let go: times[0] is sample `dropped` of the line */
-		int spread = 0;        /* 0 to 7, by the order the lines came: its arrays' growth step (roomForOne) */
-		/* the view's bins kept from frame to frame: a column on absolute time that is complete never changes, so a
-		 * frame bins only the samples after `binnedTo` (the open last column again). Its window's column width
-		 * and the lines' generation say whether it still holds. */
-		struct ViewBins {
-			double columnSeconds = 0;
-			quint64 generation = 0;
-			QVector<Bin> bins;
-			qsizetype binnedTo = 0; /* counted since the line began */
-		};
-		mutable ViewBins viewBins;
-		/* a fast line: its stream's records, and its channel there (times and values stay empty) */
-		std::shared_ptr<fast::Store> fast;
-		int channel = 0;
-		qint64 totalTo = 0; /* a fast line: its total sums its records up to this one (counted since its store began) */
-	};
-	/* one line's samples in a span, binned per pixel column, with the range of
-	 * what lies inside the span */
-	struct BinnedLine {
-		const Series *series = nullptr;
-		QVector<Bin> bins;
-		double lo = 0, hi = 0;
-		double posLo = 0; /* the smallest positive value of what lies inside the span (the Log scale); +inf: none */
-		/* a fast line: what its bins were made with, so the next frame can keep the whole columns it shares */
-		double columnSeconds = 0;
-		int timeVersion = -1;
-		qint64 wholeFrom = -1; /* the store's first record kept whole then, counted since it began (recordsFrom) */
-	};
-	/* a time span and a value range mapped onto a rectangle of pixels: the plot
-	 * in one frame, or the memory strip */
-	struct Axes {
-		QRectF rect;
-		double t0 = 0, t1 = 1, span = 1; /* the times shown, seconds; span = t1 - t0 */
-		double lo = 0, hi = 1;           /* the values shown */
-		bool log = false;                /* log10 between lo and hi (both > 0); a value <= 0 on the bottom edge */
-		double logLo = 0, logHi = 1;
-		double columns = 1;              /* pixel columns across, at least 1 */
-		void setRange(double low, double high, bool logScale) {
-			lo = low;
-			hi = high;
-			log = logScale && low > 0 && high > low;
-			if (log) {
-				logLo = std::log10(low);
-				logHi = std::log10(high);
-			}
-		}
-		double columnSeconds() const { return span / columns; }
-		double x(double t) const { return rect.left() + (t - t0) / span * rect.width(); }
-		double y(double v) const {
-			if (!log) return rect.bottom() - (v - lo) / (hi - lo) * rect.height();
-			return v > 0 ? rect.bottom() - (std::log10(v) - logLo) / (logHi - logLo) * rect.height() : rect.bottom();
-		}
-		double value(double yPixel) const { /* the value at a height: y's inverse */
-			const double part = (rect.bottom() - yPixel) / rect.height();
-			return log ? std::pow(10.0, logLo + part * (logHi - logLo)) : lo + part * (hi - lo);
-		}
-	};
 	/* A Y range: Auto, Manual or Log (with Auto or a typed range). The plot has one; each lane its own. */
 	struct YScale {
 		bool autoRange = true, initialized = false, log = false;
@@ -891,7 +799,6 @@ private:
 
 	/* the samples; limit: the line's share (pointsPerLine) */
 	void dropExpired(Series &s, double t, qsizetype limit);
-	static void addChunks(Series &s, qsizetype limit);
 
 	/* job(0) .. job(count - 1) on the chart's threads and this one, at least jobsPerThread jobs a thread; returns
 	 * when all are done */
@@ -930,22 +837,6 @@ private:
 	static QRectF legendArrow(const LegendLayout &legend, bool right);
 
 	/* the drawing, in paint order */
-	/* overview: a chunk may fill a whole column (the memory strip); otherwise at most half of one */
-	void binSeries(const Series &s, double t0, double t1, double columns, bool overview, BinnedLine &out) const;
-	/* the same for the view, with the bins kept from the frame before (Series::viewBins) */
-	void binViewSeries(const Series &s, double t0, double t1, double columns, BinnedLine &out,
-			const BinnedLine *previous = nullptr) const;
-	/* samples i0 .. i1 - 1 into bins, chunks of level `top` at most where they start and end inside and lie in one
-	 * column */
-	static void binRange(const Series &s, qsizetype i0, qsizetype i1, double columnSeconds, int top, QVector<Bin> &bins);
-	/* a fast line from its store: a bin per column (two where a gap falls in one), each column's min and max from the
-	 * summaries, so the cost follows the columns, not the records */
-	void binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out, const BinnedLine *previous) const;
-	/* the line's range takes its values where it crosses the span's edges too (between the sample before an edge and
-	 * the one after it, not across a gap): drawn, that piece of it is in view. Without, a line with one sample in a
-	 * short view (a register polled at 100 Hz in 10 ms) was ranged on that sample alone, and Normalise drew the piece
-	 * from the edge to it far off the plot: a jump at the view's end that is not in the data */
-	static void rangeAtEdges(BinnedLine &out, double t0, double t1);
 	mutable std::atomic<qint64> fastColumnsBinned_{ 0 }; /* columns of fast lines binned (the kept ones not counted) */
 	mutable std::atomic<qint64> polledColumnsBinned_{ 0 }; /* the same of the polled lines' views (binViewSeries) */
 	void trimFast(fast::Store &store, int lines); /* by the memory and by its lines' share of the RAM */
@@ -954,10 +845,6 @@ private:
 	/* a fast line's records over t0..t1 into arrays, at most `most`; withoutGap: the longest part without a gap */
 	static bool fastSamples(const Series &s, double t0, double t1, qsizetype most, bool withoutGap, QVector<double> &times,
 			QVector<double> &values);
-	/* a fast line over records i0 .. i1 - 1: min, max, and from the summaries the trapezoids of each segment (nothing
-	 * across a gap), as statsOf from a polled line's arrays */
-	static Stats statsOfFast(const fast::Store &store, int channel, double t0, double t1, double a, double b);
-	static double fastValueAt(const fast::Store &store, int channel, double t); /* NaN: outside, or in a gap */
 	QVector<BinnedLine> binView(const Axes &axes, const QVector<BinnedLine> &previous) const;
 	/* the Y range of this frame for a plot's lines (which: indices into lines) */
 	void updateYRange(YScale &scale, const QVector<BinnedLine> &lines, const QVector<int> &which, double frameDt,
@@ -1075,13 +962,6 @@ private:
 	/* dpr: device pixels per unit of p's coordinates (the copies' count and shift) */
 	static void strokePolyline(QPainter &p, const QPolygonF &poly, const QColor &color, bool thin, qreal dpr);
 	static void prepareTile(const QPainter &p, const QRect &device, QImage &image, QTransform &world, QPointF &at);
-	template <typename MapX, typename MapY>
-	/* bands: given, a full column's min..max is a bar there (bandWidth wide) and the polyline only goes through its
-	 * first and last value; not given (the memory strip), the polyline draws the whole stroke */
-	/* breaks: given, where a bin says a gap (a fast line's), the polyline is broken: the index of the first point after
-	 * each break; nothing is drawn across it */
-	static QPolygonF toPolyline(const QVector<Bin> &bins, double columnSeconds, MapX x, MapY y,
-			QVector<QRectF> *bands = nullptr, double bandWidth = 0, double pixel = 0, QVector<qsizetype> *breaks = nullptr);
 	/* the polyline's points from .. to - 1 as strokes, broken where `breaks` says */
 	static void strokePieces(QPainter &p, const QPolygonF &poly, const QVector<qsizetype> &breaks, qsizetype from,
 			qsizetype to, const QColor &color, bool thin, qreal dpr);
@@ -1448,9 +1328,6 @@ private:
 	int fullStatsSync_ = 0;
 	void startMeasure(MeasureRequest request);
 	void appendNow(int key, double t, double v);
-	/* a line's measurements from its arrays, over t0..t1, its values at the times a and b */
-	static Stats statsOf(const QVector<double> &times, const QVector<double> &values, double t0, double t1, double a,
-			double b);
 	double paintMs_ = 0;
 
 	FrameBudget budget_;

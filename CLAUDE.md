@@ -11,7 +11,8 @@ Apache-2.0. The Studio's full guide is `EVRe/studio/docs/STUDIO.md`; read its ch
 - Each behaviour change gets a GUI check in `EVRe/studio/tests/gui_test.cpp`, and the check
   count in `EVRe/studio/README.md` and STUDIO.md 26.2 is updated.
 - Docs move with the code: STUDIO.md (the user part, chapter 22's class and file tables, 23 for
-  the chart), the Help pages (`src/ui/help_dialog.cpp`), and a settings row for a new setting.
+  the chart), the Help pages (their texts in `src/ui/help_topics.cpp`, shown by `src/ui/help_dialog.cpp`
+  and the phone), and a settings row for a new setting.
 - User-visible text goes through `tr()`; other literals use `QStringLiteral` / `QLatin1String`.
   Units and symbols are not translated.
 - Text files are UTF-8 with LF line endings. Never write the section sign: "section 7.6". Diagrams
